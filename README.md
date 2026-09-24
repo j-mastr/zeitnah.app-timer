@@ -1,0 +1,114 @@
+# Regatta Finish Times
+
+Record finish-line crossings of a sailing regatta with a big on-screen clock, assign the
+times to boats, and — optionally — keep several devices (e.g. two iPads on the committee
+boat) in sync in real time.
+
+- **Frontend:** a single HTML file (`frontend/index.html`, vanilla JS, no build step).
+  Works on its own with browser storage, or connected to this server.
+- **Backend:** PHP 8.2+ / Symfony 7.4. Serves the frontend, stores regattas, offers an HTTP
+  API and a WebSocket server for real-time sync. SQLite by default; MySQL/MariaDB and
+  PostgreSQL are supported.
+
+## Quick start (development)
+
+```bash
+composer install
+php bin/console app:install                    # creates the database tables
+php -S 127.0.0.1:8000 -t public                 # or: symfony serve
+php bin/console app:websocket-server -v         # second terminal, port 8080
+```
+
+Open http://127.0.0.1:8000/. Under *Settings* you can create a regatta on the server or
+join one by its code. A regatta can also be opened directly via `http://host/#r=CODE`.
+
+Without the WebSocket server everything still works; clients fall back to HTTP polling
+(about every 1.5 s).
+
+## Configuration
+
+Set values in `.env.local` (not committed) or as real environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_SECRET` | `change-me` | Symfony secret — set a random value in production |
+| `DATABASE_DSN` | `sqlite:%kernel.project_dir%/var/regatta.sqlite` | PDO DSN, e.g. `mysql:host=127.0.0.1;dbname=regatta;charset=utf8mb4` or `pgsql:host=127.0.0.1;dbname=regatta` |
+| `DATABASE_USER` / `DATABASE_PASSWORD` | – | Credentials for MySQL/PostgreSQL |
+| `WS_PORT` | `8080` | Port of `app:websocket-server` |
+| `WS_PUBLIC_URL` | – | WebSocket URL for browsers, e.g. `wss://regatta.example.org/ws`. Empty: `ws(s)://<host>:WS_PORT/`. `off`: disable WebSockets (polling only) |
+| `TRUSTED_PROXIES` | – | Reverse proxies whose `X-Forwarded-*` headers are trusted, e.g. `127.0.0.1,REMOTE_ADDR` |
+
+## Production
+
+1. `composer install --no-dev --optimize-autoloader`, then `php bin/console app:install`.
+   Commit the generated `composer.lock`.
+2. Point the web server's document root to `public/` (`public/.htaccess` is included for
+   Apache with `mod_rewrite`).
+3. Run the WebSocket server permanently, e.g. with systemd:
+
+   ```ini
+   # /etc/systemd/system/regatta-ws.service
+   [Unit]
+   Description=Regatta finish times WebSocket server
+   After=network.target
+
+   [Service]
+   User=www-data
+   WorkingDirectory=/var/www/regatta-finish-times
+   ExecStart=/usr/bin/php bin/console app:websocket-server --host=127.0.0.1
+   Restart=always
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+4. Proxy it through the web server so browsers can use `wss://` on the normal port, and set
+   `WS_PUBLIC_URL=wss://regatta.example.org/ws` and `TRUSTED_PROXIES` accordingly. nginx:
+
+   ```nginx
+   server {
+       server_name regatta.example.org;
+       root /var/www/regatta-finish-times/public;
+
+       location /ws {
+           proxy_pass http://127.0.0.1:8080;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection "upgrade";
+           proxy_read_timeout 120s;
+       }
+
+       location / {
+           try_files $uri /index.php$is_args$args;
+       }
+
+       location ~ ^/index\.php(/|$) {
+           fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+           include fastcgi_params;
+           fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+           internal;
+       }
+   }
+   ```
+
+With SQLite, both PHP-FPM and the WebSocket service must be able to write `var/`.
+
+## Tests
+
+```bash
+node tests/reducer-parity.mjs        # JS and PHP reducers must behave identically
+npm install && npx playwright install chromium
+BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # needs running servers
+```
+
+## HTTP API
+
+| Method & path | Description |
+| --- | --- |
+| `GET /api/config` | `{serverUrl, wsUrl, serverTime}` |
+| `POST /api/regattas` | Creates a regatta with a random 6-character code → `{code, seq, state}` |
+| `GET /api/regattas/{code}` | Snapshot `{code, seq, state}` (codes are case-insensitive) |
+| `GET /api/regattas/{code}/events?since=N` | `{seq, events: [{seq, op}]}`, or `{reset: true, seq, state}` if far behind |
+| `POST /api/regattas/{code}/ops` | Body `{ops: [...]}` → `{results: [{opId, status: applied\|duplicate\|rejected, error?}]}` |
+
+The WebSocket protocol and the operation types are documented in `CLAUDE.md`.
