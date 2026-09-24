@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Runs the steps needed after new code has been checked out, e.g. as Plesk Git
+# "additional deployment action":
+#
+#   (export PATH="/opt/plesk/php/8.3/bin:$PATH" && cd /var/www/vhosts/example.org/finish-line-timer && bash bin/deploy)
+#
+# 1. installs PHP dependencies (production only), which also clears the Symfony cache
+# 2. creates missing database tables
+# 3. restarts the WebSocket server of this installation, if one is running, so it loads
+#    the new code (systemd restarts it; see deploy/finish-line-timer-ws.service)
+#
+# Environment variables (optional):
+#   PHP_BIN       PHP binary to use                 (default: php from PATH)
+#   COMPOSER_BIN  Composer executable / .phar       (default: composer from PATH, then ./composer.phar)
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+PROJECT_DIR="$(pwd -P)"
+PHP_BIN="${PHP_BIN:-php}"
+
+log() { printf '[deploy] %s\n' "$*"; }
+fail() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
+
+command -v "$PHP_BIN" >/dev/null 2>&1 || fail "PHP binary '$PHP_BIN' not found (set PHP_BIN or extend PATH)"
+log "PHP: $("$PHP_BIN" -r 'echo PHP_VERSION;') ($(command -v "$PHP_BIN"))"
+
+COMPOSER_BIN="${COMPOSER_BIN:-$(command -v composer 2>/dev/null || true)}"
+if [ -z "$COMPOSER_BIN" ] && [ -f composer.phar ]; then
+    COMPOSER_BIN="$PROJECT_DIR/composer.phar"
+fi
+[ -n "$COMPOSER_BIN" ] || fail "Composer not found (set COMPOSER_BIN or put composer.phar into $PROJECT_DIR)"
+
+[ -f .env.local ] || log "Note: no .env.local found - using defaults from .env (set APP_SECRET!)"
+
+log "Installing dependencies"
+# Run Composer with the chosen PHP binary so the domain's PHP version is used.
+"$PHP_BIN" "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+log "Updating database schema"
+"$PHP_BIN" bin/console app:install --no-interaction
+
+# Restart only the WebSocket server that runs from this directory (other installations
+# on the same server are left alone). systemd's Restart=always brings it back up.
+# Processes are identified by their exact arguments (php bin/console app:websocket-server),
+# not by a text search, so shells whose command line merely mentions it are never hit.
+restarted=0
+for pid in $(pgrep -u "$(id -u)" -f 'app:websocket-server' || true); do
+    [ "$pid" = "$$" ] && continue
+    mapfile -d '' argv < "/proc/$pid/cmdline" 2>/dev/null || continue
+    [ "${#argv[@]}" -ge 3 ] || continue
+    case "$(basename "${argv[0]}")" in php*) ;; *) continue ;; esac
+    [ "${argv[1]}" = "bin/console" ] && [ "${argv[2]}" = "app:websocket-server" ] || continue
+    [ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" = "$PROJECT_DIR" ] || continue
+    kill -TERM "$pid" && restarted=$((restarted + 1))
+done
+if [ "$restarted" -gt 0 ]; then
+    log "WebSocket server restarted"
+else
+    log "No WebSocket server running for this installation (fine with WS_PUBLIC_URL=off)"
+fi
+
+log "Done"
