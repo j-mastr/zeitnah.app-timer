@@ -11,11 +11,11 @@ services:
         exclude:
             - '../src/Kernel.php'
 
-    App\Regatta\ClientConfig:
+    App\Race\ClientConfig:
         arguments:
             $wsPublicUrl: '%env(default::WS_PUBLIC_URL)%'
 
-    App\Regatta\Database:
+    App\Race\Database:
         arguments:
             $dsn: '%env(resolve:DATABASE_DSN)%'
             $user: '%env(default::DATABASE_USER)%'

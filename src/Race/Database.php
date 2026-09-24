@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Regatta;
+namespace App\Race;
 
 /**
  * Thin PDO wrapper: lazy connection, driver-aware transactions and schema installation.
@@ -90,7 +90,7 @@ class Database
         $statements = match ($this->driver()) {
             'sqlite' => [
                 'PRAGMA journal_mode = WAL',
-                'CREATE TABLE IF NOT EXISTS regatta (
+                'CREATE TABLE IF NOT EXISTS race (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     code VARCHAR(16) NOT NULL UNIQUE,
                     seq INTEGER NOT NULL DEFAULT 0,
@@ -98,19 +98,19 @@ class Database
                     created_at VARCHAR(32) NOT NULL,
                     updated_at VARCHAR(32) NOT NULL
                 )',
-                'CREATE TABLE IF NOT EXISTS regatta_event (
+                'CREATE TABLE IF NOT EXISTS race_event (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    regatta_id INTEGER NOT NULL REFERENCES regatta(id) ON DELETE CASCADE,
+                    race_id INTEGER NOT NULL REFERENCES race(id) ON DELETE CASCADE,
                     seq INTEGER NOT NULL,
                     op_id VARCHAR(64) NOT NULL,
                     op TEXT NOT NULL,
                     created_at VARCHAR(32) NOT NULL,
-                    UNIQUE (regatta_id, seq),
-                    UNIQUE (regatta_id, op_id)
+                    UNIQUE (race_id, seq),
+                    UNIQUE (race_id, op_id)
                 )',
             ],
             'mysql' => [
-                'CREATE TABLE IF NOT EXISTS regatta (
+                'CREATE TABLE IF NOT EXISTS race (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     code VARCHAR(16) NOT NULL UNIQUE,
                     seq INT NOT NULL DEFAULT 0,
@@ -118,20 +118,20 @@ class Database
                     created_at VARCHAR(32) NOT NULL,
                     updated_at VARCHAR(32) NOT NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
-                'CREATE TABLE IF NOT EXISTS regatta_event (
+                'CREATE TABLE IF NOT EXISTS race_event (
                     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    regatta_id INT NOT NULL,
+                    race_id INT NOT NULL,
                     seq INT NOT NULL,
                     op_id VARCHAR(64) NOT NULL,
                     op LONGTEXT NOT NULL,
                     created_at VARCHAR(32) NOT NULL,
-                    UNIQUE KEY uniq_seq (regatta_id, seq),
-                    UNIQUE KEY uniq_op (regatta_id, op_id),
-                    CONSTRAINT fk_event_regatta FOREIGN KEY (regatta_id) REFERENCES regatta(id) ON DELETE CASCADE
+                    UNIQUE KEY uniq_seq (race_id, seq),
+                    UNIQUE KEY uniq_op (race_id, op_id),
+                    CONSTRAINT fk_event_race FOREIGN KEY (race_id) REFERENCES race(id) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
             ],
             'pgsql' => [
-                'CREATE TABLE IF NOT EXISTS regatta (
+                'CREATE TABLE IF NOT EXISTS race (
                     id SERIAL PRIMARY KEY,
                     code VARCHAR(16) NOT NULL UNIQUE,
                     seq INTEGER NOT NULL DEFAULT 0,
@@ -139,15 +139,15 @@ class Database
                     created_at VARCHAR(32) NOT NULL,
                     updated_at VARCHAR(32) NOT NULL
                 )',
-                'CREATE TABLE IF NOT EXISTS regatta_event (
+                'CREATE TABLE IF NOT EXISTS race_event (
                     id BIGSERIAL PRIMARY KEY,
-                    regatta_id INTEGER NOT NULL REFERENCES regatta(id) ON DELETE CASCADE,
+                    race_id INTEGER NOT NULL REFERENCES race(id) ON DELETE CASCADE,
                     seq INTEGER NOT NULL,
                     op_id VARCHAR(64) NOT NULL,
                     op TEXT NOT NULL,
                     created_at VARCHAR(32) NOT NULL,
-                    UNIQUE (regatta_id, seq),
-                    UNIQUE (regatta_id, op_id)
+                    UNIQUE (race_id, seq),
+                    UNIQUE (race_id, op_id)
                 )',
             ],
             default => throw new \RuntimeException(sprintf('Unsupported database driver "%s".', $this->driver())),

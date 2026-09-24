@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Regatta;
+namespace App\Race;
 
 use Symfony\Component\HttpFoundation\Request;
 

@@ -2,8 +2,8 @@
 
 namespace App\WebSocket;
 
-use App\Regatta\RegattaNotFoundException;
-use App\Regatta\RegattaRepository;
+use App\Race\RaceNotFoundException;
+use App\Race\RaceRepository;
 use GuzzleHttp\Psr7\HttpFactory;
 use GuzzleHttp\Psr7\Message;
 use Ratchet\RFC6455\Handshake\RequestVerifier;
@@ -19,7 +19,7 @@ use React\Socket\ConnectionInterface;
  * Real-time synchronisation over WebSockets.
  *
  * Protocol (JSON text messages):
- *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a regatta
+ *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a race
  *   server → client  {"type":"snapshot","code","seq","state"}
  *   client → server  {"type":"ops","ops":[{opId,type,...}]}
  *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber
@@ -38,12 +38,12 @@ final class SyncServer
     private array $sessions = [];
     /** @var array<string, array<int, ClientSession>> code => sessions */
     private array $subscribers = [];
-    /** @var array<string, int> last sequence number pushed per regatta */
+    /** @var array<string, int> last sequence number pushed per race */
     private array $pushedSeq = [];
     private ServerNegotiator $negotiator;
     private \Closure $log;
 
-    public function __construct(private readonly RegattaRepository $regattas)
+    public function __construct(private readonly RaceRepository $races)
     {
         $this->negotiator = new ServerNegotiator(new RequestVerifier(), new HttpFactory());
         $this->log = static function (string $message): void {};
@@ -70,7 +70,7 @@ final class SyncServer
             return;
         }
         try {
-            $current = $this->regattas->currentSeqs(array_keys($this->subscribers));
+            $current = $this->races->currentSeqs(array_keys($this->subscribers));
             foreach ($current as $code => $seq) {
                 if ($seq > ($this->pushedSeq[$code] ?? 0)) {
                     $this->broadcast($code);
@@ -199,10 +199,10 @@ final class SyncServer
 
     private function onHello(ClientSession $session, string $code): void
     {
-        $code = RegattaRepository::normalizeCode($code);
+        $code = RaceRepository::normalizeCode($code);
         try {
-            $snapshot = $this->regattas->snapshot($code);
-        } catch (RegattaNotFoundException) {
+            $snapshot = $this->races->snapshot($code);
+        } catch (RaceNotFoundException) {
             $session->send(['type' => 'error', 'error' => 'not_found']);
 
             return;
@@ -230,8 +230,8 @@ final class SyncServer
         }
 
         try {
-            $results = $this->regattas->applyOperations($session->code, $ops);
-        } catch (RegattaNotFoundException) {
+            $results = $this->races->applyOperations($session->code, $ops);
+        } catch (RaceNotFoundException) {
             $session->send(['type' => 'error', 'error' => 'not_found']);
 
             return;
@@ -248,7 +248,7 @@ final class SyncServer
 
     private function broadcast(string $code): void
     {
-        $events = $this->regattas->eventsSince($code, $this->pushedSeq[$code] ?? 0);
+        $events = $this->races->eventsSince($code, $this->pushedSeq[$code] ?? 0);
         if (!$events) {
             return;
         }

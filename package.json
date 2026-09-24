@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "regatta-finish-times-tests",
+  "name": "finish-line-timer-tests",
   "description": "Development tooling only; the app itself has no JavaScript build step.",
   "type": "module",
   "scripts": {

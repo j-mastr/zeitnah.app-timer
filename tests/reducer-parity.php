@@ -3,8 +3,8 @@
 // Counterpart of tests/reducer-parity.mjs: replays the generated cases through the PHP
 // reducer and compares the outcome with what the JavaScript reducer produced.
 
-use App\Regatta\InvalidOperationException;
-use App\Regatta\OperationReducer;
+use App\Race\InvalidOperationException;
+use App\Race\OperationReducer;
 
 require dirname(__DIR__).'/vendor/autoload.php';
 

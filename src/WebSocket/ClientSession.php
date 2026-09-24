@@ -10,7 +10,7 @@ final class ClientSession
 {
     public string $handshakeBuffer = '';
     public ?MessageBuffer $messages = null;
-    /** Regatta code this client is subscribed to. */
+    /** Race code this client is subscribed to. */
     public ?string $code = null;
     public float $lastSeen;
 

@@ -2,9 +2,9 @@
 
 namespace App\Controller;
 
-use App\Regatta\ClientConfig;
-use App\Regatta\RegattaNotFoundException;
-use App\Regatta\RegattaRepository;
+use App\Race\ClientConfig;
+use App\Race\RaceNotFoundException;
+use App\Race\RaceRepository;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -21,7 +21,7 @@ class ApiController
     private const MAX_EVENT_GAP = 500;
 
     public function __construct(
-        private readonly RegattaRepository $regattas,
+        private readonly RaceRepository $races,
         private readonly ClientConfig $config,
     ) {
     }
@@ -36,42 +36,42 @@ class ApiController
         ]);
     }
 
-    #[Route('/regattas', methods: ['POST'])]
+    #[Route('/races', methods: ['POST'])]
     public function create(): JsonResponse
     {
-        return $this->json($this->regattas->create(), Response::HTTP_CREATED);
+        return $this->json($this->races->create(), Response::HTTP_CREATED);
     }
 
-    #[Route('/regattas/{code}', methods: ['GET'])]
+    #[Route('/races/{code}', methods: ['GET'])]
     public function snapshot(string $code): JsonResponse
     {
         try {
-            return $this->json($this->regattas->snapshot($code));
-        } catch (RegattaNotFoundException) {
+            return $this->json($this->races->snapshot($code));
+        } catch (RaceNotFoundException) {
             return $this->notFound();
         }
     }
 
-    #[Route('/regattas/{code}/events', methods: ['GET'])]
+    #[Route('/races/{code}/events', methods: ['GET'])]
     public function events(string $code, Request $request): JsonResponse
     {
         $since = max(0, $request->query->getInt('since'));
         try {
-            $snapshot = $this->regattas->snapshot($code);
+            $snapshot = $this->races->snapshot($code);
             if ($snapshot['seq'] - $since > self::MAX_EVENT_GAP || $since > $snapshot['seq']) {
                 return $this->json(['reset' => true] + $snapshot);
             }
 
             return $this->json([
                 'seq' => $snapshot['seq'],
-                'events' => $this->regattas->eventsSince($code, $since, self::MAX_EVENT_GAP),
+                'events' => $this->races->eventsSince($code, $since, self::MAX_EVENT_GAP),
             ]);
-        } catch (RegattaNotFoundException) {
+        } catch (RaceNotFoundException) {
             return $this->notFound();
         }
     }
 
-    #[Route('/regattas/{code}/ops', methods: ['POST'])]
+    #[Route('/races/{code}/ops', methods: ['POST'])]
     public function operations(string $code, Request $request): JsonResponse
     {
         try {
@@ -85,8 +85,8 @@ class ApiController
         }
 
         try {
-            return $this->json(['results' => $this->regattas->applyOperations($code, $ops)]);
-        } catch (RegattaNotFoundException) {
+            return $this->json(['results' => $this->races->applyOperations($code, $ops)]);
+        } catch (RaceNotFoundException) {
             return $this->notFound();
         }
     }

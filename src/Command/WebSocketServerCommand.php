@@ -13,7 +13,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-#[AsCommand(name: 'app:websocket-server', description: 'Runs the WebSocket server that pushes regatta changes to all connected clients in real time.')]
+#[AsCommand(name: 'app:websocket-server', description: 'Runs the WebSocket server that pushes race changes to all connected clients in real time.')]
 final class WebSocketServerCommand extends Command
 {
     public function __construct(

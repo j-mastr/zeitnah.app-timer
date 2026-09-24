@@ -24,12 +24,12 @@ try {
   assert.equal(await a.textContent('#statusText'), 'Lokal im Browser');
 
   for (const name of ['GER 123', 'NED 7', 'FRA 44']) {
-    await a.fill('#boatInput', name);
-    await a.click('#addBoatBtn');
+    await a.fill('#participantInput', name);
+    await a.click('#addParticipantBtn');
   }
   await a.click('#captureBtn');
   assert.equal(await a.textContent('#capCount'), '1');
-  step('local mode: boats and a capture');
+  step('local mode: participants and a capture');
 
   await a.click('#settingsBtn');
   await a.click('#createBtn');
@@ -39,17 +39,17 @@ try {
   await sleep(500);
   const code = await a.inputValue('#srvCode');
   assert.match(await a.evaluate(() => location.hash), new RegExp('#r=' + code));
-  assert.equal(await a.locator('#boatList li').count(), 3);
-  assert.equal(await a.evaluate(() => JSON.parse(localStorage.getItem('regatta-timer.local')).boats.length), 0);
+  assert.equal(await a.locator('#participantList li').count(), 3);
+  assert.equal(await a.evaluate(() => JSON.parse(localStorage.getItem('race-timer.local')).participants.length), 0);
   await a.click('#drawerClose');
-  step(`new regatta ${code} initialised with local data`);
+  step(`new race ${code} initialised with local data`);
 
   const ctxB = await browser.newContext({locale: 'en-US', viewport: {width: 390, height: 844}});
   const b = await ctxB.newPage();
   b.on('pageerror', (e) => { throw e; });
   await b.goto(BASE + '#r=' + code.toLowerCase());
   await waitStatus(b, 'Connected to server');
-  assert.equal(await b.locator('#boatList li').count(), 3);
+  assert.equal(await b.locator('#participantList li').count(), 3);
   step('second client joins via #r= link (English UI)');
 
   await b.fill('#rankSearch', 'gr123');
@@ -65,21 +65,21 @@ try {
   await sleep(800);
   assert.equal(await b.textContent('#capCount'), '2');
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
-  step('space bar assigns the first sorted boat on all clients');
+  step('space bar assigns the first sorted participant on all clients');
 
-  await b.click('#renameRegattaBtn');
-  await b.fill('#regattaTitle input', 'Smoke Test Regatta');
+  await b.click('#renameRaceBtn');
+  await b.fill('#raceTitle input', 'Smoke Test Race');
   await b.keyboard.press('Enter');
   await b.click('#settingsBtn');
   await b.click('#archiveBtn');
   await b.click('#dialogOk');
   await sleep(1000);
-  assert.equal(await a.textContent('#regattaTitle'), 'Smoke Test Regatta');
+  assert.equal(await a.textContent('#raceTitle'), 'Smoke Test Race');
   assert.equal(await a.isVisible('#archivedBanner'), true);
   await a.keyboard.press('Space');
   await sleep(300);
   assert.equal(await a.textContent('#capCount'), '2');
-  step('rename and archive; archived regatta is read-only');
+  step('rename and archive; archived race is read-only');
 
   await a.goto(BASE);
   await waitStatus(a, 'Archiviert');

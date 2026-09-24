@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Zielzeiten</title>
+<title></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -54,13 +54,13 @@
   .app{
     display:grid;
     grid-template-columns:1fr;
-    grid-template-areas:"clock" "sorted" "boats" "captures";
+    grid-template-areas:"clock" "sorted" "participants" "captures";
     gap:14px;
     align-items:start;
   }
   .clock-card{grid-area:clock;}
   .sorted-panel{grid-area:sorted;}
-  .boats-panel{grid-area:boats;}
+  .participants-panel{grid-area:participants;}
   .captures-panel{grid-area:captures;}
 
   .clock-card{
@@ -76,14 +76,14 @@
   .hint-line{color:var(--muted); font-size:11px; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
   .hint-pair{display:inline-flex; align-items:center; gap:4px; white-space:nowrap;}
 
-  /* ---------- wide window: clock on top, boats left / captures right ---------- */
+  /* ---------- wide window: clock on top, participants left / captures right ---------- */
   @media (min-width:700px){
     .app{
       grid-template-columns:320px 1fr;
       grid-template-areas:
         "clock   clock"
         "sorted  captures"
-        "boats   captures";
+        "participants   captures";
     }
     .clock-card{position:static;}
   }
@@ -119,14 +119,14 @@
 
   ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
 
-  .boat-row, .sorted-row{display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
+  .participant-row, .sorted-row{display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
   .sorted-row{touch-action:none;}
   .sorted-row.dragging{opacity:.45;}
   .drag-handle{cursor:grab; color:var(--muted); font-size:16px; padding:2px 6px; touch-action:none; user-select:none; flex-shrink:0;}
   .kbd{display:inline-flex; align-items:center; justify-content:center; min-width:19px; height:19px; padding:0 4px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-shrink:0;}
-  .boat-main{flex:1; min-width:0; cursor:default;}
-  .boat-main .nm{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .boat-main .meta{font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-top:2px;}
+  .participant-main{flex:1; min-width:0; cursor:default;}
+  .participant-main .nm{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .participant-main .meta{font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-top:2px;}
   .ops{display:flex; gap:4px; flex-shrink:0;}
   .mini{background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0; font-family:inherit;}
   .mini:hover{color:var(--text); border-color:var(--muted);}
@@ -143,7 +143,7 @@
   .footer-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
   .footer-actions input[type=file]{display:none;}
 
-  /* Actions that need a live server connection (normal) or are blocked in archived regattas (all). */
+  /* Actions that need a live server connection (normal) or are blocked in archived races (all). */
   body.lock-normal [data-edit="normal"], body.lock-all [data-edit]{opacity:.4; pointer-events:none;}
 
   /* ---------- settings drawer ---------- */
@@ -195,8 +195,8 @@
   <header class="topbar">
     <div>
       <div class="title-row">
-        <h1 id="regattaTitle">⛵ Zielzeiten</h1>
-        <button class="mini" id="renameRegattaBtn" data-edit="normal" data-i18n-title="header.rename">✎</button>
+        <h1 id="raceTitle"></h1>
+        <button class="mini" id="renameRaceBtn" data-edit="normal" data-i18n-title="header.rename">✎</button>
       </div>
       <div class="sub" data-i18n="header.subtitle"></div>
     </div>
@@ -232,11 +232,11 @@
       <div class="empty" id="sortedEmpty" data-i18n="sorted.empty"></div>
     </div>
 
-    <div class="panel boats-panel">
+    <div class="panel participants-panel">
       <div class="panel-head">
-        <h2><span data-i18n="boats.title"></span> <span class="count" id="boatCount">0</span></h2>
+        <h2><span data-i18n="participants.title"></span> <span class="count" id="participantCount">0</span></h2>
       </div>
-      <div class="hint-line" data-i18n="boats.hint"></div>
+      <div class="hint-line" data-i18n="participants.hint"></div>
       <div class="toolbar">
         <div class="seg" id="filterSeg">
           <button data-f="all" data-i18n="filter.all"></button>
@@ -253,13 +253,13 @@
         <button class="mini" id="sortDirBtn" data-i18n-title="sort.dir" style="width:auto; padding:6px 9px;">↑</button>
       </div>
       <div class="add-row" data-edit="normal">
-        <input class="input" id="boatInput" type="text" data-i18n-placeholder="boats.placeholder" maxlength="60">
-        <button class="btn" id="addBoatBtn" data-i18n="boats.add"></button>
+        <input class="input" id="participantInput" type="text" data-i18n-placeholder="participants.placeholder" maxlength="60">
+        <button class="btn" id="addParticipantBtn" data-i18n="participants.add"></button>
       </div>
-      <ul id="boatList"></ul>
-      <div class="empty" id="boatEmpty"></div>
+      <ul id="participantList"></ul>
+      <div class="empty" id="participantEmpty"></div>
       <div class="footer-actions">
-        <button class="btn small" id="importBtn" data-edit="normal" data-i18n="boats.import"></button>
+        <button class="btn small" id="importBtn" data-edit="normal" data-i18n="participants.import"></button>
         <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
       </div>
     </div>
@@ -387,263 +387,284 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <!-- Replaced by the server with {"serverUrl": "..."} when the page is served by the backend. -->
-<script>window.REGATTA_CONFIG = /*SERVER_CONFIG*/null;</script>
+<script>window.TIMER_CONFIG = /*SERVER_CONFIG*/null;</script>
 <script>
 'use strict';
 
 // =====================================================================
 // Translations
 // =====================================================================
-const I18N = {
-  de: {
-    'app.title': 'Zielzeiten',
-    'header.defaultName': '⛵ Zielzeiten',
-    'header.subtitle': 'Zieldurchläufe erfassen und Booten zuordnen',
-    'header.rename': 'Regatta umbenennen',
-    'status.local': 'Lokal im Browser',
-    'status.connecting': 'Verbindung wird hergestellt…',
-    'status.online': 'Server verbunden',
-    'status.offline': 'Verbindung unterbrochen',
-    'status.pending': '{n} ausstehend',
-    'status.archived': 'Archiviert',
-    'archived.banner': 'Diese Regatta ist archiviert und kann nicht mehr bearbeitet werden.',
-    'clock.capture': 'ZEIT ERFASSEN',
-    'clock.hintNext': 'nächstes sortiertes Boot',
-    'clock.hintDirect': 'Position direkt erfassen',
-    'sorted.title': 'Sortiert',
-    'sorted.hint': 'Doppeltipp auf ein Boot = Zeit jetzt · Ziehen oder ▲▼ = Reihenfolge ändern',
-    'sorted.search': 'Boot suchen & zur Sortierung hinzufügen…',
-    'sorted.noMatch': 'Keine passenden Boote.',
-    'sorted.empty': 'Keine Boote in der Sortierung.',
-    'sorted.pill': 'Sortiert #{n}',
-    'boats.title': 'Boote',
-    'boats.hint': 'Doppeltipp auf ein Boot = Zeit jetzt',
-    'boats.placeholder': 'Segelnummer / Name',
-    'boats.add': 'Hinzufügen',
-    'boats.empty': 'Noch keine Boote angelegt.',
-    'boats.emptyView': 'Keine Boote in dieser Ansicht.',
-    'boats.import': 'CSV importieren',
-    'boats.exists': '„{name}“ ist bereits vorhanden.',
-    'boats.deleteTitle': 'Boot löschen?',
-    'boats.deleteText': '„{name}“ wird endgültig gelöscht. Bereits erfasste Zeiten bleiben erhalten.',
-    'filter.all': 'Alle',
-    'filter.open': 'Ohne Zielzeit',
-    'filter.hideSorted': 'Sortierte ausblenden',
-    'sort.manual': 'Reihenfolge',
-    'sort.alpha': 'Name',
-    'sort.time': 'Zielzeit',
-    'sort.dir': 'Richtung umkehren',
-    'action.drag': 'Ziehen zum Sortieren',
-    'action.up': 'Nach oben',
-    'action.down': 'Nach unten',
-    'action.unsort': 'Aus Sortierung entfernen',
-    'action.sort': 'Zur Sortierung hinzufügen',
-    'action.rename': 'Umbenennen',
-    'action.delete': 'Löschen',
-    'import.done': '{n} Boot(e) importiert.',
-    'import.none': 'Keine neuen Boote gefunden.',
-    'import.error': 'CSV konnte nicht gelesen werden.',
-    'captures.title': 'Zieldurchläufe',
-    'captures.empty': 'Noch keine Zeit erfasst.',
-    'captures.first': 'Erster',
-    'captures.chooseBoat': '— Boot wählen —',
-    'captures.deletedBoat': '(gelöschtes Boot)',
-    'captures.pending': 'nicht übertragen',
-    'captures.export': 'CSV exportieren',
-    'captures.recorded': 'Zeit erfasst',
-    'export.none': 'Keine Zeiten zum Exportieren.',
-    'export.saved': 'CSV gespeichert.',
-    'export.failed': 'Export ist hier nicht möglich.',
-    'export.header': 'Platz;Uhrzeit;Boot',
-    'export.filename': 'zieldurchlaeufe',
-    'lock.offline': 'Nicht möglich, solange keine Verbindung zum Server besteht.',
-    'lock.archived': 'Die Regatta ist archiviert.',
-    'settings.title': 'Einstellungen',
-    'settings.close': 'Schließen',
-    'settings.language': 'Sprache',
-    'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten an derselben Regatta zu arbeiten.',
-    'settings.code': 'Regatta-Code',
-    'settings.connect': 'Verbinden',
-    'settings.or': 'oder',
-    'settings.create': 'Neue Regatta auf dem Server erstellen',
-    'settings.advanced': 'Erweiterte Einstellungen',
-    'settings.serverUrl': 'Server-URL',
-    'settings.serverUrlDefault': 'Leer lassen für den Standard: {url}',
-    'settings.serverUrlNone': 'Diese Seite wurde nicht von einem Server ausgeliefert. Gib die Adresse des Servers an, z. B. https://regatta.example.org',
-    'settings.reset': 'Lokale Daten zurücksetzen',
-    'settings.resetHint': 'Löscht alle Boote und Zeiten, die in diesem Browser gespeichert sind.',
-    'settings.transportWs': 'Echtzeit-Synchronisation per WebSocket',
-    'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
-    'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
-    'settings.link': 'Direkt-Link',
-    'settings.copy': 'Kopieren',
-    'settings.copied': 'Link kopiert.',
-    'settings.disconnect': 'Verbindung trennen',
-    'settings.disconnectHint': 'Danach arbeitest du wieder mit den Daten in diesem Browser. Die Regatta bleibt auf dem Server erhalten.',
-    'settings.sync': 'Daten abgleichen',
-    'settings.merge': 'Lokale Daten auf den Server übertragen',
-    'settings.mergeHint': 'Führt Boote (per Name bzw. Segelnummer), Sortierung und Zeiten aus diesem Browser mit der Regatta zusammen, ohne etwas zu löschen. Die lokalen Daten werden danach zurückgesetzt.',
-    'settings.mergeEmpty': 'In diesem Browser sind keine lokalen Daten gespeichert.',
-    'settings.pull': 'Server-Daten lokal übernehmen',
-    'settings.pullHint': 'Ersetzt die in diesem Browser gespeicherten Daten durch den aktuellen Stand dieser Regatta.',
-    'settings.archive': 'Regatta archivieren',
-    'settings.archiveHint': 'Danach kann niemand mehr Änderungen vornehmen. Das lässt sich nicht rückgängig machen.',
-    'dialog.cancel': 'Abbrechen',
-    'init.title': 'Lokale Daten übernehmen?',
-    'init.text': 'Die Regatta {code} auf dem Server ist noch leer. Sollen die Daten aus diesem Browser ({boats} Boote, {captures} Zeiten) hochgeladen werden? Sie werden danach lokal zurückgesetzt. Bei „Nein“ bleiben sie für später erhalten.',
-    'init.yes': 'Hochladen',
-    'init.no': 'Nein, leer starten',
-    'init.done': 'Regatta mit den lokalen Daten initialisiert.',
-    'merge.title': 'Lokale Daten übertragen?',
-    'merge.text': '{boats} Boote und {captures} Zeiten aus diesem Browser werden mit der Regatta {code} zusammengeführt. Danach werden die lokalen Daten zurückgesetzt.',
-    'merge.ok': 'Übertragen',
-    'merge.done': 'Lokale Daten übertragen.',
-    'pull.title': 'Server-Daten übernehmen?',
-    'pull.text': 'Die in diesem Browser gespeicherten Daten werden durch die Regatta {code} ersetzt.',
-    'pull.ok': 'Ersetzen',
-    'pull.done': 'Server-Daten lokal übernommen.',
-    'archive.title': 'Regatta archivieren?',
-    'archive.text': 'Die Regatta {code} wird für alle Geräte schreibgeschützt. Das lässt sich nicht rückgängig machen.',
-    'archive.ok': 'Archivieren',
-    'archive.done': 'Regatta archiviert.',
-    'reset.title': 'Lokale Daten zurücksetzen?',
-    'reset.text': 'Alle Boote und Zeiten in diesem Browser werden gelöscht.',
-    'reset.ok': 'Zurücksetzen',
-    'reset.done': 'Lokale Daten zurückgesetzt.',
-    'conn.connected': 'Verbunden mit Regatta {code}.',
-    'conn.disconnected': 'Verbindung getrennt – es gelten wieder die lokalen Daten.',
-    'err.notFound': 'Die Regatta „{code}“ wurde auf dem Server nicht gefunden.',
-    'err.network': 'Der Server ist nicht erreichbar.',
-    'err.noServer': 'Bitte zuerst die Server-URL angeben (erweiterte Einstellungen).',
-    'err.codeEmpty': 'Bitte einen Regatta-Code eingeben.',
-    'err.generic': 'Fehler: {msg}',
-    'err.rejected': 'Der Server hat eine Änderung abgelehnt ({error}).',
-    'err.gone': 'Die Regatta ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+/*
+ * User-facing texts. The source code only knows sport-neutral concepts (race, participant,
+ * capture, ranking); everything that names them for a particular sport lives in a sport
+ * text set. `common` holds texts that fit any sport; a sport set (currently only
+ * `sailing`) provides the sport-specific ones and may override common texts.
+ * To support another sport, add a set with the same keys and select it via TEXT_SET.
+ */
+const TEXT_SET = 'sailing';
+const TEXTS = {
+  common: {
+    de: {
+      'app.title': 'Zielzeiten',
+      'status.local': 'Lokal im Browser',
+      'status.connecting': 'Verbindung wird hergestellt…',
+      'status.online': 'Server verbunden',
+      'status.offline': 'Verbindung unterbrochen',
+      'status.pending': '{n} ausstehend',
+      'status.archived': 'Archiviert',
+      'clock.capture': 'ZEIT ERFASSEN',
+      'clock.hintDirect': 'Position direkt erfassen',
+      'sorted.title': 'Sortiert',
+      'sorted.pill': 'Sortiert #{n}',
+      'participants.exists': '„{name}“ ist bereits vorhanden.',
+      'participants.deleteText': '„{name}“ wird endgültig gelöscht. Bereits erfasste Zeiten bleiben erhalten.',
+      'filter.all': 'Alle',
+      'filter.open': 'Ohne Zielzeit',
+      'filter.hideSorted': 'Sortierte ausblenden',
+      'sort.manual': 'Reihenfolge',
+      'sort.alpha': 'Name',
+      'sort.time': 'Zielzeit',
+      'sort.dir': 'Richtung umkehren',
+      'action.drag': 'Ziehen zum Sortieren',
+      'action.up': 'Nach oben',
+      'action.down': 'Nach unten',
+      'action.unsort': 'Aus Sortierung entfernen',
+      'action.sort': 'Zur Sortierung hinzufügen',
+      'action.rename': 'Umbenennen',
+      'action.delete': 'Löschen',
+      'import.error': 'CSV konnte nicht gelesen werden.',
+      'captures.title': 'Zieldurchläufe',
+      'captures.empty': 'Noch keine Zeit erfasst.',
+      'captures.first': 'Erster',
+      'captures.pending': 'nicht übertragen',
+      'captures.export': 'CSV exportieren',
+      'captures.recorded': 'Zeit erfasst',
+      'export.none': 'Keine Zeiten zum Exportieren.',
+      'export.saved': 'CSV gespeichert.',
+      'export.failed': 'Export ist hier nicht möglich.',
+      'export.filename': 'zieldurchlaeufe',
+      'lock.offline': 'Nicht möglich, solange keine Verbindung zum Server besteht.',
+      'settings.title': 'Einstellungen',
+      'settings.close': 'Schließen',
+      'settings.language': 'Sprache',
+      'settings.connect': 'Verbinden',
+      'settings.or': 'oder',
+      'settings.advanced': 'Erweiterte Einstellungen',
+      'settings.serverUrl': 'Server-URL',
+      'settings.serverUrlDefault': 'Leer lassen für den Standard: {url}',
+      'settings.serverUrlNone': 'Diese Seite wurde nicht von einem Server ausgeliefert. Gib die Adresse des Servers an, z. B. https://timing.example.org',
+      'settings.reset': 'Lokale Daten zurücksetzen',
+      'settings.transportWs': 'Echtzeit-Synchronisation per WebSocket',
+      'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
+      'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
+      'settings.link': 'Direkt-Link',
+      'settings.copy': 'Kopieren',
+      'settings.copied': 'Link kopiert.',
+      'settings.disconnect': 'Verbindung trennen',
+      'settings.sync': 'Daten abgleichen',
+      'settings.merge': 'Lokale Daten auf den Server übertragen',
+      'settings.mergeEmpty': 'In diesem Browser sind keine lokalen Daten gespeichert.',
+      'settings.pull': 'Server-Daten lokal übernehmen',
+      'settings.archiveHint': 'Danach kann niemand mehr Änderungen vornehmen. Das lässt sich nicht rückgängig machen.',
+      'dialog.cancel': 'Abbrechen',
+      'init.title': 'Lokale Daten übernehmen?',
+      'init.yes': 'Hochladen',
+      'init.no': 'Nein, leer starten',
+      'merge.title': 'Lokale Daten übertragen?',
+      'merge.ok': 'Übertragen',
+      'merge.done': 'Lokale Daten übertragen.',
+      'pull.title': 'Server-Daten übernehmen?',
+      'pull.ok': 'Ersetzen',
+      'pull.done': 'Server-Daten lokal übernommen.',
+      'archive.ok': 'Archivieren',
+      'reset.title': 'Lokale Daten zurücksetzen?',
+      'reset.ok': 'Zurücksetzen',
+      'reset.done': 'Lokale Daten zurückgesetzt.',
+      'conn.disconnected': 'Verbindung getrennt – es gelten wieder die lokalen Daten.',
+      'err.network': 'Der Server ist nicht erreichbar.',
+      'err.noServer': 'Bitte zuerst die Server-URL angeben (erweiterte Einstellungen).',
+      'err.generic': 'Fehler: {msg}',
+      'err.rejected': 'Der Server hat eine Änderung abgelehnt ({error}).',
+    },
+    en: {
+      'app.title': 'Finish Times',
+      'status.local': 'Stored in this browser',
+      'status.connecting': 'Connecting…',
+      'status.online': 'Connected to server',
+      'status.offline': 'Connection lost',
+      'status.pending': '{n} pending',
+      'status.archived': 'Archived',
+      'clock.capture': 'RECORD TIME',
+      'clock.hintDirect': 'record a position directly',
+      'sorted.title': 'Sorted',
+      'sorted.pill': 'Sorted #{n}',
+      'participants.exists': '“{name}” already exists.',
+      'participants.deleteText': '“{name}” will be deleted permanently. Times already recorded are kept.',
+      'filter.all': 'All',
+      'filter.open': 'No finish time',
+      'filter.hideSorted': 'Hide sorted',
+      'sort.manual': 'Order added',
+      'sort.alpha': 'Name',
+      'sort.time': 'Finish time',
+      'sort.dir': 'Reverse direction',
+      'action.drag': 'Drag to reorder',
+      'action.up': 'Move up',
+      'action.down': 'Move down',
+      'action.unsort': 'Remove from sorted list',
+      'action.sort': 'Add to sorted list',
+      'action.rename': 'Rename',
+      'action.delete': 'Delete',
+      'import.error': 'Could not read the CSV file.',
+      'captures.title': 'Finishes',
+      'captures.empty': 'No times recorded yet.',
+      'captures.first': 'First',
+      'captures.pending': 'not synced',
+      'captures.export': 'Export CSV',
+      'captures.recorded': 'Time recorded',
+      'export.none': 'No times to export.',
+      'export.saved': 'CSV saved.',
+      'export.failed': 'Export isn’t possible here.',
+      'export.filename': 'finishes',
+      'lock.offline': 'Not possible while disconnected from the server.',
+      'settings.title': 'Settings',
+      'settings.close': 'Close',
+      'settings.language': 'Language',
+      'settings.connect': 'Connect',
+      'settings.or': 'or',
+      'settings.advanced': 'Advanced settings',
+      'settings.serverUrl': 'Server URL',
+      'settings.serverUrlDefault': 'Leave empty for the default: {url}',
+      'settings.serverUrlNone': 'This page wasn’t loaded from a server. Enter the server’s address, e.g. https://timing.example.org',
+      'settings.reset': 'Reset local data',
+      'settings.transportWs': 'Real-time sync via WebSocket',
+      'settings.transportPoll': 'Sync via HTTP polling',
+      'settings.pendingDetail': '{n} change(s) waiting to be sent.',
+      'settings.link': 'Direct link',
+      'settings.copy': 'Copy',
+      'settings.copied': 'Link copied.',
+      'settings.disconnect': 'Disconnect',
+      'settings.sync': 'Sync data',
+      'settings.merge': 'Upload local data to the server',
+      'settings.mergeEmpty': 'There is no local data in this browser.',
+      'settings.pull': 'Copy server data to this browser',
+      'settings.archiveHint': 'Nobody can make changes afterwards. This can’t be undone.',
+      'dialog.cancel': 'Cancel',
+      'init.title': 'Use local data?',
+      'init.yes': 'Upload',
+      'init.no': 'No, start empty',
+      'merge.title': 'Upload local data?',
+      'merge.ok': 'Upload',
+      'merge.done': 'Local data uploaded.',
+      'pull.title': 'Copy server data?',
+      'pull.ok': 'Replace',
+      'pull.done': 'Server data copied to this browser.',
+      'archive.ok': 'Archive',
+      'reset.title': 'Reset local data?',
+      'reset.ok': 'Reset',
+      'reset.done': 'Local data reset.',
+      'conn.disconnected': 'Disconnected – using the local data again.',
+      'err.network': 'The server can’t be reached.',
+      'err.noServer': 'Please enter the server URL first (advanced settings).',
+      'err.generic': 'Error: {msg}',
+      'err.rejected': 'The server rejected a change ({error}).',
+    },
   },
-  en: {
-    'app.title': 'Finish Times',
-    'header.defaultName': '⛵ Finish Times',
-    'header.subtitle': 'Record finishes and assign them to boats',
-    'header.rename': 'Rename regatta',
-    'status.local': 'Stored in this browser',
-    'status.connecting': 'Connecting…',
-    'status.online': 'Connected to server',
-    'status.offline': 'Connection lost',
-    'status.pending': '{n} pending',
-    'status.archived': 'Archived',
-    'archived.banner': 'This regatta is archived and can no longer be edited.',
-    'clock.capture': 'RECORD TIME',
-    'clock.hintNext': 'next sorted boat',
-    'clock.hintDirect': 'record a position directly',
-    'sorted.title': 'Sorted',
-    'sorted.hint': 'Double-tap a boat = time now · Drag or ▲▼ = change order',
-    'sorted.search': 'Find a boat & add it to the sorted list…',
-    'sorted.noMatch': 'No matching boats.',
-    'sorted.empty': 'No boats in the sorted list.',
-    'sorted.pill': 'Sorted #{n}',
-    'boats.title': 'Boats',
-    'boats.hint': 'Double-tap a boat = time now',
-    'boats.placeholder': 'Sail number / name',
-    'boats.add': 'Add',
-    'boats.empty': 'No boats yet.',
-    'boats.emptyView': 'No boats match this view.',
-    'boats.import': 'Import CSV',
-    'boats.exists': '“{name}” already exists.',
-    'boats.deleteTitle': 'Delete boat?',
-    'boats.deleteText': '“{name}” will be deleted permanently. Times already recorded are kept.',
-    'filter.all': 'All',
-    'filter.open': 'No finish time',
-    'filter.hideSorted': 'Hide sorted',
-    'sort.manual': 'Order added',
-    'sort.alpha': 'Name',
-    'sort.time': 'Finish time',
-    'sort.dir': 'Reverse direction',
-    'action.drag': 'Drag to reorder',
-    'action.up': 'Move up',
-    'action.down': 'Move down',
-    'action.unsort': 'Remove from sorted list',
-    'action.sort': 'Add to sorted list',
-    'action.rename': 'Rename',
-    'action.delete': 'Delete',
-    'import.done': '{n} boat(s) imported.',
-    'import.none': 'No new boats found.',
-    'import.error': 'Could not read the CSV file.',
-    'captures.title': 'Finishes',
-    'captures.empty': 'No times recorded yet.',
-    'captures.first': 'First',
-    'captures.chooseBoat': '— Select boat —',
-    'captures.deletedBoat': '(deleted boat)',
-    'captures.pending': 'not synced',
-    'captures.export': 'Export CSV',
-    'captures.recorded': 'Time recorded',
-    'export.none': 'No times to export.',
-    'export.saved': 'CSV saved.',
-    'export.failed': 'Export isn’t possible here.',
-    'export.header': 'Place;Time;Boat',
-    'export.filename': 'finishes',
-    'lock.offline': 'Not possible while disconnected from the server.',
-    'lock.archived': 'This regatta is archived.',
-    'settings.title': 'Settings',
-    'settings.close': 'Close',
-    'settings.language': 'Language',
-    'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same regatta from several devices.',
-    'settings.code': 'Regatta code',
-    'settings.connect': 'Connect',
-    'settings.or': 'or',
-    'settings.create': 'Create a new regatta on the server',
-    'settings.advanced': 'Advanced settings',
-    'settings.serverUrl': 'Server URL',
-    'settings.serverUrlDefault': 'Leave empty for the default: {url}',
-    'settings.serverUrlNone': 'This page wasn’t loaded from a server. Enter the server’s address, e.g. https://regatta.example.org',
-    'settings.reset': 'Reset local data',
-    'settings.resetHint': 'Deletes all boats and times stored in this browser.',
-    'settings.transportWs': 'Real-time sync via WebSocket',
-    'settings.transportPoll': 'Sync via HTTP polling',
-    'settings.pendingDetail': '{n} change(s) waiting to be sent.',
-    'settings.link': 'Direct link',
-    'settings.copy': 'Copy',
-    'settings.copied': 'Link copied.',
-    'settings.disconnect': 'Disconnect',
-    'settings.disconnectHint': 'You’ll continue with the data stored in this browser. The regatta stays on the server.',
-    'settings.sync': 'Sync data',
-    'settings.merge': 'Upload local data to the server',
-    'settings.mergeHint': 'Merges boats (by name or sail number), the sorted list and times from this browser into the regatta without deleting anything. Local data is reset afterwards.',
-    'settings.mergeEmpty': 'There is no local data in this browser.',
-    'settings.pull': 'Copy server data to this browser',
-    'settings.pullHint': 'Replaces the data stored in this browser with the current state of this regatta.',
-    'settings.archive': 'Archive regatta',
-    'settings.archiveHint': 'Nobody can make changes afterwards. This can’t be undone.',
-    'dialog.cancel': 'Cancel',
-    'init.title': 'Use local data?',
-    'init.text': 'Regatta {code} on the server is still empty. Upload the data from this browser ({boats} boats, {captures} times)? It will be reset locally afterwards. If you choose “No”, it is kept for later.',
-    'init.yes': 'Upload',
-    'init.no': 'No, start empty',
-    'init.done': 'Regatta initialised with the local data.',
-    'merge.title': 'Upload local data?',
-    'merge.text': '{boats} boats and {captures} times from this browser will be merged into regatta {code}. The local data is reset afterwards.',
-    'merge.ok': 'Upload',
-    'merge.done': 'Local data uploaded.',
-    'pull.title': 'Copy server data?',
-    'pull.text': 'The data stored in this browser will be replaced by regatta {code}.',
-    'pull.ok': 'Replace',
-    'pull.done': 'Server data copied to this browser.',
-    'archive.title': 'Archive regatta?',
-    'archive.text': 'Regatta {code} becomes read-only on all devices. This can’t be undone.',
-    'archive.ok': 'Archive',
-    'archive.done': 'Regatta archived.',
-    'reset.title': 'Reset local data?',
-    'reset.text': 'All boats and times stored in this browser will be deleted.',
-    'reset.ok': 'Reset',
-    'reset.done': 'Local data reset.',
-    'conn.connected': 'Connected to regatta {code}.',
-    'conn.disconnected': 'Disconnected – using the local data again.',
-    'err.notFound': 'Regatta “{code}” was not found on the server.',
-    'err.network': 'The server can’t be reached.',
-    'err.noServer': 'Please enter the server URL first (advanced settings).',
-    'err.codeEmpty': 'Please enter a regatta code.',
-    'err.generic': 'Error: {msg}',
-    'err.rejected': 'The server rejected a change ({error}).',
-    'err.gone': 'The regatta no longer exists on the server. You have been disconnected.',
+
+  // Sailing: participants are boats, a race is a regatta.
+  sailing: {
+    de: {
+      'header.defaultName': '⛵ Zielzeiten',
+      'header.subtitle': 'Zieldurchläufe erfassen und Booten zuordnen',
+      'header.rename': 'Regatta umbenennen',
+      'archived.banner': 'Diese Regatta ist archiviert und kann nicht mehr bearbeitet werden.',
+      'clock.hintNext': 'nächstes sortiertes Boot',
+      'sorted.hint': 'Doppeltipp auf ein Boot = Zeit jetzt · Ziehen oder ▲▼ = Reihenfolge ändern',
+      'sorted.search': 'Boot suchen & zur Sortierung hinzufügen…',
+      'sorted.noMatch': 'Keine passenden Boote.',
+      'sorted.empty': 'Keine Boote in der Sortierung.',
+      'participants.title': 'Boote',
+      'participants.hint': 'Doppeltipp auf ein Boot = Zeit jetzt',
+      'participants.placeholder': 'Segelnummer / Name',
+      'participants.add': 'Hinzufügen',
+      'participants.empty': 'Noch keine Boote angelegt.',
+      'participants.emptyView': 'Keine Boote in dieser Ansicht.',
+      'participants.import': 'CSV importieren',
+      'participants.deleteTitle': 'Boot löschen?',
+      'import.done': '{n} Boot(e) importiert.',
+      'import.none': 'Keine neuen Boote gefunden.',
+      // Case-insensitive pattern for a CSV header line that is skipped on import.
+      'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
+      'captures.chooseParticipant': '— Boot wählen —',
+      'captures.deletedParticipant': '(gelöschtes Boot)',
+      'export.header': 'Platz;Uhrzeit;Boot',
+      'lock.archived': 'Die Regatta ist archiviert.',
+      'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten an derselben Regatta zu arbeiten.',
+      'settings.code': 'Regatta-Code',
+      'settings.create': 'Neue Regatta auf dem Server erstellen',
+      'settings.resetHint': 'Löscht alle Boote und Zeiten, die in diesem Browser gespeichert sind.',
+      'settings.disconnectHint': 'Danach arbeitest du wieder mit den Daten in diesem Browser. Die Regatta bleibt auf dem Server erhalten.',
+      'settings.mergeHint': 'Führt Boote (per Name bzw. Segelnummer), Sortierung und Zeiten aus diesem Browser mit der Regatta zusammen, ohne etwas zu löschen. Die lokalen Daten werden danach zurückgesetzt.',
+      'settings.pullHint': 'Ersetzt die in diesem Browser gespeicherten Daten durch den aktuellen Stand dieser Regatta.',
+      'settings.archive': 'Regatta archivieren',
+      'init.text': 'Die Regatta {code} auf dem Server ist noch leer. Sollen die Daten aus diesem Browser ({participants} Boote, {captures} Zeiten) hochgeladen werden? Sie werden danach lokal zurückgesetzt. Bei „Nein“ bleiben sie für später erhalten.',
+      'init.done': 'Regatta mit den lokalen Daten initialisiert.',
+      'merge.text': '{participants} Boote und {captures} Zeiten aus diesem Browser werden mit der Regatta {code} zusammengeführt. Danach werden die lokalen Daten zurückgesetzt.',
+      'pull.text': 'Die in diesem Browser gespeicherten Daten werden durch die Regatta {code} ersetzt.',
+      'archive.title': 'Regatta archivieren?',
+      'archive.text': 'Die Regatta {code} wird für alle Geräte schreibgeschützt. Das lässt sich nicht rückgängig machen.',
+      'archive.done': 'Regatta archiviert.',
+      'reset.text': 'Alle Boote und Zeiten in diesem Browser werden gelöscht.',
+      'conn.connected': 'Verbunden mit Regatta {code}.',
+      'err.notFound': 'Die Regatta „{code}“ wurde auf dem Server nicht gefunden.',
+      'err.codeEmpty': 'Bitte einen Regatta-Code eingeben.',
+      'err.gone': 'Die Regatta ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+    },
+    en: {
+      'header.defaultName': '⛵ Finish Times',
+      'header.subtitle': 'Record finishes and assign them to boats',
+      'header.rename': 'Rename regatta',
+      'archived.banner': 'This regatta is archived and can no longer be edited.',
+      'clock.hintNext': 'next sorted boat',
+      'sorted.hint': 'Double-tap a boat = time now · Drag or ▲▼ = change order',
+      'sorted.search': 'Find a boat & add it to the sorted list…',
+      'sorted.noMatch': 'No matching boats.',
+      'sorted.empty': 'No boats in the sorted list.',
+      'participants.title': 'Boats',
+      'participants.hint': 'Double-tap a boat = time now',
+      'participants.placeholder': 'Sail number / name',
+      'participants.add': 'Add',
+      'participants.empty': 'No boats yet.',
+      'participants.emptyView': 'No boats match this view.',
+      'participants.import': 'Import CSV',
+      'participants.deleteTitle': 'Delete boat?',
+      'import.done': '{n} boat(s) imported.',
+      'import.none': 'No new boats found.',
+      'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
+      'captures.chooseParticipant': '— Select boat —',
+      'captures.deletedParticipant': '(deleted boat)',
+      'export.header': 'Place;Time;Boat',
+      'lock.archived': 'This regatta is archived.',
+      'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same regatta from several devices.',
+      'settings.code': 'Regatta code',
+      'settings.create': 'Create a new regatta on the server',
+      'settings.resetHint': 'Deletes all boats and times stored in this browser.',
+      'settings.disconnectHint': 'You’ll continue with the data stored in this browser. The regatta stays on the server.',
+      'settings.mergeHint': 'Merges boats (by name or sail number), the sorted list and times from this browser into the regatta without deleting anything. Local data is reset afterwards.',
+      'settings.pullHint': 'Replaces the data stored in this browser with the current state of this regatta.',
+      'settings.archive': 'Archive regatta',
+      'init.text': 'Regatta {code} on the server is still empty. Upload the data from this browser ({participants} boats, {captures} times)? It will be reset locally afterwards. If you choose “No”, it is kept for later.',
+      'init.done': 'Regatta initialised with the local data.',
+      'merge.text': '{participants} boats and {captures} times from this browser will be merged into regatta {code}. The local data is reset afterwards.',
+      'pull.text': 'The data stored in this browser will be replaced by regatta {code}.',
+      'archive.title': 'Archive regatta?',
+      'archive.text': 'Regatta {code} becomes read-only on all devices. This can’t be undone.',
+      'archive.done': 'Regatta archived.',
+      'reset.text': 'All boats and times stored in this browser will be deleted.',
+      'conn.connected': 'Connected to regatta {code}.',
+      'err.notFound': 'Regatta “{code}” was not found on the server.',
+      'err.codeEmpty': 'Please enter a regatta code.',
+      'err.gone': 'The regatta no longer exists on the server. You have been disconnected.',
+    },
   },
 };
 
@@ -651,12 +672,14 @@ const I18N = {
 // Browser storage
 // =====================================================================
 const KEYS = {
-  local: 'regatta-timer.local',
-  prefs: 'regatta-timer.prefs',
-  connection: 'regatta-timer.connection',
-  cachePrefix: 'regatta-timer.cache:',
+  local: 'race-timer.local',
+  prefs: 'race-timer.prefs',
+  connection: 'race-timer.connection',
+  cachePrefix: 'race-timer.cache:',
 };
-const LEGACY_KEY = 'segel-zielzeit-v1';
+// Keys used by earlier versions; their data is migrated on load (see migrateLegacyStorage).
+const LEGACY_SINGLE_KEY = 'segel-zielzeit-v1';
+const LEGACY_PREFIX = 'regatta-timer.';
 
 function readJson(key){
   try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
@@ -668,23 +691,39 @@ function removeKey(key){
   try{ localStorage.removeItem(key); }catch(e){}
 }
 
-// One-time migration from the single-key format of earlier versions.
+/*
+ * One-time migration of data written by earlier versions:
+ *  - 'segel-zielzeit-v1': a single key holding state and preferences
+ *  - 'regatta-timer.*':   same layout as today under another prefix
+ * Both used sailing field names (boats/boatId); normalizeState() converts those.
+ * Server caches are not migrated: they are rebuilt from the server.
+ */
 (function migrateLegacyStorage(){
-  const legacy = readJson(LEGACY_KEY);
-  if(!legacy) return;
-  if(!readJson(KEYS.local)){
-    writeJson(KEYS.local, {name:null, archived:false, boats:legacy.boats || [], ranking:legacy.ranking || [], captures:legacy.captures || []});
+  const single = readJson(LEGACY_SINGLE_KEY);
+  if(single){
+    if(!readJson(KEYS.local)){
+      writeJson(KEYS.local, normalizeState({boats:single.boats, ranking:single.ranking, captures:single.captures}));
+    }
+    if(!readJson(KEYS.prefs)){
+      writeJson(KEYS.prefs, {
+        filterOpen: single.filterOpen !== undefined ? !!single.filterOpen : single.listFilter === 'open',
+        filterHideSorted: single.filterHideSorted !== undefined ? !!single.filterHideSorted
+          : (single.showSortedInList === undefined ? false : !single.showSortedInList),
+        sortField: single.sortField || (single.boatSortAlpha ? 'alpha' : 'manual'),
+        sortDir: single.sortDir === 'desc' ? 'desc' : 'asc',
+      });
+    }
+    removeKey(LEGACY_SINGLE_KEY);
   }
-  if(!readJson(KEYS.prefs)){
-    writeJson(KEYS.prefs, {
-      filterOpen: legacy.filterOpen !== undefined ? !!legacy.filterOpen : legacy.listFilter === 'open',
-      filterHideSorted: legacy.filterHideSorted !== undefined ? !!legacy.filterHideSorted
-        : (legacy.showSortedInList === undefined ? false : !legacy.showSortedInList),
-      sortField: legacy.sortField || (legacy.boatSortAlpha ? 'alpha' : 'manual'),
-      sortDir: legacy.sortDir === 'desc' ? 'desc' : 'asc',
-    });
+  for(const name of ['local', 'prefs', 'connection']){
+    const old = readJson(LEGACY_PREFIX + name);
+    if(old === null) continue;
+    if(readJson(KEYS[name]) === null) writeJson(KEYS[name], name === 'local' ? normalizeState(old) : old);
+    removeKey(LEGACY_PREFIX + name);
   }
-  removeKey(LEGACY_KEY);
+  try{
+    Object.keys(localStorage).filter(k => k.startsWith(LEGACY_PREFIX + 'cache:')).forEach(removeKey);
+  }catch(e){}
 })();
 
 // Per-device preferences (never synced).
@@ -699,36 +738,46 @@ if(prefs.lang !== 'de' && prefs.lang !== 'en'){
 function savePrefs(){ writeJson(KEYS.prefs, prefs); }
 
 function t(key, vars){
-  let s = (I18N[prefs.lang] && I18N[prefs.lang][key]) || I18N.de[key] || key;
+  const lookup = (lang) => {
+    const sport = TEXTS[TEXT_SET][lang], common = TEXTS.common[lang];
+    return (sport && sport[key] !== undefined) ? sport[key] : (common ? common[key] : undefined);
+  };
+  let s = lookup(prefs.lang);
+  if(s === undefined) s = lookup('de');
+  if(s === undefined) s = key;
   if(vars) s = s.replace(/\{(\w+)\}/g, (m, k) => (vars[k] !== undefined ? vars[k] : m));
   return s;
 }
 function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 
 // =====================================================================
-// Regatta state and operations
+// Race state and operations
 // =====================================================================
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
-function emptyState(){ return {name:null, archived:false, boats:[], ranking:[], captures:[]}; }
+function emptyState(){ return {name:null, archived:false, participants:[], ranking:[], captures:[]}; }
 
+/** Sanitises a stored state. Also accepts the field names of earlier versions (boats, boatId). */
 function normalizeState(s){
   if(!s || typeof s !== 'object') return emptyState();
-  const boats = Array.isArray(s.boats)
-    ? s.boats.filter(b => b && typeof b.id === 'string' && typeof b.name === 'string').map(b => ({id:b.id, name:b.name}))
-    : [];
-  const boatIds = new Set(boats.map(b => b.id));
-  const ranking = Array.isArray(s.ranking) ? [...new Set(s.ranking.filter(id => boatIds.has(id)))] : [];
+  const rawParticipants = Array.isArray(s.participants) ? s.participants : (Array.isArray(s.boats) ? s.boats : []);
+  const participants = rawParticipants
+    .filter(p => p && typeof p.id === 'string' && typeof p.name === 'string')
+    .map(p => ({id:p.id, name:p.name}));
+  const participantIds = new Set(participants.map(p => p.id));
+  const ranking = Array.isArray(s.ranking) ? [...new Set(s.ranking.filter(id => participantIds.has(id)))] : [];
   const captures = Array.isArray(s.captures)
-    ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts))
-        .map(c => ({id:c.id, ts:Math.round(c.ts), boatId: typeof c.boatId === 'string' ? c.boatId : null}))
+    ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts)).map(c => {
+        const pid = c.participantId !== undefined ? c.participantId : c.boatId;
+        return {id:c.id, ts:Math.round(c.ts), participantId: typeof pid === 'string' ? pid : null};
+      })
     : [];
-  return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, boats, ranking, captures};
+  return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, participants, ranking, captures};
 }
-function hasData(s){ return !!s.name || s.boats.length > 0 || s.captures.length > 0; }
+function hasData(s){ return !!s.name || s.participants.length > 0 || s.captures.length > 0; }
 
 /*
- * Mirror of App\Regatta\OperationReducer (PHP). The server is authoritative; this copy
+ * Mirror of App\Race\OperationReducer (PHP). The server is authoritative; this copy
  * applies operations optimistically and replays the server's event stream.
  * Keep both implementations in sync.
  */
@@ -745,56 +794,56 @@ function reqName(v, max, field){
   return s;
 }
 function reqTs(v){ if(!Number.isInteger(v) || v < 0 || v > 1e14) throw new OpError('invalid_ts'); return v; }
-const findBoat = (s, id) => s.boats.find(b => b.id === id);
-const findBoatByName = (s, name) => s.boats.find(b => nameKey(b.name) === nameKey(name));
+const findParticipant = (s, id) => s.participants.find(b => b.id === id);
+const findParticipantByName = (s, name) => s.participants.find(b => nameKey(b.name) === nameKey(name));
 const findCapture = (s, id) => s.captures.find(c => c.id === id);
 
 function applyOp(s, op){
   if(!op || typeof op.type !== 'string') throw new OpError('invalid_type');
   switch(op.type){
-    case 'regatta.rename': {
+    case 'race.rename': {
       const n = op.name;
       s.name = (n === null || n === undefined || (typeof n === 'string' && cleanText(n) === '')) ? null : reqName(n, 80, 'name');
       return s;
     }
-    case 'regatta.archive':
+    case 'race.archive':
       s.archived = true;
       return s;
-    case 'boats.add': {
-      if(!Array.isArray(op.boats) || op.boats.length > 2000) throw new OpError('invalid_boats');
-      for(const b of op.boats){
-        const id = reqId(b && b.id, 'boat_id');
-        const name = reqName(b && b.name, 60, 'boat_name');
-        if(findBoat(s, id) || findBoatByName(s, name)) continue;
-        s.boats.push({id, name});
+    case 'participants.add': {
+      if(!Array.isArray(op.participants) || op.participants.length > 2000) throw new OpError('invalid_participants');
+      for(const b of op.participants){
+        const id = reqId(b && b.id, 'participant_id');
+        const name = reqName(b && b.name, 60, 'participant_name');
+        if(findParticipant(s, id) || findParticipantByName(s, name)) continue;
+        s.participants.push({id, name});
       }
       return s;
     }
-    case 'boat.rename': {
-      const id = reqId(op.boatId, 'boat_id');
-      const name = reqName(op.name, 60, 'boat_name');
-      const b = findBoat(s, id);
+    case 'participant.rename': {
+      const id = reqId(op.participantId, 'participant_id');
+      const name = reqName(op.name, 60, 'participant_name');
+      const b = findParticipant(s, id);
       if(b) b.name = name;
       return s;
     }
-    case 'boat.delete': {
-      const id = reqId(op.boatId, 'boat_id');
-      s.boats = s.boats.filter(b => b.id !== id);
+    case 'participant.delete': {
+      const id = reqId(op.participantId, 'participant_id');
+      s.participants = s.participants.filter(b => b.id !== id);
       s.ranking = s.ranking.filter(x => x !== id);
       return s;
     }
     case 'ranking.add': {
-      const id = reqId(op.boatId, 'boat_id');
-      if(findBoat(s, id) && !s.ranking.includes(id)) s.ranking.push(id);
+      const id = reqId(op.participantId, 'participant_id');
+      if(findParticipant(s, id) && !s.ranking.includes(id)) s.ranking.push(id);
       return s;
     }
     case 'ranking.remove': {
-      const id = reqId(op.boatId, 'boat_id');
+      const id = reqId(op.participantId, 'participant_id');
       s.ranking = s.ranking.filter(x => x !== id);
       return s;
     }
     case 'ranking.move': {
-      const id = reqId(op.boatId, 'boat_id');
+      const id = reqId(op.participantId, 'participant_id');
       const before = optId(op.beforeId, 'before_id');
       if(!s.ranking.includes(id)) return s;
       const ranking = s.ranking.filter(x => x !== id);
@@ -808,19 +857,19 @@ function applyOp(s, op){
       if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
       const id = reqId(c.id, 'capture_id');
       const ts = reqTs(c.ts);
-      let boatId = optId(c.boatId, 'boat_id');
+      let participantId = optId(c.participantId, 'participant_id');
       if(findCapture(s, id)) return s;
-      if(boatId !== null && !findBoat(s, boatId)) boatId = null;
-      s.captures.push({id, ts, boatId});
-      if(boatId !== null) s.ranking = s.ranking.filter(x => x !== boatId);
+      if(participantId !== null && !findParticipant(s, participantId)) participantId = null;
+      s.captures.push({id, ts, participantId});
+      if(participantId !== null) s.ranking = s.ranking.filter(x => x !== participantId);
       return s;
     }
     case 'capture.assign': {
       const cid = reqId(op.captureId, 'capture_id');
-      const bid = optId(op.boatId, 'boat_id');
+      const bid = optId(op.participantId, 'participant_id');
       const c = findCapture(s, cid);
-      if(!c || (bid !== null && !findBoat(s, bid))) return s;
-      c.boatId = bid;
+      if(!c || (bid !== null && !findParticipant(s, bid))) return s;
+      c.participantId = bid;
       return s;
     }
     case 'capture.delete': {
@@ -831,28 +880,28 @@ function applyOp(s, op){
     case 'state.merge': {
       const src = op.state;
       if(!src || typeof src !== 'object') throw new OpError('invalid_state');
-      const boats = src.boats || [], ranking = src.ranking || [], captures = src.captures || [];
-      if(!Array.isArray(boats) || !Array.isArray(ranking) || !Array.isArray(captures)
-        || boats.length > 5000 || ranking.length > 5000 || captures.length > 20000) throw new OpError('invalid_state');
+      const participants = src.participants || [], ranking = src.ranking || [], captures = src.captures || [];
+      if(!Array.isArray(participants) || !Array.isArray(ranking) || !Array.isArray(captures)
+        || participants.length > 5000 || ranking.length > 5000 || captures.length > 20000) throw new OpError('invalid_state');
       const idMap = new Map();
-      for(const b of boats){
-        const id = reqId(b && b.id, 'boat_id');
-        const name = reqName(b && b.name, 60, 'boat_name');
-        let target = findBoat(s, id) || findBoatByName(s, name);
-        if(!target){ target = {id, name}; s.boats.push(target); }
+      for(const b of participants){
+        const id = reqId(b && b.id, 'participant_id');
+        const name = reqName(b && b.name, 60, 'participant_name');
+        let target = findParticipant(s, id) || findParticipantByName(s, name);
+        if(!target){ target = {id, name}; s.participants.push(target); }
         idMap.set(id, target.id);
       }
       for(const rid of ranking){
-        const mapped = idMap.get(reqId(rid, 'boat_id'));
+        const mapped = idMap.get(reqId(rid, 'participant_id'));
         if(mapped !== undefined && !s.ranking.includes(mapped)) s.ranking.push(mapped);
       }
       for(const c of captures){
         if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
         const id = reqId(c.id, 'capture_id');
         const ts = reqTs(c.ts);
-        const bid = optId(c.boatId, 'boat_id');
+        const bid = optId(c.participantId, 'participant_id');
         if(findCapture(s, id)) continue;
-        s.captures.push({id, ts, boatId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null});
+        s.captures.push({id, ts, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null});
       }
       if(s.name === null && typeof src.name === 'string' && cleanText(src.name) !== '') s.name = reqName(src.name, 80, 'name');
       return s;
@@ -1128,10 +1177,10 @@ class ServerBackend {
     try{
       await this.flushHttp();
       if(this.needSnapshot){
-        const snap = await api(this.serverUrl, '/api/regattas/' + this.code);
+        const snap = await api(this.serverUrl, '/api/races/' + this.code);
         this.applySnapshot(snap.seq, snap.state);
       }else{
-        const res = await api(this.serverUrl, '/api/regattas/' + this.code + '/events?since=' + this.seq);
+        const res = await api(this.serverUrl, '/api/races/' + this.code + '/events?since=' + this.seq);
         if(res.reset) this.applySnapshot(res.seq, res.state);
         else this.applyEvents(res.events || []);
       }
@@ -1166,7 +1215,7 @@ class ServerBackend {
     if(!ops.length) return;
     this.httpBusy = true;
     try{
-      const res = await api(this.serverUrl, '/api/regattas/' + this.code + '/ops', {method:'POST', body:{ops}});
+      const res = await api(this.serverUrl, '/api/races/' + this.code + '/ops', {method:'POST', body:{ops}});
       let settled = false;
       for(const r of res.results || []){
         if(r.status === 'applied') this.sent.add(r.opId);
@@ -1182,7 +1231,7 @@ class ServerBackend {
 // =====================================================================
 // App wiring
 // =====================================================================
-const DEFAULT_SERVER_URL = (window.REGATTA_CONFIG && window.REGATTA_CONFIG.serverUrl) || '';
+const DEFAULT_SERVER_URL = (window.TIMER_CONFIG && window.TIMER_CONFIG.serverUrl) || '';
 let backend = null;
 const S = () => backend.getState();
 
@@ -1203,7 +1252,7 @@ function normalizeServerUrl(value){
   return v.replace(/\/+$/, '');
 }
 function currentServerUrl(){ return normalizeServerUrl(prefs.serverUrl) || DEFAULT_SERVER_URL; }
-function regattaLink(serverUrl, code){ return serverUrl + '/#r=' + code; }
+function raceLink(serverUrl, code){ return serverUrl + '/#r=' + code; }
 
 function parseFragment(){
   const m = location.hash.match(/(?:^#|&)r=([A-Za-z0-9-]+)/);
@@ -1235,14 +1284,14 @@ function useServer(serverUrl, code){
 }
 
 /**
- * Connects to a regatta. When the regatta is still empty on the server and this browser
+ * Connects to a race. When the race is still empty on the server and this browser
  * has local data, offers to upload it. With interactive=false (link / page load) a
  * server that can't be reached doesn't abort: the client keeps retrying in the background.
  */
-async function connectToRegatta(serverUrl, code, {interactive = true} = {}){
+async function connectToRace(serverUrl, code, {interactive = true} = {}){
   let snapshot = null;
   try{
-    snapshot = await api(serverUrl, '/api/regattas/' + code);
+    snapshot = await api(serverUrl, '/api/races/' + code);
   }catch(e){
     if(e.code === 'not_found' || interactive) throw e;
   }
@@ -1251,7 +1300,7 @@ async function connectToRegatta(serverUrl, code, {interactive = true} = {}){
   if(snapshot && snapshot.seq === 0 && hasData(local)){
     upload = await askConfirm({
       title: t('init.title'),
-      text: t('init.text', {code, boats: local.boats.length, captures: local.captures.length}),
+      text: t('init.text', {code, participants: local.participants.length, captures: local.captures.length}),
       ok: t('init.yes'), cancel: t('init.no'),
     });
   }
@@ -1266,7 +1315,7 @@ async function connectToRegatta(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {name:s.name, boats:s.boats, ranking:s.ranking, captures:s.captures}; }
+function mergePayload(s){ return {name:s.name, participants:s.participants, ranking:s.ranking, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
   if(e && e.code === 'network') return t('err.network');
@@ -1356,20 +1405,20 @@ function onDoubleActivate(el, cb){
   });
 }
 
-// ---------- boat helpers ----------
-const boatById = (id) => S().boats.find(b => b.id === id);
-function boatCaptureInfo(boatId){
-  const list = S().captures.filter(c => c.boatId === boatId).sort((a, b) => b.ts - a.ts);
+// ---------- participant helpers ----------
+const participantById = (id) => S().participants.find(b => b.id === id);
+function participantCaptureInfo(participantId){
+  const list = S().captures.filter(c => c.participantId === participantId).sort((a, b) => b.ts - a.ts);
   if(!list.length) return null;
   return {last:list[0].ts, first:list[list.length - 1].ts, count:list.length};
 }
-function metaText(boatId){
-  const info = boatCaptureInfo(boatId);
+function metaText(participantId){
+  const info = participantCaptureInfo(participantId);
   return info ? fmtTime(info.last) + (info.count > 1 ? ` +${info.count - 1}` : '') : '';
 }
 // "Finish time" sorting: ascending by first recorded time, descending by last recorded time.
-function timeSortKey(boatId, dir){
-  const info = boatCaptureInfo(boatId);
+function timeSortKey(participantId, dir){
+  const info = participantCaptureInfo(participantId);
   return info ? (dir === 'desc' ? info.last : info.first) : null;
 }
 
@@ -1408,7 +1457,7 @@ function applyI18n(){
 let editingTitle = false;
 function renderHeader(){
   const s = S();
-  if(!editingTitle) document.getElementById('regattaTitle').textContent = s.name || t('header.defaultName');
+  if(!editingTitle) document.getElementById('raceTitle').textContent = s.name || t('header.defaultName');
   document.title = s.name ? `${s.name} · ${t('app.title')}` : t('app.title');
   document.getElementById('archivedBanner').hidden = !s.archived;
 }
@@ -1431,11 +1480,11 @@ function renderStatus(){
   document.body.classList.toggle('lock-all', !!S().archived);
 }
 
-let editingBoatId = null;
-function buildBoatRow(boat, opts){
+let editingParticipantId = null;
+function buildParticipantRow(participant, opts){
   const row = document.createElement('li');
-  row.className = opts.sorted ? 'sorted-row' : 'boat-row';
-  row.dataset.id = boat.id;
+  row.className = opts.sorted ? 'sorted-row' : 'participant-row';
+  row.dataset.id = participant.id;
 
   if(opts.sorted){
     const handle = document.createElement('span');
@@ -1454,43 +1503,43 @@ function buildBoatRow(boat, opts){
   }
 
   const main = document.createElement('span');
-  main.className = 'boat-main';
-  if(editingBoatId === boat.id){
+  main.className = 'participant-main';
+  if(editingParticipantId === participant.id){
     const input = document.createElement('input');
     input.className = 'edit-input';
-    input.value = boat.name;
+    input.value = participant.name;
     input.maxLength = 60;
     main.appendChild(input);
     setTimeout(() => { input.focus(); input.select(); }, 0);
     input.addEventListener('keydown', (e) => {
       if(e.key === 'Enter'){ e.preventDefault(); input.blur(); }
-      else if(e.key === 'Escape'){ e.preventDefault(); input.dataset.cancel = '1'; editingBoatId = null; renderAll(); }
+      else if(e.key === 'Escape'){ e.preventDefault(); input.dataset.cancel = '1'; editingParticipantId = null; renderAll(); }
     });
     input.addEventListener('blur', () => {
       if(input.dataset.cancel === '1') return;
-      editingBoatId = null;
+      editingParticipantId = null;
       const name = cleanText(input.value);
-      if(name && name !== boat.name) perform({type:'boat.rename', boatId:boat.id, name});
+      if(name && name !== participant.name) perform({type:'participant.rename', participantId:participant.id, name});
       renderAll();
     });
   }else{
     const nm = document.createElement('div');
     nm.className = 'nm';
     nm.dataset.edit = 'critical';
-    nm.textContent = boat.name;
-    onDoubleActivate(nm, () => recordTime(boat.id));
+    nm.textContent = participant.name;
+    onDoubleActivate(nm, () => recordTime(participant.id));
     main.appendChild(nm);
-    const meta = metaText(boat.id);
+    const meta = metaText(participant.id);
     if(meta){
       const m = document.createElement('div');
       m.className = 'meta';
       m.textContent = meta;
       main.appendChild(m);
     }
-    if(!opts.sorted && S().ranking.includes(boat.id)){
+    if(!opts.sorted && S().ranking.includes(participant.id)){
       const pill = document.createElement('div');
       pill.className = 'rank-pill';
-      pill.textContent = t('sorted.pill', {n: S().ranking.indexOf(boat.id) + 1});
+      pill.textContent = t('sorted.pill', {n: S().ranking.indexOf(participant.id) + 1});
       main.appendChild(pill);
     }
   }
@@ -1509,18 +1558,18 @@ function buildBoatRow(boat, opts){
     ops.appendChild(b);
   };
   if(opts.sorted){
-    button('▲', 'action.up', 'critical', () => moveInRanking(boat.id, -1));
-    button('▼', 'action.down', 'critical', () => moveInRanking(boat.id, 1));
-    button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', boatId:boat.id}));
+    button('▲', 'action.up', 'critical', () => moveInRanking(participant.id, -1));
+    button('▼', 'action.down', 'critical', () => moveInRanking(participant.id, 1));
+    button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', participantId:participant.id}));
   }else{
-    button('✎', 'action.rename', 'normal', () => { editingBoatId = boat.id; renderAll(); });
-    if(S().ranking.includes(boat.id)){
-      button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', boatId:boat.id}));
+    button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
+    if(S().ranking.includes(participant.id)){
+      button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', participantId:participant.id}));
     }else{
-      button('→', 'action.sort', 'critical', () => perform({type:'ranking.add', boatId:boat.id}));
+      button('→', 'action.sort', 'critical', () => perform({type:'ranking.add', participantId:participant.id}));
       button('✕', 'action.delete', 'normal', async () => {
-        const ok = await askConfirm({title:t('boats.deleteTitle'), text:t('boats.deleteText', {name:boat.name}), ok:t('action.delete'), danger:true});
-        if(ok) perform({type:'boat.delete', boatId:boat.id});
+        const ok = await askConfirm({title:t('participants.deleteTitle'), text:t('participants.deleteText', {name:participant.name}), ok:t('action.delete'), danger:true});
+        if(ok) perform({type:'participant.delete', participantId:participant.id});
       });
     }
   }
@@ -1536,8 +1585,8 @@ function renderSorted(){
   document.getElementById('sortedCount').textContent = s.ranking.length;
   document.getElementById('sortedEmpty').hidden = s.ranking.length > 0;
   s.ranking.forEach((id, i) => {
-    const boat = boatById(id);
-    if(boat) sortedList.appendChild(buildBoatRow(boat, {sorted:true, rankIndex:i}));
+    const participant = participantById(id);
+    if(participant) sortedList.appendChild(buildParticipantRow(participant, {sorted:true, rankIndex:i}));
   });
 }
 function moveInRanking(id, dir){
@@ -1545,9 +1594,9 @@ function moveInRanking(id, dir){
   const i = ranking.indexOf(id);
   const j = i + dir;
   if(i < 0 || j < 0 || j >= ranking.length) return;
-  // Moving up: insert before the previous boat. Moving down: insert before the boat after next.
+  // Moving up: insert before the previous participant. Moving down: insert before the participant after next.
   const beforeId = dir < 0 ? ranking[j] : (ranking[j + 1] !== undefined ? ranking[j + 1] : null);
-  perform({type:'ranking.move', boatId:id, beforeId});
+  perform({type:'ranking.move', participantId:id, beforeId});
 }
 
 // Drag & drop with pointer events (mouse + touch). The listeners live on the document
@@ -1573,7 +1622,7 @@ function endDrag(){
   document.removeEventListener('pointercancel', endDrag);
   const next = row.nextElementSibling;
   const beforeId = next ? next.dataset.id : null;
-  if(beforeId !== originalNext) perform({type:'ranking.move', boatId:row.dataset.id, beforeId});
+  if(beforeId !== originalNext) perform({type:'ranking.move', participantId:row.dataset.id, beforeId});
   renderSorted();
 }
 function initSortedDrag(handle){
@@ -1598,7 +1647,7 @@ function renderSearchResults(){
   rankSearchResults.innerHTML = '';
   if(!q){ rankSearchResults.hidden = true; currentMatches = []; return; }
   const s = S();
-  currentMatches = s.boats
+  currentMatches = s.participants
     .filter(b => !s.ranking.includes(b.id))
     .map(b => ({b, score:fuzzyScore(q, b.name)}))
     .filter(x => x.score >= 0)
@@ -1621,8 +1670,8 @@ function renderSearchResults(){
   });
   rankSearchResults.hidden = false;
 }
-function addFromSearch(boatId){
-  perform({type:'ranking.add', boatId});
+function addFromSearch(participantId){
+  perform({type:'ranking.add', participantId});
   rankSearch.value = '';
   renderSearchResults();
 }
@@ -1633,17 +1682,17 @@ rankSearch.addEventListener('keydown', (e) => {
 });
 document.addEventListener('click', (e) => { if(!e.target.closest('.search-wrap')) rankSearchResults.hidden = true; });
 
-// ---------- boat list ----------
-const boatInput = document.getElementById('boatInput');
-const boatList = document.getElementById('boatList');
-function addBoat(){
-  const name = cleanText(boatInput.value);
+// ---------- participant list ----------
+const participantInput = document.getElementById('participantInput');
+const participantList = document.getElementById('participantList');
+function addParticipant(){
+  const name = cleanText(participantInput.value);
   if(!name) return;
-  if(findBoatByName(S(), name)){ toast(t('boats.exists', {name})); return; }
-  if(perform({type:'boats.add', boats:[{id:uid(), name:name.slice(0, 60)}]})) boatInput.value = '';
+  if(findParticipantByName(S(), name)){ toast(t('participants.exists', {name})); return; }
+  if(perform({type:'participants.add', participants:[{id:uid(), name:name.slice(0, 60)}]})) participantInput.value = '';
 }
-document.getElementById('addBoatBtn').addEventListener('click', addBoat);
-boatInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); addBoat(); } });
+document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
+participantInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); addParticipant(); } });
 
 document.getElementById('filterSeg').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-f]');
@@ -1651,20 +1700,20 @@ document.getElementById('filterSeg').addEventListener('click', (e) => {
   if(btn.dataset.f === 'all'){ prefs.filterOpen = false; prefs.filterHideSorted = false; }
   else if(btn.dataset.f === 'open') prefs.filterOpen = !prefs.filterOpen;
   else prefs.filterHideSorted = !prefs.filterHideSorted;
-  savePrefs(); renderBoats();
+  savePrefs(); renderParticipants();
 });
 document.getElementById('sortFieldSeg').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-sf]');
   if(!btn) return;
   prefs.sortField = btn.dataset.sf;
-  savePrefs(); renderBoats();
+  savePrefs(); renderParticipants();
 });
 document.getElementById('sortDirBtn').addEventListener('click', () => {
   prefs.sortDir = prefs.sortDir === 'asc' ? 'desc' : 'asc';
-  savePrefs(); renderBoats();
+  savePrefs(); renderParticipants();
 });
 
-function renderBoats(){
+function renderParticipants(){
   const s = S();
   document.querySelectorAll('#filterSeg button').forEach(b => {
     const f = b.dataset.f;
@@ -1673,9 +1722,9 @@ function renderBoats(){
   document.querySelectorAll('#sortFieldSeg button').forEach(b => b.classList.toggle('active', b.dataset.sf === prefs.sortField));
   document.getElementById('sortDirBtn').textContent = prefs.sortDir === 'desc' ? '↓' : '↑';
 
-  let list = s.boats.map((b, i) => ({b, i}));
+  let list = s.participants.map((b, i) => ({b, i}));
   if(prefs.filterHideSorted) list = list.filter(x => !s.ranking.includes(x.b.id));
-  if(prefs.filterOpen) list = list.filter(x => !boatCaptureInfo(x.b.id));
+  if(prefs.filterOpen) list = list.filter(x => !participantCaptureInfo(x.b.id));
   const dir = prefs.sortDir === 'desc' ? -1 : 1;
   if(prefs.sortField === 'alpha'){
     list.sort((x, y) => dir * x.b.name.localeCompare(y.b.name, locale(), {numeric:true}));
@@ -1691,24 +1740,24 @@ function renderBoats(){
     list.sort((x, y) => dir * (x.i - y.i));
   }
 
-  boatList.innerHTML = '';
-  document.getElementById('boatCount').textContent = s.boats.length;
-  const empty = document.getElementById('boatEmpty');
+  participantList.innerHTML = '';
+  document.getElementById('participantCount').textContent = s.participants.length;
+  const empty = document.getElementById('participantEmpty');
   empty.hidden = list.length > 0;
-  empty.textContent = s.boats.length === 0 ? t('boats.empty') : t('boats.emptyView');
-  list.forEach(x => boatList.appendChild(buildBoatRow(x.b, {sorted:false})));
+  empty.textContent = s.participants.length === 0 ? t('participants.empty') : t('participants.emptyView');
+  list.forEach(x => participantList.appendChild(buildParticipantRow(x.b, {sorted:false})));
 }
 
 // ---------- CSV import ----------
 const importFile = document.getElementById('importFile');
 document.getElementById('importBtn').addEventListener('click', () => importFile.click());
-function parseCsvBoats(text){
+function parseCsvParticipants(text){
   const names = [];
   text.split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean).forEach((line, i) => {
     const delim = line.includes(';') ? ';' : (line.includes(',') ? ',' : null);
     let first = (delim ? line.split(delim)[0] : line).replace(/^"(.*)"$/, '$1');
     first = cleanText(first).slice(0, 60);
-    if(i === 0 && /^(name|boot|boat|segelnummer|sail)/i.test(first)) return;
+    if(i === 0 && new RegExp(t('import.headerPattern'), 'i').test(first)) return;
     if(first) names.push(first);
   });
   return names;
@@ -1717,16 +1766,16 @@ importFile.addEventListener('change', async () => {
   const file = importFile.files[0];
   if(!file) return;
   try{
-    const names = parseCsvBoats(await file.text());
-    const seen = new Set(S().boats.map(b => nameKey(b.name)));
-    const boats = [];
+    const names = parseCsvParticipants(await file.text());
+    const seen = new Set(S().participants.map(b => nameKey(b.name)));
+    const participants = [];
     for(const name of names){
       if(seen.has(nameKey(name))) continue;
       seen.add(nameKey(name));
-      boats.push({id:uid(), name});
+      participants.push({id:uid(), name});
     }
-    if(boats.length){
-      if(perform({type:'boats.add', boats})) toast(t('import.done', {n:boats.length}));
+    if(participants.length){
+      if(perform({type:'participants.add', participants})) toast(t('import.done', {n:participants.length}));
     }else{
       toast(t('import.none'));
     }
@@ -1737,14 +1786,14 @@ importFile.addEventListener('change', async () => {
 });
 
 // ---------- captures ----------
-function recordTime(boatId){
+function recordTime(participantId){
   const s = S();
-  // Without an explicit boat the capture goes to the first sorted boat (if any).
-  const target = boatId !== undefined ? boatId : (s.ranking[0] || null);
-  const capture = {id:uid(), ts:Date.now(), boatId:target};
+  // Without an explicit participant the capture goes to the first sorted participant (if any).
+  const target = participantId !== undefined ? participantId : (s.ranking[0] || null);
+  const capture = {id:uid(), ts:Date.now(), participantId:target};
   if(perform({type:'capture.add', capture})){
-    const boat = target ? boatById(target) : null;
-    toast(t('captures.recorded') + (boat ? ' – ' + boat.name : '') + ': ' + fmtTime(capture.ts));
+    const participant = target ? participantById(target) : null;
+    toast(t('captures.recorded') + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts));
   }
 }
 document.getElementById('captureBtn').addEventListener('click', () => recordTime());
@@ -1761,8 +1810,8 @@ document.addEventListener('keydown', (e) => {
   }
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
   if(m && !e.repeat){
-    const boatId = S().ranking[parseInt(m[2], 10) - 1];
-    if(boatId){ e.preventDefault(); recordTime(boatId); }
+    const participantId = S().ranking[parseInt(m[2], 10) - 1];
+    if(participantId){ e.preventDefault(); recordTime(participantId); }
   }
 });
 
@@ -1809,24 +1858,24 @@ function renderCaptures(){
     sel.dataset.edit = 'critical';
     const none = document.createElement('option');
     none.value = '';
-    none.textContent = t('captures.chooseBoat');
+    none.textContent = t('captures.chooseParticipant');
     sel.appendChild(none);
-    s.boats.forEach(b => {
+    s.participants.forEach(b => {
       const o = document.createElement('option');
       o.value = b.id;
       o.textContent = b.name;
-      o.selected = c.boatId === b.id;
+      o.selected = c.participantId === b.id;
       sel.appendChild(o);
     });
-    if(c.boatId && !boatById(c.boatId)){
+    if(c.participantId && !participantById(c.participantId)){
       const o = document.createElement('option');
-      o.value = c.boatId;
-      o.textContent = t('captures.deletedBoat');
+      o.value = c.participantId;
+      o.textContent = t('captures.deletedParticipant');
       o.selected = true;
       sel.appendChild(o);
     }
     sel.addEventListener('change', () => {
-      if(!perform({type:'capture.assign', captureId:c.id, boatId:sel.value || null})) renderCaptures();
+      if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
     });
     const del = document.createElement('button');
     del.className = 'mini';
@@ -1849,8 +1898,8 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   const asc = [...s.captures].sort((a, b) => a.ts - b.ts);
   let csv = t('export.header') + '\n';
   asc.forEach((c, i) => {
-    const boat = boatById(c.boatId);
-    csv += `${i + 1};${fmtTime(c.ts)};${boat ? boat.name.replace(/;/g, ',') : ''}\n`;
+    const participant = participantById(c.participantId);
+    csv += `${i + 1};${fmtTime(c.ts)};${participant ? participant.name.replace(/;/g, ',') : ''}\n`;
   });
   const filename = t('export.filename') + '.csv';
   // Inside claude.ai the page must ask the host to save files; elsewhere a plain download works.
@@ -1875,11 +1924,11 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   }
 });
 
-// ---------- regatta name ----------
-document.getElementById('renameRegattaBtn').addEventListener('click', () => {
+// ---------- race name ----------
+document.getElementById('renameRaceBtn').addEventListener('click', () => {
   if(editingTitle) return;
   editingTitle = true;
-  const h1 = document.getElementById('regattaTitle');
+  const h1 = document.getElementById('raceTitle');
   const input = document.createElement('input');
   input.className = 'input title-input';
   input.maxLength = 80;
@@ -1897,7 +1946,7 @@ document.getElementById('renameRegattaBtn').addEventListener('click', () => {
   input.addEventListener('blur', () => {
     editingTitle = false;
     const name = cleanText(input.value) || null;
-    if(!cancelled && name !== S().name) perform({type:'regatta.rename', name});
+    if(!cancelled && name !== S().name) perform({type:'race.rename', name});
     renderHeader();
   });
 });
@@ -1905,7 +1954,7 @@ document.getElementById('renameRegattaBtn').addEventListener('click', () => {
 function renderAll(){
   renderHeader();
   renderSorted();
-  renderBoats();
+  renderParticipants();
   renderCaptures();
   renderStatus();
   if(rankSearch.value) renderSearchResults();
@@ -1959,7 +2008,7 @@ function renderSettings(){
   if(!isServer){
     const urlInput = document.getElementById('serverUrlInput');
     if(document.activeElement !== urlInput) urlInput.value = prefs.serverUrl || '';
-    urlInput.placeholder = DEFAULT_SERVER_URL || 'https://regatta.example.org';
+    urlInput.placeholder = DEFAULT_SERVER_URL || 'https://timing.example.org';
     document.getElementById('serverUrlHelp').textContent = DEFAULT_SERVER_URL
       ? t('settings.serverUrlDefault', {url: DEFAULT_SERVER_URL})
       : t('settings.serverUrlNone');
@@ -1980,7 +2029,7 @@ function renderSettings(){
 
   document.getElementById('srvCode').value = backend.code;
   document.getElementById('srvUrl').value = backend.serverUrl;
-  const link = regattaLink(backend.serverUrl, backend.code);
+  const link = raceLink(backend.serverUrl, backend.code);
   const linkEl = document.getElementById('srvLink');
   linkEl.href = link;
   linkEl.textContent = link;
@@ -2029,7 +2078,7 @@ document.getElementById('connectBtn').addEventListener('click', () => {
   if(!serverUrl) return;
   withBusy([document.getElementById('connectBtn'), document.getElementById('createBtn')], async () => {
     try{
-      await connectToRegatta(serverUrl, code);
+      await connectToRace(serverUrl, code);
       document.getElementById('codeInput').value = '';
     }catch(e){
       showConnectError(errorMessage(e, code));
@@ -2043,8 +2092,8 @@ document.getElementById('createBtn').addEventListener('click', () => {
   if(!serverUrl) return;
   withBusy([document.getElementById('connectBtn'), document.getElementById('createBtn')], async () => {
     try{
-      const created = await api(serverUrl, '/api/regattas', {method:'POST'});
-      await connectToRegatta(serverUrl, created.code);
+      const created = await api(serverUrl, '/api/races', {method:'POST'});
+      await connectToRace(serverUrl, created.code);
     }catch(e){
       showConnectError(errorMessage(e, ''));
     }
@@ -2078,7 +2127,7 @@ document.getElementById('mergeBtn').addEventListener('click', async () => {
   const local = localStore.load();
   const ok = await askConfirm({
     title:t('merge.title'),
-    text:t('merge.text', {boats:local.boats.length, captures:local.captures.length, code:backend.code}),
+    text:t('merge.text', {participants:local.participants.length, captures:local.captures.length, code:backend.code}),
     ok:t('merge.ok'),
   });
   if(!ok || backend.kind !== 'server') return;
@@ -2103,7 +2152,7 @@ document.getElementById('pullBtn').addEventListener('click', async () => {
 document.getElementById('archiveBtn').addEventListener('click', async () => {
   const ok = await askConfirm({title:t('archive.title'), text:t('archive.text', {code:backend.code}), ok:t('archive.ok'), danger:true});
   if(!ok) return;
-  const opId = perform({type:'regatta.archive'});
+  const opId = perform({type:'race.archive'});
   if(typeof opId === 'string' && await backend.waitFor(opId)) toast(t('archive.done'));
 });
 
@@ -2113,7 +2162,7 @@ document.getElementById('archiveBtn').addEventListener('click', async () => {
 function followLink(code){
   const serverUrl = currentServerUrl();
   if(!serverUrl){ toast(t('err.noServer')); openSettings(); return; }
-  connectToRegatta(serverUrl, code, {interactive:false}).catch(e => {
+  connectToRace(serverUrl, code, {interactive:false}).catch(e => {
     toast(errorMessage(e, code));
     if(backend.kind === 'local') setFragment(null);
   });

@@ -1,6 +1,6 @@
 {
-    "name": "regatta/finish-times",
-    "description": "Finish-line timing for sailing regattas with real-time sync between devices.",
+    "name": "finish-line/timer",
+    "description": "Finish-line timing for races with real-time sync between devices. User-facing texts come per sport (currently sailing).",
     "type": "project",
     "license": "proprietary",
     "minimum-stability": "stable",

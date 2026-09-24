@@ -1,16 +1,16 @@
 <?php
 
-namespace App\Regatta;
+namespace App\Race;
 
 /**
- * Persists regattas as a materialized state plus an append-only, gap-free event log.
+ * Persists races as a materialized state plus an append-only, gap-free event log.
  *
- * Every accepted operation gets the next sequence number of its regatta. Clients
+ * Every accepted operation gets the next sequence number of its race. Clients
  * track the last sequence number they have seen and fetch (or are pushed) the
- * events after it. Operation ids are unique per regatta, which makes resending
+ * events after it. Operation ids are unique per race, which makes resending
  * buffered operations after a reconnect idempotent.
  */
-class RegattaRepository
+class RaceRepository
 {
     public const MAX_OPS_PER_BATCH = 200;
     private const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -40,7 +40,7 @@ class RegattaRepository
             }
             try {
                 $this->db->pdo()
-                    ->prepare('INSERT INTO regatta (code, seq, state, created_at, updated_at) VALUES (?, 0, ?, ?, ?)')
+                    ->prepare('INSERT INTO race (code, seq, state, created_at, updated_at) VALUES (?, 0, ?, ?, ?)')
                     ->execute([$code, self::encode($state), $now, $now]);
 
                 return ['code' => $code, 'seq' => 0, 'state' => $state];
@@ -51,7 +51,7 @@ class RegattaRepository
             }
         }
 
-        throw new \RuntimeException('Could not generate a unique regatta code.');
+        throw new \RuntimeException('Could not generate a unique race code.');
     }
 
     /** @return array{code: string, seq: int, state: array} */
@@ -71,7 +71,7 @@ class RegattaRepository
     {
         $row = $this->findRow($code);
         $stmt = $this->db->pdo()->prepare(
-            'SELECT seq, op FROM regatta_event WHERE regatta_id = ? AND seq > ? ORDER BY seq ASC LIMIT '.max(1, $limit)
+            'SELECT seq, op FROM race_event WHERE race_id = ? AND seq > ? ORDER BY seq ASC LIMIT '.max(1, $limit)
         );
         $stmt->execute([(int) $row['id'], $since]);
 
@@ -82,7 +82,7 @@ class RegattaRepository
     }
 
     /**
-     * Current sequence numbers of the given regattas (missing codes are omitted).
+     * Current sequence numbers of the given races (missing codes are omitted).
      *
      * @param list<string> $codes
      *
@@ -94,7 +94,7 @@ class RegattaRepository
             return [];
         }
         $stmt = $this->db->pdo()->prepare(
-            'SELECT code, seq FROM regatta WHERE code IN ('.implode(',', array_fill(0, count($codes), '?')).')'
+            'SELECT code, seq FROM race WHERE code IN ('.implode(',', array_fill(0, count($codes), '?')).')'
         );
         $stmt->execute(array_values($codes));
         $result = [];
@@ -139,18 +139,18 @@ class RegattaRepository
         for ($attempt = 0; $attempt < 8; ++$attempt) {
             $this->db->begin();
             try {
-                $stmt = $pdo->prepare('SELECT id, seq, state FROM regatta WHERE code = ?'.$this->db->forUpdate());
+                $stmt = $pdo->prepare('SELECT id, seq, state FROM race WHERE code = ?'.$this->db->forUpdate());
                 $stmt->execute([self::normalizeCode($code)]);
                 $row = $stmt->fetch();
                 if (!$row) {
                     $this->db->rollback();
-                    throw new RegattaNotFoundException($code);
+                    throw new RaceNotFoundException($code);
                 }
-                $regattaId = (int) $row['id'];
+                $raceId = (int) $row['id'];
                 $seq = (int) $row['seq'];
 
-                $dup = $pdo->prepare('SELECT 1 FROM regatta_event WHERE regatta_id = ? AND op_id = ?');
-                $dup->execute([$regattaId, $opId]);
+                $dup = $pdo->prepare('SELECT 1 FROM race_event WHERE race_id = ? AND op_id = ?');
+                $dup->execute([$raceId, $opId]);
                 if ($dup->fetchColumn()) {
                     $this->db->rollback();
 
@@ -173,17 +173,17 @@ class RegattaRepository
                 }
 
                 $now = self::now();
-                $pdo->prepare('INSERT INTO regatta_event (regatta_id, seq, op_id, op, created_at) VALUES (?, ?, ?, ?, ?)')
-                    ->execute([$regattaId, $seq + 1, $opId, self::encode($op), $now]);
-                $update = $pdo->prepare('UPDATE regatta SET seq = ?, state = ?, updated_at = ? WHERE id = ? AND seq = ?');
-                $update->execute([$seq + 1, self::encode($state), $now, $regattaId, $seq]);
+                $pdo->prepare('INSERT INTO race_event (race_id, seq, op_id, op, created_at) VALUES (?, ?, ?, ?, ?)')
+                    ->execute([$raceId, $seq + 1, $opId, self::encode($op), $now]);
+                $update = $pdo->prepare('UPDATE race SET seq = ?, state = ?, updated_at = ? WHERE id = ? AND seq = ?');
+                $update->execute([$seq + 1, self::encode($state), $now, $raceId, $seq]);
                 if (1 !== $update->rowCount()) {
                     throw new ConcurrentModificationException();
                 }
                 $this->db->commit();
 
                 return ['opId' => $opId, 'status' => 'applied', 'seq' => $seq + 1];
-            } catch (RegattaNotFoundException $e) {
+            } catch (RaceNotFoundException $e) {
                 throw $e;
             } catch (\PDOException|ConcurrentModificationException) {
                 // Lost a race against another writer (or the database was busy): retry.
@@ -200,11 +200,11 @@ class RegattaRepository
 
     private function findRow(string $code): array
     {
-        $stmt = $this->db->pdo()->prepare('SELECT id, code, seq, state FROM regatta WHERE code = ?');
+        $stmt = $this->db->pdo()->prepare('SELECT id, code, seq, state FROM race WHERE code = ?');
         $stmt->execute([self::normalizeCode($code)]);
         $row = $stmt->fetch();
         if (!$row) {
-            throw new RegattaNotFoundException($code);
+            throw new RaceNotFoundException($code);
         }
 
         return $row;

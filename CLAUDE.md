@@ -6,12 +6,26 @@ them. Read it fully before making changes; update it when requirements change.
 
 ## Product in one paragraph
 
-A timekeeping app for the finish line of sailing regattas. A large clock shows the current
-time; a button (or the space bar) records the exact time of each finish-line crossing. Boats
+A timekeeping app for the finish line of a race. A large clock shows the current time; a
+button (or the space bar) records the exact time of each finish-line crossing. Participants
 approaching the line together can be put into a "sorted" queue in the order they cross, so
 recorded times are assigned to them automatically. Data lives in the browser by default;
-optionally several devices share one regatta through the server with real-time sync. The
+optionally several devices share one race through the server with real-time sync. The
 primary device is an iPad (touch), laptops with keyboards are also used.
+
+The first (and currently only) use case is **sailing regattas**: participants are boats,
+identified by sail number or name, and a race is a regatta. That vocabulary exists **only
+in the user-facing text set `sailing`**; the code is sport-neutral so that other sports
+(motor racing, running, …) can be added later with another text set.
+
+## Vocabulary
+
+| Concept in code | Sailing UI (de / en) |
+| --- | --- |
+| `race` (one timed event, has a code, name, archive flag) | Regatta / regatta |
+| `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
+| `capture` (`{id, ts, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
+| `ranking` — the sorted queue of participants expected to cross next | Sortiert / sorted |
 
 ## Repository layout
 
@@ -23,39 +37,50 @@ config/                      bundles.php, packages/framework.yaml, routes.yaml, 
 src/Controller/AppController.php   GET / → serves frontend/index.html with server config injected
 src/Controller/ApiController.php   HTTP API (also the fallback transport)
 src/EventListener/CorsListener.php CORS for /api/*
-src/Regatta/Database.php           PDO wrapper, driver-aware transactions, schema DDL
-src/Regatta/OperationReducer.php   AUTHORITATIVE operation semantics (mirrored in JS!)
-src/Regatta/RegattaRepository.php  Regatta store: create, snapshot, event log, applyOperations
-src/Regatta/ClientConfig.php       serverUrl / wsUrl for browsers
+src/Race/Database.php           PDO wrapper, driver-aware transactions, schema DDL
+src/Race/OperationReducer.php   AUTHORITATIVE operation semantics (mirrored in JS!)
+src/Race/RaceRepository.php  Race store: create, snapshot, event log, applyOperations
+src/Race/ClientConfig.php       serverUrl / wsUrl for browsers
 src/Command/InstallCommand.php     app:install – creates tables (idempotent)
 src/Command/WebSocketServerCommand.php  app:websocket-server
 src/WebSocket/SyncServer.php       WebSocket protocol, subscriptions, broadcasting
 src/WebSocket/ClientSession.php    Per-connection state
 tests/reducer-parity.mjs|.php      JS vs PHP reducer equivalence test
+tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
 ```
 
 ## Hard rules
 
 1. **Language:** all source code, identifiers, comments, commit messages and server error
-   codes are English. User-facing text lives only in the `I18N` dictionary (German and
-   English) — never hard-code UI strings.
-2. **Frontend stays a single file with vanilla JS/HTML/CSS** and no build step. If a
+   codes are English. User-facing text lives only in the `TEXTS` table of the frontend
+   (German and English) — never hard-code UI strings, not even in the HTML markup.
+2. **Sport-neutral code.** Identifiers, operation types, state fields, database tables,
+   API routes, storage keys, CSS classes and comments use the vocabulary above — never
+   sailing terms (boat, regatta, sail number, …). Sport-specific wording belongs in the
+   sport text set only. `TEXTS.common` holds texts that fit every sport; `TEXTS.sailing`
+   holds everything that names participants or races (and the ⛵ default title).
+   `TEXT_SET` selects the set; `t()` looks up the sport set, then `common`, then German.
+   A new sport = a new set with the same keys as `sailing` (see the key check below).
+   Exceptions: the legacy storage migration (reads old `boats`/`boatId` fields) and the
+   CSV header pattern, which is itself a text (`import.headerPattern`).
+3. **Frontend stays a single file with vanilla JS/HTML/CSS** and no build step. If a
    framework ever becomes necessary, the product owner wants React — ask first.
    Only external resource: Google Fonts (the page must look fine if they fail to load).
-3. **Two reducers, one behaviour.** `OperationReducer.php` (server, authoritative) and
+4. **Two reducers, one behaviour.** `OperationReducer.php` (server, authoritative) and
    `applyOp()` in `frontend/index.html` (optimistic client) must produce identical results
    and identical error codes. Run `node tests/reducer-parity.mjs` after every change to
    either; extend the generator in that test when adding operations or fields.
-4. **Every i18n key exists in both `de` and `en`.**
-5. The same `frontend/index.html` is also published standalone as a claude.ai artifact.
-   It must work without the server (local mode), with `window.REGATTA_CONFIG === null`,
+5. **Every text key exists in both `de` and `en`**, and every sport set has the same keys.
+   `node tests/text-keys.mjs` checks this and that every key used in code/markup resolves.
+6. The same `frontend/index.html` is also published standalone as a claude.ai artifact.
+   It must work without the server (local mode), with `window.TIMER_CONFIG === null`,
    wrap every `localStorage` access in try/catch, and use `window.claude.use('downloads')`
    for file downloads when available (plain Blob download otherwise).
-6. Don't use `cboden/ratchet`: its latest release (0.4.4) requires symfony/http-foundation
+7. Don't use `cboden/ratchet`: its latest release (0.4.4) requires symfony/http-foundation
    ≤ 6 and conflicts with Symfony 7. The WebSocket server uses `ratchet/rfc6455` +
    `react/socket` directly.
-7. Never use `window.confirm/alert/prompt`; use `askConfirm()` (they are blocked in some
+8. Never use `window.confirm/alert/prompt`; use `askConfirm()` (they are blocked in some
    embedded contexts and block the event loop).
 
 ## Functional requirements
@@ -64,11 +89,11 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
 - Large clock `HH:MM:SS.cc` (centiseconds smaller), date below in the UI language.
   Uses the device clock (devices are expected to be NTP-synced; no server offset yet).
 - "Record time" button and **Space** record `Date.now()` as a capture.
-  - If the sorted list is non-empty, the capture is assigned to its **first** boat and that
-    boat leaves the sorted list. Otherwise the capture is stored unassigned.
-- **Double-click / double-tap on a boat name** (in either list) records a time for that
-  boat now; if the boat was in the sorted list (at any position) it is removed from it.
-- **Keys 1–9** (top row or numpad) record a time for the boat at that position of the
+  - If the sorted list is non-empty, the capture is assigned to its **first** participant and that
+    participant leaves the sorted list. Otherwise the capture is stored unassigned.
+- **Double-click / double-tap on a participant name** (in either list) records a time for that
+  participant now; if the participant was in the sorted list (at any position) it is removed from it.
+- **Keys 1–9** (top row or numpad) record a time for the participant at that position of the
   sorted list (same removal rule). The first nine sorted rows show their key as a small
   keycap badge.
 - Shortcuts are ignored while typing in inputs/selects, while a dialog or the settings
@@ -78,47 +103,48 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
 
 ### Finishes list ("Zieldurchläufe")
 - Newest first; each row shows place `#n` (by time ascending), time, delta to the
-  previous capture ("First" for the first), a boat dropdown to assign/reassign
-  (including "(deleted boat)" if the boat was deleted) and a delete button.
+  previous capture ("First" for the first), a participant dropdown to assign/reassign
+  (including "(deleted participant)" if the participant was deleted) and a delete button.
 - Captures not yet confirmed by the server show a "⏳ not synced" marker.
 - Header count uses the same `.count` style as the other panels.
-- CSV export: `Place;Time;Boat` (localised header and file name), ascending order.
+- CSV export in ascending order; header and file name come from the texts
+  (sailing: `Platz;Uhrzeit;Boot` / `Place;Time;Boat`).
 
-### Boats (overall list)
-- Add by sail number/name (max 60 chars; whitespace normalised). Names are unique
-  case-insensitively; duplicates are refused with a toast.
-- Rename inline (✎), delete (✕, confirmation; recorded times keep their boat id).
-- CSV import: one boat per line, first column (`;` or `,` separated, quotes stripped),
-  an optional header line (`name`, `boat`, `boot`, `segelnummer`, `sail`…) is skipped,
-  existing names are skipped.
-- Each row shows the latest recorded time of the boat, with `+x` if it has more.
+### Participants (overall list)
+- Add by name (sailing UI: sail number or boat name; max 60 chars; whitespace
+  normalised). Names are unique case-insensitively; duplicates are refused with a toast.
+- Rename inline (✎), delete (✕, confirmation; recorded times keep their participant id).
+- CSV import: one participant per line, first column (`;` or `,` separated, quotes stripped),
+  an optional header line matching the text `import.headerPattern` is skipped (sailing:
+  `name`, `boot`, `boat`, `segelnummer`, `sail`…), existing names are skipped.
+- Each row shows the latest recorded time of the participant, with `+x` if it has more.
 - Filters are toggle buttons in one bar: **All**, **No finish time**, **Hide sorted**.
   "No finish time" and "Hide sorted" can be active at the same time; clicking "All"
-  turns both off; activating either turns "All" off. By default sorted boats are shown
+  turns both off; activating either turns "All" off. By default sorted participants are shown
   in the overall list too, marked with a "Sorted #n" badge and a ↩ button instead of →/✕.
 - Sorting: **Order added / Name / Finish time** plus a direction toggle (↑/↓).
-  Finish time ascending uses the boat's *first* recorded time, descending its *last*
-  recorded time; boats without a time always come last. Name sort is locale-aware and
+  Finish time ascending uses the participant's *first* recorded time, descending its *last*
+  recorded time; participants without a time always come last. Name sort is locale-aware and
   numeric.
 - Filters, sort order and language are per-device preferences (never synced).
 
 ### Sorted list ("Sortiert")
-- Holds the expected crossing order of boats approaching the line together.
+- Holds the expected crossing order of participants approaching the line together.
 - Add with → in the overall list or via the **fuzzy quick search** (ranking: prefix >
   substring > characters in order; Enter takes the best match).
 - Reorder with ▲▼ buttons and drag & drop (drag handle ⠿; pointer events with document-level
   listeners so it works with touch and when the pointer leaves the handle).
-- Remove with ↩ (the boat stays in the overall list).
-- A boat is in the sorted list at most once.
+- Remove with ↩ (the participant stays in the overall list).
+- A participant is in the sorted list at most once.
 
-### Regatta name
-- Shown instead of the default title "⛵ Zielzeiten" / "⛵ Finish Times"; edited inline
-  via a small ✎ button; stored in the backend state; also used for `document.title`.
+### Race name
+- Shown instead of the default title (`header.defaultName`; sailing: "⛵ Zielzeiten" /
+  "⛵ Finish Times"); edited inline via a small ✎ button; stored in the backend state; also used for `document.title`.
 
 ### Layout (responsive, purely width-based)
 - One breakpoint at **700 px viewport width**, independent of device type or orientation.
-- `< 700 px`: single column — clock (sticky at the top), sorted list, boats, finishes.
-- `≥ 700 px`: clock full width on top; left column (320 px) sorted list + boats; right
+- `< 700 px`: single column — clock (sticky at the top), sorted list, participants, finishes.
+- `≥ 700 px`: clock full width on top; left column (320 px) sorted list + participants; right
   column finishes. Content centred with `max-width: 1200px`.
 - Dark navy theme with amber accent, light theme via `prefers-color-scheme`; colours are
   CSS tokens on `:root`. Numbers use Space Mono, text IBM Plex Sans. Touch targets and
@@ -126,14 +152,15 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
 
 ### Language
 - German / English switch in the settings panel. Default from `navigator.language`.
-  Static text uses `data-i18n`, `data-i18n-placeholder`, `data-i18n-title`; dynamic text
-  uses `t(key, vars)`.
+  Texts come from `TEXTS[TEXT_SET]` (sport-specific) and `TEXTS.common`. Static text uses
+  `data-i18n`, `data-i18n-placeholder`, `data-i18n-title`; dynamic text uses `t(key, vars)`.
 
 ### Storage backends
-- **Local (default):** state in `localStorage['regatta-timer.local']`.
-  Data from the first versions (`segel-zielzeit-v1`, one key incl. preferences) is
-  migrated once on load.
-- **Server:** connect by regatta code or create a new regatta (the server generates a
+- **Local (default):** state in `localStorage['race-timer.local']`.
+  Data of earlier versions is migrated once on load: `segel-zielzeit-v1` (one key incl.
+  preferences) and `regatta-timer.*` keys, both with the old field names `boats`/`boatId`
+  (`normalizeState()` accepts them). Old server caches are dropped (rebuilt from the server).
+- **Server:** connect by race code or create a new race (the server generates a
   random 6-character code from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; codes are
   case-insensitive, non-alphanumerics ignored).
 - The server URL defaults to the server that delivered the page: the backend replaces the
@@ -141,20 +168,20 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
   be overridden under "Advanced settings" (`prefs.serverUrl`); without a default the
   field is required.
 - The active connection `{serverUrl, code}` is stored in
-  `localStorage['regatta-timer.connection']` and resumed after a reload.
+  `localStorage['race-timer.connection']` and resumed after a reload.
 - **URL fragment `#r=CODE`** connects automatically on load (and on `hashchange`); while
   connected the fragment always reflects the current code; it is removed on disconnect.
-- **Initialisation prompt:** when connecting fresh (by code, link or "new regatta") to a
-  regatta that is still empty on the server (`seq === 0`) while this browser has local
+- **Initialisation prompt:** when connecting fresh (by code, link or "new race") to a
+  race that is still empty on the server (`seq === 0`) while this browser has local
   data, ask whether to upload it. Yes → send `state.merge`, reset local data once the
-  server confirms. No, or regatta already has data → connect; local data is kept for
+  server confirms. No, or race already has data → connect; local data is kept for
   later. Not asked when resuming a stored connection.
 - **Settings → Sync data** (server mode):
   - *Upload local data*: merge local → server, then reset local. Merging never deletes:
-    boats are matched by id or case-insensitive name, missing sorted boats appended,
-    captures added unless their id exists, name only set if the regatta has none.
-  - *Copy server data to this browser*: overwrite local data with the regatta (never merge).
-- **Disconnect** switches back to local storage; the server regatta is untouched.
+    participants are matched by id or case-insensitive name, missing sorted participants appended,
+    captures added unless their id exists, name only set if the race has none.
+  - *Copy server data to this browser*: overwrite local data with the race (never merge).
+- **Disconnect** switches back to local storage; the server race is untouched.
 
 ### Real-time sync and offline behaviour
 - WebSocket push with automatic fallback to HTTP polling (1.5 s; 3 s while offline) and
@@ -162,26 +189,26 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
   connection considered dead after 45 s of silence.
 - Optimistic updates: `view = confirmed server state + pending local ops`. Confirmed state,
   sequence number and pending ops are cached per server+code in
-  `localStorage['regatta-timer.cache:<serverUrl>|<code>']`, so buffered changes survive
+  `localStorage['race-timer.cache:<serverUrl>|<code>']`, so buffered changes survive
   reloads.
 - Allowed while not connected (buffered, sent on reconnect): `capture.add`,
   `capture.assign`, `capture.delete`, `ranking.add`, `ranking.remove`, `ranking.move`
   (`OFFLINE_OPS` in the frontend).
-- Everything else (rename regatta, add/import/rename/delete boats, merge, archive) is
+- Everything else (rename race, add/import/rename/delete participants, merge, archive) is
   disabled until the connection is back: elements marked `data-edit="normal"` are dimmed
   via `body.lock-normal`, and `perform()` refuses with a toast.
 - Status (local / connecting / connected / connection lost, plus pending count and
   "Archived") is shown in a pill next to the settings button; clicking it opens settings.
 
 ### Archiving
-- Settings → "Archive regatta" (server mode only, confirmation, irreversible).
-- The server rejects every operation on an archived regatta (`archived`).
+- Settings → "Archive race" (server mode only, confirmation, irreversible).
+- The server rejects every operation on an archived race (`archived`).
 - Clients show a banner, dim every `data-edit` element (`body.lock-all`) and refuse all
-  operations. A local copy pulled from an archived regatta is editable again.
+  operations. A local copy pulled from an archived race is editable again.
 - In local mode the settings show "Reset local data" instead of "Archive".
 
 ### Settings panel (slide-over from the right)
-- Language · local mode: status, regatta code + Connect, "Create a new regatta on the
+- Language · local mode: status, race code + Connect, "Create a new race on the
   server", advanced settings (server URL), "Reset local data" · server mode: status with
   transport and pending count, code (read-only), direct link `<serverUrl>/#r=<CODE>` with
   copy button, read-only server URL under advanced settings, Disconnect, Sync data
@@ -197,30 +224,30 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 
 | type | fields | semantics |
 | --- | --- | --- |
-| `regatta.rename` | `name` (null/blank = default) | max 80 chars |
-| `regatta.archive` | – | sets `archived: true` |
-| `boats.add` | `boats: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
-| `boat.rename` | `boatId, name` | no-op if boat is gone |
-| `boat.delete` | `boatId` | also removes it from the ranking; captures keep the id |
-| `ranking.add` | `boatId` | appends if the boat exists and isn't ranked |
-| `ranking.remove` | `boatId` | |
-| `ranking.move` | `boatId, beforeId` (null = end) | no-op if not ranked |
-| `capture.add` | `capture: {id, ts, boatId}` | ignored if id exists; unknown boat → unassigned; removes the boat from the ranking |
-| `capture.assign` | `captureId, boatId` (nullable) | no-op if capture or boat is gone; ranking untouched |
+| `race.rename` | `name` (null/blank = default) | max 80 chars |
+| `race.archive` | – | sets `archived: true` |
+| `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
+| `participant.rename` | `participantId, name` | no-op if participant is gone |
+| `participant.delete` | `participantId` | also removes it from the ranking; captures keep the id |
+| `ranking.add` | `participantId` | appends if the participant exists and isn't ranked |
+| `ranking.remove` | `participantId` | |
+| `ranking.move` | `participantId, beforeId` (null = end) | no-op if not ranked |
+| `capture.add` | `capture: {id, ts, participantId}` | ignored if id exists; unknown participant → unassigned; removes the participant from the ranking |
+| `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
 | `capture.delete` | `captureId` | |
-| `state.merge` | `state: {name, boats, ranking, captures}` | non-destructive merge (see above) |
+| `state.merge` | `state: {name, participants, ranking, captures}` | non-destructive merge (see above) |
 
-Reducers are **strict about shapes** (throw an error code like `invalid_boat_name`) and
-**lenient about references** (missing boats/captures → no-op), so buffered operations can
+Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
+**lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, boats:[{id,name}], ranking:[boatId], captures:[{id,ts,boatId}]}`.
+`{name, archived, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,participantId}]}`.
 Capture order in the state is not meaningful; the UI sorts by `ts`.
 
 ### Server storage
-- Table `regatta` (`code`, `seq`, `state` JSON = materialised state) and append-only
-  `regatta_event` (`seq`, `op_id`, `op` JSON) with unique `(regatta_id, seq)` and
-  `(regatta_id, op_id)`.
-- `RegattaRepository::applyOperations()` per op: transaction (SQLite `BEGIN IMMEDIATE`,
+- Table `race` (`code`, `seq`, `state` JSON = materialised state) and append-only
+  `race_event` (`seq`, `op_id`, `op` JSON) with unique `(race_id, seq)` and
+  `(race_id, op_id)`.
+- `RaceRepository::applyOperations()` per op: transaction (SQLite `BEGIN IMMEDIATE`,
   `FOR UPDATE` elsewhere) → duplicate `opId`? → archived? → reduce → insert event with
   `seq+1` → update state guarded by the old `seq`; retries on conflicts/busy database.
   Results: `applied` / `duplicate` / `rejected` (+ error).
@@ -229,9 +256,9 @@ Capture order in the state is not meaningful; the UI sorts by `ts`.
   schema changes need an explicit, idempotent upgrade path.
 
 ### HTTP API (`ApiController`, CORS enabled)
-`GET /api/config`, `POST /api/regattas`, `GET /api/regattas/{code}`,
-`GET /api/regattas/{code}/events?since=N` (returns `{reset, seq, state}` when more than 500
-events behind), `POST /api/regattas/{code}/ops` (≤ 200 ops). See README.
+`GET /api/config`, `POST /api/races`, `GET /api/races/{code}`,
+`GET /api/races/{code}/events?since=N` (returns `{reset, seq, state}` when more than 500
+events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README.
 
 ### WebSocket protocol (`SyncServer`)
 ```
@@ -262,6 +289,7 @@ composer install && php bin/console app:install
 php -S 127.0.0.1:8000 -t public          # PHP_CLI_SERVER_WORKERS=4 helps with polling clients
 php bin/console app:websocket-server -v
 node tests/reducer-parity.mjs
+node tests/text-keys.mjs
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install first
 ```
 
@@ -273,14 +301,15 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
 4. Mark its UI controls with `data-edit="normal"` or `"critical"`.
-5. Add i18n strings (de + en), extend `tests/reducer-parity.mjs`, run both tests.
+5. Add texts (de + en) to `common` or to every sport set, extend
+   `tests/reducer-parity.mjs`, run all tests.
 6. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
-- No authentication: anyone who knows a regatta code can read and edit it.
+- No authentication: anyone who knows a race code can read and edit it.
 - Reloading the page without network fails (no service worker); buffered operations are
   kept in localStorage and sent once the page loads again.
 - Times come from each device's clock; a server time offset could align devices.
-- Archived regattas can't be un-archived or deleted through the UI/API.
+- Archived races can't be un-archived or deleted through the UI/API.
 - The claude.ai artifact version can most likely not reach external servers (sandbox);
   server mode is meant for the page served by this backend.

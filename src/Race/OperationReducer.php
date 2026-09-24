@@ -1,37 +1,37 @@
 <?php
 
-namespace App\Regatta;
+namespace App\Race;
 
 /**
- * Applies client operations to a regatta state. This is the authoritative
+ * Applies client operations to a race state. This is the authoritative
  * implementation; the frontend contains a line-by-line JavaScript mirror
  * (applyOp in frontend/index.html) used for optimistic updates. Keep both in sync.
  *
  * State shape:
  *   name: ?string, archived: bool,
- *   boats: list<{id, name}>, ranking: list<boatId>, captures: list<{id, ts, boatId: ?string}>
+ *   participants: list<{id, name}>, ranking: list<participantId>, captures: list<{id, ts, participantId: ?string}>
  *
- * Operations are lenient about references (e.g. assigning a capture to a boat that
+ * Operations are lenient about references (e.g. assigning a capture to a participant that
  * was deleted concurrently is a no-op) so that buffered offline operations can
  * always be replayed, but strict about their shape.
  */
 final class OperationReducer
 {
     public const TYPES = [
-        'regatta.rename', 'regatta.archive',
-        'boats.add', 'boat.rename', 'boat.delete',
+        'race.rename', 'race.archive',
+        'participants.add', 'participant.rename', 'participant.delete',
         'ranking.add', 'ranking.remove', 'ranking.move',
         'capture.add', 'capture.assign', 'capture.delete',
         'state.merge',
     ];
 
     private const ID_PATTERN = '/^[A-Za-z0-9_-]{1,40}$/';
-    private const MAX_BOAT_NAME = 60;
-    private const MAX_REGATTA_NAME = 80;
+    private const MAX_PARTICIPANT_NAME = 60;
+    private const MAX_RACE_NAME = 80;
 
     public static function emptyState(): array
     {
-        return ['name' => null, 'archived' => false, 'boats' => [], 'ranking' => [], 'captures' => []];
+        return ['name' => null, 'archived' => false, 'participants' => [], 'ranking' => [], 'captures' => []];
     }
 
     /**
@@ -45,68 +45,68 @@ final class OperationReducer
         }
 
         switch ($type) {
-            case 'regatta.rename':
+            case 'race.rename':
                 $name = $op['name'] ?? null;
                 $state['name'] = (null === $name || (is_string($name) && '' === self::clean($name)))
                     ? null
-                    : self::name($name, self::MAX_REGATTA_NAME, 'name');
+                    : self::name($name, self::MAX_RACE_NAME, 'name');
 
                 return $state;
 
-            case 'regatta.archive':
+            case 'race.archive':
                 $state['archived'] = true;
 
                 return $state;
 
-            case 'boats.add':
-                $boats = $op['boats'] ?? null;
-                if (!is_array($boats) || !array_is_list($boats) || count($boats) > 2000) {
-                    throw new InvalidOperationException('invalid_boats');
+            case 'participants.add':
+                $participants = $op['participants'] ?? null;
+                if (!is_array($participants) || !array_is_list($participants) || count($participants) > 2000) {
+                    throw new InvalidOperationException('invalid_participants');
                 }
-                foreach ($boats as $boat) {
-                    $id = self::id(is_array($boat) ? ($boat['id'] ?? null) : null, 'boat_id');
-                    $name = self::name(is_array($boat) ? ($boat['name'] ?? null) : null, self::MAX_BOAT_NAME, 'boat_name');
-                    if (null !== self::findBoat($state, $id) || null !== self::findBoatByName($state, $name)) {
+                foreach ($participants as $participant) {
+                    $id = self::id(is_array($participant) ? ($participant['id'] ?? null) : null, 'participant_id');
+                    $name = self::name(is_array($participant) ? ($participant['name'] ?? null) : null, self::MAX_PARTICIPANT_NAME, 'participant_name');
+                    if (null !== self::findParticipant($state, $id) || null !== self::findParticipantByName($state, $name)) {
                         continue;
                     }
-                    $state['boats'][] = ['id' => $id, 'name' => $name];
+                    $state['participants'][] = ['id' => $id, 'name' => $name];
                 }
 
                 return $state;
 
-            case 'boat.rename':
-                $id = self::id($op['boatId'] ?? null, 'boat_id');
-                $name = self::name($op['name'] ?? null, self::MAX_BOAT_NAME, 'boat_name');
-                $index = self::findBoat($state, $id);
+            case 'participant.rename':
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                $name = self::name($op['name'] ?? null, self::MAX_PARTICIPANT_NAME, 'participant_name');
+                $index = self::findParticipant($state, $id);
                 if (null !== $index) {
-                    $state['boats'][$index]['name'] = $name;
+                    $state['participants'][$index]['name'] = $name;
                 }
 
                 return $state;
 
-            case 'boat.delete':
-                $id = self::id($op['boatId'] ?? null, 'boat_id');
-                $state['boats'] = array_values(array_filter($state['boats'], static fn ($b) => $b['id'] !== $id));
+            case 'participant.delete':
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                $state['participants'] = array_values(array_filter($state['participants'], static fn ($b) => $b['id'] !== $id));
                 $state['ranking'] = self::without($state['ranking'], $id);
 
                 return $state;
 
             case 'ranking.add':
-                $id = self::id($op['boatId'] ?? null, 'boat_id');
-                if (null !== self::findBoat($state, $id) && !in_array($id, $state['ranking'], true)) {
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                if (null !== self::findParticipant($state, $id) && !in_array($id, $state['ranking'], true)) {
                     $state['ranking'][] = $id;
                 }
 
                 return $state;
 
             case 'ranking.remove':
-                $id = self::id($op['boatId'] ?? null, 'boat_id');
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
                 $state['ranking'] = self::without($state['ranking'], $id);
 
                 return $state;
 
             case 'ranking.move':
-                $id = self::id($op['boatId'] ?? null, 'boat_id');
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
                 $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
                 if (!in_array($id, $state['ranking'], true)) {
                     return $state;
@@ -129,28 +129,28 @@ final class OperationReducer
                 }
                 $id = self::id($capture['id'] ?? null, 'capture_id');
                 $ts = self::timestamp($capture['ts'] ?? null);
-                $boatId = self::optionalId($capture['boatId'] ?? null, 'boat_id');
+                $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
                 if (null !== self::findCapture($state, $id)) {
                     return $state;
                 }
-                if (null !== $boatId && null === self::findBoat($state, $boatId)) {
-                    $boatId = null;
+                if (null !== $participantId && null === self::findParticipant($state, $participantId)) {
+                    $participantId = null;
                 }
-                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'boatId' => $boatId];
-                if (null !== $boatId) {
-                    $state['ranking'] = self::without($state['ranking'], $boatId);
+                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'participantId' => $participantId];
+                if (null !== $participantId) {
+                    $state['ranking'] = self::without($state['ranking'], $participantId);
                 }
 
                 return $state;
 
             case 'capture.assign':
                 $captureId = self::id($op['captureId'] ?? null, 'capture_id');
-                $boatId = self::optionalId($op['boatId'] ?? null, 'boat_id');
+                $participantId = self::optionalId($op['participantId'] ?? null, 'participant_id');
                 $index = self::findCapture($state, $captureId);
-                if (null === $index || (null !== $boatId && null === self::findBoat($state, $boatId))) {
+                if (null === $index || (null !== $participantId && null === self::findParticipant($state, $participantId))) {
                     return $state;
                 }
-                $state['captures'][$index]['boatId'] = $boatId;
+                $state['captures'][$index]['participantId'] = $participantId;
 
                 return $state;
 
@@ -169,8 +169,8 @@ final class OperationReducer
     }
 
     /**
-     * Merges another state into this one without ever removing anything: boats are
-     * matched by id or (case-insensitive) name, missing boats are appended to the
+     * Merges another state into this one without ever removing anything: participants are
+     * matched by id or (case-insensitive) name, missing participants are appended to the
      * ranking, captures are added unless their id already exists.
      */
     private function merge(array $state, mixed $source): array
@@ -178,30 +178,30 @@ final class OperationReducer
         if (!is_array($source)) {
             throw new InvalidOperationException('invalid_state');
         }
-        $boats = $source['boats'] ?? [];
+        $participants = $source['participants'] ?? [];
         $ranking = $source['ranking'] ?? [];
         $captures = $source['captures'] ?? [];
-        if (!is_array($boats) || !is_array($ranking) || !is_array($captures)
-            || count($boats) > 5000 || count($ranking) > 5000 || count($captures) > 20000) {
+        if (!is_array($participants) || !is_array($ranking) || !is_array($captures)
+            || count($participants) > 5000 || count($ranking) > 5000 || count($captures) > 20000) {
             throw new InvalidOperationException('invalid_state');
         }
 
         $idMap = [];
-        foreach ($boats as $boat) {
-            $id = self::id(is_array($boat) ? ($boat['id'] ?? null) : null, 'boat_id');
-            $name = self::name(is_array($boat) ? ($boat['name'] ?? null) : null, self::MAX_BOAT_NAME, 'boat_name');
-            $index = self::findBoat($state, $id) ?? self::findBoatByName($state, $name);
+        foreach ($participants as $participant) {
+            $id = self::id(is_array($participant) ? ($participant['id'] ?? null) : null, 'participant_id');
+            $name = self::name(is_array($participant) ? ($participant['name'] ?? null) : null, self::MAX_PARTICIPANT_NAME, 'participant_name');
+            $index = self::findParticipant($state, $id) ?? self::findParticipantByName($state, $name);
             if (null === $index) {
-                $state['boats'][] = ['id' => $id, 'name' => $name];
+                $state['participants'][] = ['id' => $id, 'name' => $name];
                 $idMap[$id] = $id;
             } else {
-                $idMap[$id] = $state['boats'][$index]['id'];
+                $idMap[$id] = $state['participants'][$index]['id'];
             }
         }
 
-        foreach ($ranking as $boatId) {
-            $boatId = self::id($boatId, 'boat_id');
-            $mapped = $idMap[$boatId] ?? null;
+        foreach ($ranking as $participantId) {
+            $participantId = self::id($participantId, 'participant_id');
+            $mapped = $idMap[$participantId] ?? null;
             if (null !== $mapped && !in_array($mapped, $state['ranking'], true)) {
                 $state['ranking'][] = $mapped;
             }
@@ -213,16 +213,16 @@ final class OperationReducer
             }
             $id = self::id($capture['id'] ?? null, 'capture_id');
             $ts = self::timestamp($capture['ts'] ?? null);
-            $boatId = self::optionalId($capture['boatId'] ?? null, 'boat_id');
+            $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
-            $state['captures'][] = ['id' => $id, 'ts' => $ts, 'boatId' => null !== $boatId ? ($idMap[$boatId] ?? null) : null];
+            $state['captures'][] = ['id' => $id, 'ts' => $ts, 'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null];
         }
 
         $name = $source['name'] ?? null;
         if (null === $state['name'] && is_string($name) && '' !== self::clean($name)) {
-            $state['name'] = self::name($name, self::MAX_REGATTA_NAME, 'name');
+            $state['name'] = self::name($name, self::MAX_RACE_NAME, 'name');
         }
 
         return $state;
@@ -274,10 +274,10 @@ final class OperationReducer
         return $value;
     }
 
-    private static function findBoat(array $state, string $id): ?int
+    private static function findParticipant(array $state, string $id): ?int
     {
-        foreach ($state['boats'] as $i => $boat) {
-            if ($boat['id'] === $id) {
+        foreach ($state['participants'] as $i => $participant) {
+            if ($participant['id'] === $id) {
                 return $i;
             }
         }
@@ -285,11 +285,11 @@ final class OperationReducer
         return null;
     }
 
-    private static function findBoatByName(array $state, string $name): ?int
+    private static function findParticipantByName(array $state, string $name): ?int
     {
         $key = self::key($name);
-        foreach ($state['boats'] as $i => $boat) {
-            if (self::key($boat['name']) === $key) {
+        foreach ($state['participants'] as $i => $participant) {
+            if (self::key($participant['name']) === $key) {
                 return $i;
             }
         }
