@@ -28,6 +28,10 @@ join one by its code. A race can also be opened directly via `http://host/#r=COD
 Without the WebSocket server everything still works; clients fall back to HTTP polling
 (about every 1.5 s).
 
+The page is a progressive web app: after the first visit it also starts without a
+network connection and can be added to the home screen (iPad: Share → *Add to Home
+Screen*). Browsers only allow this over **HTTPS** (or on localhost).
+
 ## Configuration
 
 Set values in `.env.local` (not committed) or as real environment variables:
@@ -95,6 +99,7 @@ Set values in `.env.local` (not committed) or as real environment variables:
    ```
 
 With SQLite, both PHP-FPM and the WebSocket service must be able to write `var/`.
+Serve the site over HTTPS so the offline start (service worker) works on the devices.
 
 ## Tests
 
@@ -103,6 +108,7 @@ node tests/reducer-parity.mjs        # JS and PHP reducers must behave identical
 node tests/text-keys.mjs             # all UI texts exist in every language and text set
 npm install && npx playwright install chromium
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # needs running servers
+node tests/e2e/offline-start.mjs     # PWA offline start; starts its own server on port 8123
 ```
 
 ## HTTP API

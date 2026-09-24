@@ -32,6 +32,7 @@ in the user-facing text set `sailing`**; the code is sport-neutral so that other
 ```
 frontend/index.html          The entire UI: HTML + CSS + vanilla JS in one file, no build step
 public/index.php             Symfony front controller (classic, no symfony/runtime)
+public/sw.js                 Service worker (offline start), public/manifest.webmanifest, public/icons/
 bin/console                  Symfony console
 config/                      bundles.php, packages/framework.yaml, routes.yaml, services.yaml
 src/Controller/AppController.php   GET / → serves frontend/index.html with server config injected
@@ -48,6 +49,8 @@ src/WebSocket/ClientSession.php    Per-connection state
 tests/reducer-parity.mjs|.php      JS vs PHP reducer equivalence test
 tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
+tests/e2e/offline-start.mjs        PWA test: starts/stops its own PHP server, checks offline start
+tools/generate-icons.mjs           Renders public/icons/*.png from the SVG definition inside it
 ```
 
 ## Hard rules
@@ -55,6 +58,8 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
 1. **Language:** all source code, identifiers, comments, commit messages and server error
    codes are English. User-facing text lives only in the `TEXTS` table of the frontend
    (German and English) — never hard-code UI strings, not even in the HTML markup.
+   Only exception: name/description in `public/manifest.webmanifest` (the installed app's
+   name can't be localised per user; it is German and sport-neutral: "Zielzeiten").
 2. **Sport-neutral code.** Identifiers, operation types, state fields, database tables,
    API routes, storage keys, CSS classes and comments use the vocabulary above — never
    sailing terms (boat, regatta, sail number, …). Sport-specific wording belongs in the
@@ -64,7 +69,8 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
    A new sport = a new set with the same keys as `sailing` (see the key check below).
    Exceptions: the legacy storage migration (reads old `boats`/`boatId` fields) and the
    CSV header pattern, which is itself a text (`import.headerPattern`).
-3. **Frontend stays a single file with vanilla JS/HTML/CSS** and no build step. If a
+3. **Frontend stays a single file with vanilla JS/HTML/CSS** and no build step
+   (plus the static PWA files in `public/`). If a
    framework ever becomes necessary, the product owner wants React — ask first.
    Only external resource: Google Fonts (the page must look fine if they fail to load).
 4. **Two reducers, one behaviour.** `OperationReducer.php` (server, authoritative) and
@@ -207,6 +213,23 @@ tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser client
   operations. A local copy pulled from an archived race is editable again.
 - In local mode the settings show "Reset local data" instead of "Archive".
 
+### Progressive web app (offline start)
+- After the first visit the page starts without a network connection and can be
+  installed ("Add to Home Screen" on the iPad, install prompt in Chrome/Edge).
+- `public/sw.js`: the app page (scope URL) is network-first with a 2.5 s timeout and
+  falls back to the cached copy (also on 5xx); manifest and icons are precached
+  (cache-first); Google Fonts' Latin subsets are cached (stale-while-revalidate, optional —
+  installation must not fail without them); `/api/*` and WebSocket traffic are never
+  cached. Offline changes are buffered by the app itself, not by the service worker.
+- Bump `VERSION` in `sw.js` whenever the manifest, icons or `sw.js` itself change.
+  `FONT_CSS` in `sw.js` must match the stylesheet link in `index.html`. The HTML itself
+  needs no version bump (network-first).
+- The service worker is only registered when the page is served by the backend
+  (`window.TIMER_CONFIG` set) in a secure context (HTTPS or localhost) — never in the
+  standalone/artifact copy.
+- iOS standalone: `black-translucent` status bar, so everything respects
+  `env(safe-area-inset-*)` (including the sticky clock).
+
 ### Settings panel (slide-over from the right)
 - Language · local mode: status, race code + Connect, "Create a new race on the
   server", advanced settings (server URL), "Reset local data" · server mode: status with
@@ -290,6 +313,7 @@ php -S 127.0.0.1:8000 -t public          # PHP_CLI_SERVER_WORKERS=4 helps with p
 php bin/console app:websocket-server -v
 node tests/reducer-parity.mjs
 node tests/text-keys.mjs
+node tests/e2e/offline-start.mjs   # starts its own PHP server on port 8123
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install first
 ```
 
@@ -307,8 +331,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 
 ## Known limitations / ideas not yet requested
 - No authentication: anyone who knows a race code can read and edit it.
-- Reloading the page without network fails (no service worker); buffered operations are
-  kept in localStorage and sent once the page loads again.
+- Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
+  run service workers; the app still works, but a reload then needs the server.
 - Times come from each device's clock; a server time offset could align devices.
 - Archived races can't be un-archived or deleted through the UI/API.
 - The claude.ai artifact version can most likely not reach external servers (sandbox);

@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "test:parity": "node tests/reducer-parity.mjs",
-    "test:e2e": "node tests/e2e/sync-smoke.mjs"
+    "test:e2e": "node tests/e2e/sync-smoke.mjs",
+    "test:offline": "node tests/e2e/offline-start.mjs",
+    "test:texts": "node tests/text-keys.mjs",
+    "icons": "node tools/generate-icons.mjs"
   },
   "devDependencies": {
     "playwright": "^1.56.0"

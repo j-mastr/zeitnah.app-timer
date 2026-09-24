@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title></title>
+<!-- Progressive web app (files in public/; the service worker is registered at the end of the script) -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0A1929" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EEF2F5" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -66,7 +75,7 @@
   .clock-card{
     background:var(--panel); border:1px solid var(--border); border-radius:14px;
     padding:20px 18px; text-align:center;
-    position:sticky; top:0; z-index:5;
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:5;
   }
   .clock{font-family:'Space Mono',monospace; font-weight:700; font-variant-numeric:tabular-nums; font-size:clamp(38px,11vw,86px); letter-spacing:1px; line-height:1;}
   .clock .cs{font-size:0.45em; color:var(--muted);}
@@ -2191,6 +2200,14 @@ window.addEventListener('hashchange', () => {
 window.addEventListener('storage', (e) => {
   if(e.key === KEYS.local && backend.kind === 'local') backend.reload();
 });
+
+// Offline start after the first visit (public/sw.js). Only when served by the backend,
+// which provides the service worker; needs HTTPS (or localhost).
+if('serviceWorker' in navigator && window.TIMER_CONFIG && window.isSecureContext){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker registration failed', e));
+  });
+}
 </script>
 </body>
 </html>
