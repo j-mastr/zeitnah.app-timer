@@ -1,0 +1,19 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            string $projectDir: '%kernel.project_dir%'
+            ?string $wsPublicUrl: '%env(default::WS_PUBLIC_URL)%'
+            int $wsPort: '%env(int:WS_PORT)%'
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+
+    App\Regatta\Database:
+        arguments:
+            $dsn: '%env(resolve:DATABASE_DSN)%'
+            $user: '%env(default::DATABASE_USER)%'
+            $password: '%env(default::DATABASE_PASSWORD)%'
