@@ -1,0 +1,8 @@
+/vendor/
+/node_modules/
+/var/*
+!/var/.gitkeep
+/.env.local
+/.env.*.local
+/composer.local.json
+/composer.local.lock

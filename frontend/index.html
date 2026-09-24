@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zielzeiten</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A1929; --panel:#112A45; --panel2:#14314F; --text:#EAF0F5; --muted:#7E94A8;
+    --accent:#E0A63B; --accent-ink:#2A1C04; --danger:#C1443C; --border:rgba(255,255,255,0.09);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#EEF2F5; --panel:#FFFFFF; --panel2:#F4F7F9; --text:#0F2438; --muted:#5C7690;
+      --accent:#B9822A; --accent-ink:#FFFFFF; --danger:#B23B32; --border:rgba(15,36,56,0.10);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#EEF2F5; --panel:#FFFFFF; --panel2:#F4F7F9; --text:#0F2438; --muted:#5C7690;
+    --accent:#B9822A; --accent-ink:#FFFFFF; --danger:#B23B32; --border:rgba(15,36,56,0.10);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-padding-top:env(safe-area-inset-top,0px);}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; min-height:100%;
+    padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  .wrap{max-width:1200px; margin:0 auto; padding:20px 16px 60px;}
+  header{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap;}
+  h1{font-size:19px; font-weight:600; margin:0; letter-spacing:.2px;}
+  .sub{color:var(--muted); font-size:13px; margin-top:2px;}
+
+  /* ---------- app grid: default (phone, portrait) ---------- */
+  .app{
+    display:grid;
+    grid-template-columns:1fr;
+    grid-template-areas:"clock" "sorted" "boats" "captures";
+    gap:14px;
+    align-items:start;
+  }
+  .clock-card{grid-area:clock;}
+  .sorted-panel{grid-area:sorted;}
+  .boats-panel{grid-area:boats;}
+  .captures-panel{grid-area:captures;}
+
+  .clock-card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:20px 18px; text-align:center;
+    position:sticky; top:0; z-index:5;
+  }
+  .clock{font-family:'Space Mono',monospace; font-weight:700; font-variant-numeric:tabular-nums; font-size:clamp(38px,11vw,86px); letter-spacing:1px; line-height:1;}
+  .clock .cs{font-size:0.45em; color:var(--muted);}
+  .date{color:var(--muted); font-size:12px; margin-top:6px; font-family:'Space Mono',monospace;}
+  .capture-btn{margin-top:16px; width:100%; max-width:420px; border:none; border-radius:12px; background:var(--accent); color:var(--accent-ink); font-family:'Space Mono',monospace; font-weight:700; font-size:18px; padding:16px; cursor:pointer; letter-spacing:.5px; transition:transform .08s ease;}
+  .capture-btn:active{transform:scale(0.97);}
+  .hint-line{color:var(--muted); font-size:11px; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
+  .hint-pair{display:inline-flex; align-items:center; gap:4px; white-space:nowrap;}
+
+  /* ---------- wide layout: clock full width on top, boats left / captures right ----------
+     Purely a viewport-width breakpoint, like any ordinary responsive layout: a narrow
+     browser window always gets the stacked mobile view and a wide one always gets this
+     centered two-column view, regardless of the device it runs on or its orientation
+     (a large tablet turned sideways gets this view too; a small desktop window gets the
+     mobile view). */
+  @media (min-width:700px){
+    .app{
+      grid-template-columns:320px 1fr;
+      grid-template-areas:
+        "clock   clock"
+        "sorted  captures"
+        "boats   captures";
+    }
+    .clock-card{position:static;}
+  }
+
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px;}
+  .panel-head{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:4px;}
+  .panel-head h2{margin:0; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px;}
+  .panel-head .count{color:var(--muted); font-weight:400; font-size:12px;}
+  .panel .hint-line{justify-content:flex-start; margin:0 0 10px;}
+
+  .toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;}
+  .seg{display:flex; flex-wrap:wrap; gap:3px; background:var(--panel2); padding:3px; border-radius:8px;}
+  .seg button{border:none; background:transparent; color:var(--muted); font-size:12px; padding:6px 10px; border-radius:6px; cursor:pointer; font-family:inherit; white-space:nowrap;}
+  .seg button.active{background:var(--panel); color:var(--text); font-weight:600;}
+  .rank-pill{display:inline-flex; align-items:center; gap:3px; font-size:10px; color:var(--accent); font-family:'Space Mono',monospace; margin-top:2px;}
+
+  .add-row{display:flex; gap:8px; margin-bottom:10px;}
+  .add-row input{flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; min-width:0;}
+  .add-row button, .icon-btn{background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 12px; font-size:14px; cursor:pointer; font-family:inherit;}
+  .add-row button{white-space:nowrap;}
+
+  .search-wrap{position:relative; margin-bottom:10px;}
+  .search-wrap input{width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit;}
+  .search-results{position:absolute; top:100%; left:0; right:0; background:var(--panel); border:1px solid var(--border); border-radius:8px; margin-top:4px; max-height:220px; overflow:auto; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,.3);}
+  .search-results .res{padding:9px 12px; font-size:13px; cursor:pointer;}
+  .search-results .res:hover{background:var(--panel2);}
+  .search-empty{padding:9px 12px; font-size:12px; color:var(--muted);}
+
+  ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+
+  .boat-row, .sorted-row{display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
+  .sorted-row{touch-action:none;}
+  .sorted-row.dragging{opacity:.45;}
+  .drag-handle{cursor:grab; color:var(--muted); font-size:16px; padding:2px 6px; touch-action:none; user-select:none; flex-shrink:0;}
+  .kbd{display:inline-flex; align-items:center; justify-content:center; min-width:19px; height:19px; padding:0 4px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-shrink:0;}
+  .boat-main{flex:1; min-width:0; cursor:default;}
+  .boat-main .nm{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .boat-main .meta{font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-top:2px;}
+  .boat-row .ops, .sorted-row .ops{display:flex; gap:4px; flex-shrink:0;}
+  .mini{background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0;}
+  .mini:hover{color:var(--text); border-color:var(--muted);}
+  .edit-input{background:var(--panel); border:1px solid var(--accent); color:var(--text); border-radius:6px; padding:5px 7px; font-size:14px; font-family:inherit; width:100%;}
+  .empty{color:var(--muted); font-size:13px; padding:8px 2px;}
+
+  .results-head{display:flex; gap:8px; align-items:center;}
+  .cap-row{display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .cap-time{font-family:'Space Mono',monospace; font-weight:700; font-size:16px; white-space:nowrap;}
+  .cap-delta{color:var(--muted); font-size:11px; font-family:'Space Mono',monospace;}
+  .cap-boat{font-size:11px; color:var(--muted); margin-top:1px;}
+  select.assign{width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
+  .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right;}
+  .footer-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+  .footer-actions button{background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:9px 14px; font-size:13px; cursor:pointer; font-family:inherit;}
+  .footer-actions .danger{color:var(--danger); border-color:var(--danger);}
+  .footer-actions input[type=file]{display:none;}
+
+  .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); color:var(--text); padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s; z-index:50; max-width:90vw; text-align:center;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>⛵ Zielzeiten</h1>
+      <div class="sub">Zieldurchläufe erfassen und Booten zuordnen</div>
+    </div>
+    <button class="mini" id="resetBtn" title="Alles zurücksetzen" style="width:auto; padding:6px 10px; font-size:12px; color:var(--danger); border-color:var(--danger);">Zurücksetzen</button>
+  </header>
+
+  <div class="app">
+    <div class="clock-card">
+      <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
+      <div class="date" id="dateLine"></div>
+      <button class="capture-btn" id="captureBtn">ZEIT ERFASSEN</button>
+      <div class="hint-line">
+        <span class="hint-pair"><span class="kbd">␣</span><span>nächstes sortiertes Boot</span></span>
+        <span class="hint-pair"><span class="kbd">1–9</span><span>Position direkt erfassen</span></span>
+      </div>
+    </div>
+
+    <div class="panel sorted-panel">
+      <div class="panel-head">
+        <h2>Sortiert <span class="count" id="sortedCount">0</span></h2>
+      </div>
+      <div class="hint-line">Doppeltipp auf ein Boot = Zeit jetzt · Ziehen oder ▲▼ = Reihenfolge ändern</div>
+      <div class="search-wrap">
+        <input id="rankSearch" type="text" placeholder="Boot suchen &amp; zur Sortierung hinzufügen…" autocomplete="off">
+        <div class="search-results" id="rankSearchResults" style="display:none;"></div>
+      </div>
+      <ul id="sortedList"></ul>
+      <div class="empty" id="sortedEmpty">Keine Boote in der Sortierung.</div>
+    </div>
+
+    <div class="panel boats-panel">
+      <div class="panel-head">
+        <h2>Boote <span class="count" id="boatCount">0</span></h2>
+      </div>
+      <div class="hint-line">Doppeltipp auf ein Boot = Zeit jetzt</div>
+      <div class="toolbar">
+        <div class="seg" id="filterSeg">
+          <button data-f="all" class="active">Alle</button>
+          <button data-f="open">Ohne Zielzeit</button>
+          <button data-f="hideSorted">Sortierte ausblenden</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="seg" id="sortFieldSeg">
+          <button data-sf="manual" class="active">Reihenfolge</button>
+          <button data-sf="alpha">Name</button>
+          <button data-sf="time">Zielzeit</button>
+        </div>
+        <button class="mini" id="sortDirBtn" title="Richtung umkehren" style="width:auto; padding:6px 9px;">↑</button>
+      </div>
+      <div class="add-row">
+        <input id="boatInput" type="text" placeholder="Segelnummer / Name" maxlength="40">
+        <button id="addBoatBtn">Hinzufügen</button>
+      </div>
+      <ul id="boatList"></ul>
+      <div class="empty" id="boatEmpty">Noch keine Boote angelegt.</div>
+      <div class="footer-actions">
+        <button id="importBtn">CSV importieren</button>
+        <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
+      </div>
+    </div>
+
+    <div class="panel captures-panel">
+      <div class="panel-head">
+        <h2>Zieldurchläufe <span class="count" id="capCount">0</span></h2>
+        <span class="sub" id="storageHint" style="font-size:11px;">gespeichert im Browser</span>
+      </div>
+      <ul id="capList" style="margin-top:12px;"></ul>
+      <div class="empty" id="capEmpty">Noch keine Zeit erfasst.</div>
+      <div class="footer-actions">
+        <button id="exportBtn">CSV exportieren</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const STORAGE_KEY = 'segel-zielzeit-v1';
+let state = {boats:[], captures:[], ranking:[], filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc'};
+try{
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(raw) state = Object.assign(state, JSON.parse(raw));
+}catch(e){}
+state.boats = state.boats || [];
+state.captures = state.captures || [];
+state.ranking = (state.ranking || []).filter(id => state.boats.some(b=>b.id===id));
+// migrate the old single-select "Alle/Ohne Zielzeit" filter to the new independent toggle
+if(state.filterOpen === undefined){
+  state.filterOpen = state.listFilter === 'open';
+}
+// migrate the old opt-in "auch anzeigen" checkbox (default: hidden) to the new
+// opt-in "ausblenden" filter (default: shown), inverting its meaning
+if(state.filterHideSorted === undefined){
+  state.filterHideSorted = state.showSortedInList === undefined ? false : !state.showSortedInList;
+}
+delete state.listFilter;
+delete state.showSortedInList;
+state.filterOpen = !!state.filterOpen;
+state.filterHideSorted = !!state.filterHideSorted;
+// migrate old boolean alpha-sort flag to the new sortField/sortDir model
+if(state.sortField === undefined){
+  state.sortField = state.boatSortAlpha ? 'alpha' : 'manual';
+}
+delete state.boatSortAlpha;
+state.sortField = ['manual','alpha','time'].includes(state.sortField) ? state.sortField : 'manual';
+state.sortDir = state.sortDir === 'desc' ? 'desc' : 'asc';
+
+function save(){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+}
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function two(n){ return String(n).padStart(2,'0'); }
+
+function fmtClockParts(d){
+  return {
+    main: `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`,
+    cs: String(d.getMilliseconds()).padStart(3,'0').slice(0,2)
+  };
+}
+function fmtTime(ts){
+  const d = new Date(ts);
+  const p = fmtClockParts(d);
+  return `${p.main}.${p.cs}`;
+}
+function fmtDelta(ms){
+  if(ms < 0) ms = 0;
+  const totalCs = Math.floor(ms/10);
+  const cs = totalCs % 100;
+  const totalSec = Math.floor(totalCs/100);
+  const s = totalSec % 60;
+  const m = Math.floor(totalSec/60) % 60;
+  const h = Math.floor(totalSec/3600);
+  return (h>0? two(h)+':':'') + two(m)+':'+two(s)+'.'+two(cs);
+}
+
+// ---------- clock ----------
+const clockEl = document.getElementById('clock');
+const dateEl = document.getElementById('dateLine');
+function tickClock(){
+  const d = new Date();
+  const p = fmtClockParts(d);
+  clockEl.innerHTML = `${p.main}<span class="cs">.${p.cs}</span>`;
+  dateEl.textContent = d.toLocaleDateString('de-DE',{weekday:'long', year:'numeric', month:'long', day:'numeric'});
+  requestAnimationFrame(tickClock);
+}
+requestAnimationFrame(tickClock);
+
+// ---------- toast ----------
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ---------- double-activate (dblclick / double-tap) ----------
+const lastTap = new WeakMap();
+function onActivate(el, cb){
+  el.addEventListener('click', (e)=>{
+    const now = Date.now();
+    const last = lastTap.get(el) || 0;
+    if(now - last < 450){
+      lastTap.set(el, 0);
+      cb(e);
+    } else {
+      lastTap.set(el, now);
+    }
+  });
+}
+
+// ---------- boat helpers ----------
+function boatById(id){ return state.boats.find(b=>b.id===id); }
+function boatCaptureInfo(boatId){
+  const list = state.captures.filter(c=>c.boatId===boatId).sort((a,b)=>b.ts-a.ts);
+  if(!list.length) return null;
+  return {last:list[0].ts, first:list[list.length-1].ts, count:list.length};
+}
+function metaText(boatId){
+  const info = boatCaptureInfo(boatId);
+  if(!info) return '';
+  return fmtTime(info.last) + (info.count>1 ? ` +${info.count-1}` : '');
+}
+// key used for "nach Zielzeit" sorting: ascending -> first captured time, descending -> last captured time
+function timeSortKey(boatId, dir){
+  const info = boatCaptureInfo(boatId);
+  if(!info) return null;
+  return dir === 'desc' ? info.last : info.first;
+}
+
+// ---------- fuzzy matching (prefix > substring > in-order subsequence) ----------
+function fuzzyScore(query, text){
+  query = query.toLowerCase().trim();
+  text = text.toLowerCase();
+  if(!query) return 0;
+  if(text.startsWith(query)) return 100 - (text.length - query.length) * 0.1;
+  const idx = text.indexOf(query);
+  if(idx >= 0) return 70 - idx * 0.5 - (text.length - query.length) * 0.05;
+  let ti = 0, matched = 0, first = -1, last = -1;
+  for(let qi=0; qi<query.length; qi++){
+    const ch = query[qi];
+    let found = false;
+    while(ti < text.length){
+      if(text[ti] === ch){
+        if(first < 0) first = ti;
+        last = ti;
+        ti++;
+        matched++;
+        found = true;
+        break;
+      }
+      ti++;
+    }
+    if(!found) break;
+  }
+  if(matched === query.length){
+    return 40 - (last - first + 1) * 0.5;
+  }
+  return -1;
+}
+
+let editingBoatId = null;
+
+function buildBoatRow(boat, opts){
+  // opts: {sorted:bool, rankIndex:number|null}
+  const row = document.createElement('li');
+  row.className = opts.sorted ? 'sorted-row' : 'boat-row';
+  row.dataset.id = boat.id;
+
+  if(opts.sorted){
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.textContent = '⠿';
+    handle.setAttribute('aria-label','Ziehen zum Sortieren');
+    row.appendChild(handle);
+    initSortedDrag(handle, boat.id);
+
+    if(opts.rankIndex != null && opts.rankIndex < 9){
+      const kbd = document.createElement('span');
+      kbd.className = 'kbd';
+      kbd.textContent = String(opts.rankIndex+1);
+      row.appendChild(kbd);
+    }
+  }
+
+  const main = document.createElement('span');
+  main.className = 'boat-main';
+
+  if(editingBoatId === boat.id){
+    const input = document.createElement('input');
+    input.className = 'edit-input';
+    input.type = 'text';
+    input.value = boat.name;
+    input.maxLength = 40;
+    main.appendChild(input);
+    setTimeout(()=>{ input.focus(); input.select(); }, 0);
+    input.addEventListener('click', e=>e.stopPropagation());
+    input.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+      else if(e.key==='Escape'){ e.preventDefault(); input.dataset.cancel='1'; editingBoatId=null; renderAll(); }
+    });
+    input.addEventListener('blur', ()=>{
+      if(input.dataset.cancel==='1') return;
+      const name = input.value.trim();
+      if(name) boat.name = name;
+      editingBoatId = null;
+      save(); renderAll();
+    });
+  } else {
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = boat.name;
+    onActivate(nm, ()=>performCapture(boat.id));
+    main.appendChild(nm);
+    const meta = metaText(boat.id);
+    if(meta){
+      const m = document.createElement('div');
+      m.className = 'meta';
+      m.textContent = meta;
+      main.appendChild(m);
+    }
+    if(!opts.sorted && state.ranking.includes(boat.id)){
+      const pill = document.createElement('div');
+      pill.className = 'rank-pill';
+      pill.textContent = `Sortiert #${state.ranking.indexOf(boat.id)+1}`;
+      main.appendChild(pill);
+    }
+  }
+  row.appendChild(main);
+
+  const ops = document.createElement('span');
+  ops.className = 'ops';
+
+  if(opts.sorted){
+    const up = document.createElement('button');
+    up.className='mini'; up.title='Nach oben'; up.textContent='▲';
+    up.addEventListener('click', e=>{ e.stopPropagation(); moveInRanking(boat.id,-1); });
+    const down = document.createElement('button');
+    down.className='mini'; down.title='Nach unten'; down.textContent='▼';
+    down.addEventListener('click', e=>{ e.stopPropagation(); moveInRanking(boat.id,1); });
+    const out = document.createElement('button');
+    out.className='mini'; out.title='Aus Sortierung entfernen'; out.textContent='↩';
+    out.addEventListener('click', e=>{ e.stopPropagation(); removeFromRanking(boat.id); });
+    ops.appendChild(up); ops.appendChild(down); ops.appendChild(out);
+  } else {
+    const edit = document.createElement('button');
+    edit.className='mini'; edit.title='Umbenennen'; edit.textContent='✎';
+    edit.addEventListener('click', e=>{ e.stopPropagation(); editingBoatId = boat.id; renderAll(); });
+    if(state.ranking.includes(boat.id)){
+      const out = document.createElement('button');
+      out.className='mini'; out.title='Aus Sortierung entfernen'; out.textContent='↩';
+      out.addEventListener('click', e=>{ e.stopPropagation(); removeFromRanking(boat.id); });
+      ops.appendChild(edit); ops.appendChild(out);
+    } else {
+      const into = document.createElement('button');
+      into.className='mini'; into.title='Zur Sortierung hinzufügen'; into.textContent='→';
+      into.addEventListener('click', e=>{ e.stopPropagation(); addToRanking(boat.id); });
+      const del = document.createElement('button');
+      del.className='mini'; del.title='Boot löschen'; del.textContent='✕';
+      del.addEventListener('click', e=>{
+        e.stopPropagation();
+        if(confirm(`"${boat.name}" endgültig löschen?`)) removeBoat(boat.id);
+      });
+      ops.appendChild(edit); ops.appendChild(into); ops.appendChild(del);
+    }
+  }
+  row.appendChild(ops);
+  return row;
+}
+
+// ---------- sorted list ----------
+const sortedList = document.getElementById('sortedList');
+const sortedEmpty = document.getElementById('sortedEmpty');
+const sortedCount = document.getElementById('sortedCount');
+
+function renderSorted(){
+  sortedList.innerHTML='';
+  sortedCount.textContent = state.ranking.length;
+  sortedEmpty.style.display = state.ranking.length ? 'none' : 'block';
+  state.ranking.forEach((id, i)=>{
+    const boat = boatById(id);
+    if(!boat) return;
+    sortedList.appendChild(buildBoatRow(boat, {sorted:true, rankIndex:i}));
+  });
+}
+
+function moveInRanking(id, dir){
+  const idx = state.ranking.indexOf(id);
+  const j = idx+dir;
+  if(idx<0 || j<0 || j>=state.ranking.length) return;
+  const tmp = state.ranking[idx]; state.ranking[idx]=state.ranking[j]; state.ranking[j]=tmp;
+  save(); renderSorted();
+}
+function addToRanking(boatId){
+  if(state.ranking.includes(boatId)) return;
+  state.ranking.push(boatId);
+  save(); renderSorted(); renderBoats();
+}
+function removeFromRanking(boatId){
+  state.ranking = state.ranking.filter(x=>x!==boatId);
+  save(); renderSorted(); renderBoats();
+}
+
+// drag & drop reorder (pointer events, works for mouse + touch).
+// Listeners are bound to the document for the duration of the drag rather than
+// to the small handle icon itself, so the row keeps following the pointer even
+// once it has moved off the handle (relying on setPointerCapture on a ~20px
+// icon is unreliable across browsers and was why dragging didn't work).
+let dragCtx = null;
+function onDragMove(e){
+  if(!dragCtx) return;
+  const siblings = Array.from(sortedList.querySelectorAll('.sorted-row')).filter(r=>r!==dragCtx.row);
+  const y = e.clientY;
+  let inserted = false;
+  for(const r of siblings){
+    const rect = r.getBoundingClientRect();
+    const mid = rect.top + rect.height/2;
+    if(y < mid){
+      sortedList.insertBefore(dragCtx.row, r);
+      inserted = true;
+      break;
+    }
+  }
+  if(!inserted) sortedList.appendChild(dragCtx.row);
+}
+function endDrag(){
+  if(!dragCtx) return;
+  dragCtx.row.classList.remove('dragging');
+  const newOrder = Array.from(sortedList.querySelectorAll('.sorted-row')).map(r=>r.dataset.id);
+  state.ranking = newOrder;
+  dragCtx = null;
+  document.removeEventListener('pointermove', onDragMove);
+  document.removeEventListener('pointerup', endDrag);
+  document.removeEventListener('pointercancel', endDrag);
+  save(); renderSorted();
+}
+function initSortedDrag(handle, boatId){
+  handle.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const row = handle.closest('.sorted-row');
+    dragCtx = {boatId, row};
+    row.classList.add('dragging');
+    document.addEventListener('pointermove', onDragMove);
+    document.addEventListener('pointerup', endDrag);
+    document.addEventListener('pointercancel', endDrag);
+  });
+}
+
+// ---------- quick-assign search ----------
+const rankSearch = document.getElementById('rankSearch');
+const rankSearchResults = document.getElementById('rankSearchResults');
+let currentMatches = [];
+
+function renderSearchResults(){
+  const q = rankSearch.value.trim();
+  if(!q){ rankSearchResults.style.display='none'; rankSearchResults.innerHTML=''; currentMatches=[]; return; }
+  currentMatches = state.boats
+    .filter(b=>!state.ranking.includes(b.id))
+    .map(b=>({b, score: fuzzyScore(q, b.name)}))
+    .filter(x=>x.score >= 0)
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,8)
+    .map(x=>x.b);
+  rankSearchResults.innerHTML='';
+  if(!currentMatches.length){
+    const d = document.createElement('div');
+    d.className='search-empty';
+    d.textContent='Keine passenden Boote.';
+    rankSearchResults.appendChild(d);
+  } else {
+    currentMatches.forEach(b=>{
+      const d = document.createElement('div');
+      d.className='res';
+      d.textContent=b.name;
+      d.addEventListener('mousedown', e=>e.preventDefault());
+      d.addEventListener('click', ()=>{
+        addToRanking(b.id);
+        rankSearch.value='';
+        renderSearchResults();
+        rankSearch.focus();
+      });
+      rankSearchResults.appendChild(d);
+    });
+  }
+  rankSearchResults.style.display='block';
+}
+rankSearch.addEventListener('input', renderSearchResults);
+rankSearch.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(currentMatches[0]){
+      addToRanking(currentMatches[0].id);
+      rankSearch.value='';
+      renderSearchResults();
+    }
+  } else if(e.key==='Escape'){
+    rankSearch.value='';
+    renderSearchResults();
+    rankSearch.blur();
+  }
+});
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest('.search-wrap')){
+    rankSearchResults.style.display='none';
+  }
+});
+
+// ---------- boats (Gesamtliste) ----------
+const boatInput = document.getElementById('boatInput');
+const boatList = document.getElementById('boatList');
+const boatEmpty = document.getElementById('boatEmpty');
+const boatCount = document.getElementById('boatCount');
+
+function addBoat(){
+  const name = boatInput.value.trim();
+  if(!name) return;
+  state.boats.push({id:uid(), name});
+  boatInput.value='';
+  save(); renderBoats(); renderCaptures();
+}
+document.getElementById('addBoatBtn').addEventListener('click', addBoat);
+boatInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addBoat(); } });
+
+function removeBoat(boatId){
+  state.boats = state.boats.filter(b=>b.id!==boatId);
+  state.ranking = state.ranking.filter(id=>id!==boatId);
+  save(); renderSorted(); renderBoats(); renderCaptures();
+}
+
+document.getElementById('filterSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-f]');
+  if(!btn) return;
+  const f = btn.dataset.f;
+  if(f === 'all'){
+    state.filterOpen = false;
+    state.filterHideSorted = false;
+  } else if(f === 'open'){
+    state.filterOpen = !state.filterOpen;
+  } else if(f === 'hideSorted'){
+    state.filterHideSorted = !state.filterHideSorted;
+  }
+  save(); renderBoats();
+});
+document.getElementById('sortFieldSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-sf]');
+  if(!btn) return;
+  state.sortField = btn.dataset.sf;
+  save(); renderBoats();
+});
+document.getElementById('sortDirBtn').addEventListener('click', ()=>{
+  state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  save(); renderBoats();
+});
+function renderBoats(){
+  // sync toolbar controls with state (in case of external state changes)
+  document.querySelectorAll('#filterSeg button').forEach(b=>{
+    const f = b.dataset.f;
+    const active = f==='all' ? (!state.filterOpen && !state.filterHideSorted)
+      : f==='open' ? state.filterOpen
+      : state.filterHideSorted;
+    b.classList.toggle('active', active);
+  });
+  document.querySelectorAll('#sortFieldSeg button').forEach(b=>b.classList.toggle('active', b.dataset.sf===state.sortField));
+  document.getElementById('sortDirBtn').textContent = state.sortDir === 'desc' ? '↓' : '↑';
+
+  boatList.innerHTML='';
+  let list = state.boats.map((b,i)=>({b, i}));
+  if(state.filterHideSorted){
+    list = list.filter(x=>!state.ranking.includes(x.b.id));
+  }
+  if(state.filterOpen){
+    list = list.filter(x=>!boatCaptureInfo(x.b.id));
+  }
+
+  const dir = state.sortDir === 'desc' ? -1 : 1;
+  if(state.sortField === 'alpha'){
+    list.sort((x,y)=> dir * x.b.name.localeCompare(y.b.name,'de'));
+  } else if(state.sortField === 'time'){
+    list.sort((x,y)=>{
+      const kx = timeSortKey(x.b.id, state.sortDir);
+      const ky = timeSortKey(y.b.id, state.sortDir);
+      if(kx===null && ky===null) return x.i - y.i;
+      if(kx===null) return 1;
+      if(ky===null) return -1;
+      return dir * (kx - ky);
+    });
+  } else {
+    list.sort((x,y)=> dir * (x.i - y.i));
+  }
+
+  boatCount.textContent = state.boats.length;
+  boatEmpty.style.display = list.length ? 'none' : 'block';
+  boatEmpty.textContent = state.boats.length===0
+    ? 'Noch keine Boote angelegt.'
+    : (list.length===0 ? 'Keine Boote in dieser Ansicht.' : '');
+  list.forEach(x=>{
+    boatList.appendChild(buildBoatRow(x.b, {sorted:false}));
+  });
+}
+
+// ---------- CSV import ----------
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+importBtn.addEventListener('click', ()=>importFile.click());
+function parseCsvBoats(text){
+  const lines = text.split(/\r\n|\n|\r/).map(l=>l.trim()).filter(l=>l.length);
+  const names = [];
+  lines.forEach((line, i)=>{
+    const delim = line.includes(';') ? ';' : (line.includes(',') ? ',' : null);
+    let first = delim ? line.split(delim)[0] : line;
+    first = first.replace(/^"(.*)"$/,'$1').trim();
+    if(i===0 && /^(name|boot|segelnummer|sail)/i.test(first)) return;
+    if(first) names.push(first);
+  });
+  return names;
+}
+importFile.addEventListener('change', async ()=>{
+  const file = importFile.files[0];
+  if(!file){ return; }
+  try{
+    const text = await file.text();
+    const names = parseCsvBoats(text);
+    const existing = new Set(state.boats.map(b=>b.name.trim().toLowerCase()));
+    let added=0;
+    names.forEach(n=>{
+      const key = n.trim().toLowerCase();
+      if(key && !existing.has(key)){
+        state.boats.push({id:uid(), name:n.trim()});
+        existing.add(key);
+        added++;
+      }
+    });
+    save(); renderBoats(); renderSorted();
+    toast(added ? `${added} Boot(e) importiert.` : 'Keine neuen Boote gefunden.');
+  }catch(err){
+    toast('CSV konnte nicht gelesen werden.');
+  }
+  importFile.value='';
+});
+
+// ---------- captures ----------
+const capList = document.getElementById('capList');
+const capEmpty = document.getElementById('capEmpty');
+const capCount = document.getElementById('capCount');
+
+function performCapture(boatId){
+  let assigned = boatId;
+  if(assigned === undefined){
+    if(state.ranking.length){
+      assigned = state.ranking[0];
+      state.ranking = state.ranking.slice(1);
+    } else {
+      assigned = null;
+    }
+  } else {
+    const idx = state.ranking.indexOf(assigned);
+    if(idx >= 0) state.ranking = state.ranking.filter(id=>id!==assigned);
+  }
+  const cap = {id:uid(), ts:Date.now(), boatId:assigned};
+  state.captures.unshift(cap);
+  save();
+  renderSorted(); renderBoats(); renderCaptures();
+  const boat = assigned ? boatById(assigned) : null;
+  toast('Zeit erfasst' + (boat ? ' – ' + boat.name : '') + ': ' + fmtTime(cap.ts));
+}
+document.getElementById('captureBtn').addEventListener('click', ()=>performCapture());
+
+document.addEventListener('keydown', (e)=>{
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  const editable = document.activeElement && document.activeElement.isContentEditable;
+  if(['INPUT','TEXTAREA','SELECT'].includes(tag) || editable) return;
+
+  if(e.code === 'Space' && !e.repeat){
+    e.preventDefault();
+    performCapture();
+    return;
+  }
+  const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
+  if(m && !e.repeat){
+    const n = parseInt(m[2],10);
+    const boatId = state.ranking[n-1];
+    if(boatId){
+      e.preventDefault();
+      performCapture(boatId);
+    }
+  }
+});
+
+function removeCapture(id){
+  state.captures = state.captures.filter(c=>c.id!==id);
+  save(); renderBoats(); renderCaptures();
+}
+
+function renderCaptures(){
+  capList.innerHTML='';
+  capCount.textContent = state.captures.length;
+  capEmpty.style.display = state.captures.length ? 'none' : 'block';
+  const asc = [...state.captures].sort((a,b)=>a.ts-b.ts);
+  const rankOf = new Map(asc.map((c,i)=>[c.id,i+1]));
+
+  state.captures.forEach((c)=>{
+    const idxAsc = asc.findIndex(x=>x.id===c.id);
+    const prev = asc[idxAsc-1];
+    const delta = prev ? c.ts - prev.ts : null;
+
+    const li = document.createElement('li');
+    li.className = 'cap-row';
+    li.innerHTML = `
+      <span class="rank">#${rankOf.get(c.id)}</span>
+      <span>
+        <div class="cap-time"></div>
+        <div class="cap-delta">${prev ? '+'+fmtDelta(delta) : 'Start'}</div>
+      </span>
+      <span style="display:flex; flex-direction:column; gap:6px; align-items:end;">
+        <select class="assign"></select>
+        <button class="mini" data-a="del" title="Löschen">✕</button>
+      </span>`;
+    li.querySelector('.cap-time').textContent = fmtTime(c.ts);
+
+    const sel = li.querySelector('.assign');
+    const optNone = document.createElement('option');
+    optNone.value=''; optNone.textContent='— Boot wählen —';
+    sel.appendChild(optNone);
+    state.boats.forEach(b=>{
+      const o = document.createElement('option');
+      o.value=b.id; o.textContent=b.name;
+      if(c.boatId===b.id) o.selected=true;
+      sel.appendChild(o);
+    });
+    if(c.boatId && !boatById(c.boatId)){
+      const o = document.createElement('option');
+      o.value=c.boatId; o.textContent='(gelöschtes Boot)'; o.selected=true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', ()=>{
+      c.boatId = sel.value || null;
+      save(); renderBoats(); renderCaptures();
+    });
+
+    li.querySelector('[data-a="del"]').addEventListener('click', ()=>removeCapture(c.id));
+    capList.appendChild(li);
+  });
+}
+
+// ---------- reset ----------
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if(confirm('Wirklich alle Boote und Zeiten löschen? Das kann nicht rückgängig gemacht werden.')){
+    state = {boats:[], captures:[], ranking:[], filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc'};
+    save(); renderAll();
+  }
+});
+
+// ---------- CSV export ----------
+let downloadsApi = null;
+(async ()=>{
+  try{
+    if(window.claude && window.claude.use){
+      downloadsApi = await window.claude.use('downloads');
+    }
+  }catch(e){}
+})();
+
+document.getElementById('exportBtn').addEventListener('click', async ()=>{
+  if(!state.captures.length){ toast('Keine Zeiten zum Exportieren.'); return; }
+  const asc = [...state.captures].sort((a,b)=>a.ts-b.ts);
+  let csv = 'Platz;Uhrzeit;Boot\n';
+  asc.forEach((c,i)=>{
+    const boat = boatById(c.boatId);
+    const name = boat ? boat.name : '';
+    csv += `${i+1};${fmtTime(c.ts)};${name.replace(/;/g,',')}\n`;
+  });
+  if(!downloadsApi){
+    try{
+      if(window.claude && window.claude.use) downloadsApi = await window.claude.use('downloads');
+    }catch(e){}
+  }
+  if(downloadsApi){
+    try{
+      await downloadsApi.save({filename:'zieldurchlaeufe.csv', data: csv});
+      toast('CSV gespeichert.');
+    }catch(err){
+      if(err && err.code === 'declined'){ /* Abbruch, kein Hinweis nötig */ }
+      else toast('Export hier nicht möglich.');
+    }
+  } else {
+    toast('Export ist in dieser Ansicht nicht verfügbar.');
+  }
+});
+
+function renderAll(){
+  renderSorted();
+  renderBoats();
+  renderCaptures();
+}
+renderAll();
+</script>
+</body>
+</html>
