@@ -33,9 +33,21 @@ fi
 
 [ -f .env.local ] || log "Note: no .env.local found - using defaults from .env (set APP_SECRET!)"
 
+# Composer may be a PHP script / phar, which we run with $PHP_BIN so the domain's PHP
+# version is used, or a wrapper that must be executed itself (e.g. Plesk's phpenv shim,
+# a shell script that picks the PHP version on its own).
+first_line=""
+IFS= read -r first_line < "$COMPOSER_BIN" || true
+if [[ "$first_line" == '#!'*php* || "$first_line" == '<?php'* ]]; then
+    run_composer() { "$PHP_BIN" "$COMPOSER_BIN" "$@"; }
+else
+    run_composer() { "$COMPOSER_BIN" "$@"; }
+fi
+log "Composer: $COMPOSER_BIN - $(run_composer --version --no-ansi 2>/dev/null | head -n 1)"
+
 log "Installing dependencies"
-# Run Composer with the chosen PHP binary so the domain's PHP version is used.
-"$PHP_BIN" "$COMPOSER_BIN" install --no-dev --optimize-autoloader --no-interaction --no-progress
+run_composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+[ -f vendor/autoload.php ] || fail "Composer did not create vendor/autoload.php - check the Composer output above"
 
 log "Updating database schema"
 "$PHP_BIN" bin/console app:install --no-interaction

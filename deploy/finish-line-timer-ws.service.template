@@ -1,0 +1,42 @@
+# systemd unit for the WebSocket server (real-time sync between devices).
+#
+# Replace the values marked with CHANGE, then as root:
+#   cp deploy/finish-line-timer-ws.service /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now finish-line-timer-ws
+# Status / logs:
+#   systemctl status finish-line-timer-ws
+#   journalctl -u finish-line-timer-ws -f
+#
+# Also needed (see README): the nginx "location /ws" proxy directive pointing to the port
+# below, and WS_PUBLIC_URL=wss://<domain>/ws in .env.local.
+# bin/deploy stops the process after each deployment; Restart=always starts it again
+# with the new code.
+
+[Unit]
+Description=Finish line timer - WebSocket server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# CHANGE: system user of the Plesk subscription (Hosting Settings); the group is psacln.
+User=example_user
+Group=psacln
+# CHANGE: deployment directory of the project.
+WorkingDirectory=/var/www/vhosts/example.org/finish-line-timer
+# CHANGE: PHP version of the domain. Pick another port if several installations share
+# the server (the nginx proxy directive must use the same port).
+ExecStart=/opt/plesk/php/8.3/bin/php bin/console app:websocket-server --host=127.0.0.1 --port=8080
+Environment=APP_ENV=prod
+Restart=always
+RestartSec=2
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
