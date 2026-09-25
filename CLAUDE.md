@@ -222,7 +222,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   - *Upload local data*: merge local → server; the local data stays in this browser
     (reset it explicitly in local mode if you want it gone). Merging never deletes:
     participants are matched by id or case-insensitive name, missing ranked participants appended,
-    captures added unless their id exists, name only set if the race has none.
+    captures added unless their id exists, name only set if the race has none, sport
+    only set if the race still has the default (`generic`).
   - *Copy server data to this browser*: overwrite local data with the race (never merge).
 - **Disconnect** switches back to local storage; the server race is untouched.
 
@@ -306,7 +307,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `capture.add` | `capture: {id, ts, tzOffset, participantId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); ignored if id exists; unknown participant → unassigned; removes the participant from the ranking |
 | `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
 | `capture.delete` | `captureId` | |
-| `state.merge` | `state: {name, participants, ranking, captures}` | non-destructive merge (see above) |
+| `state.merge` | `state: {name, sport, participants, ranking, captures}` | non-destructive merge (see above); `sport` optional, rejected with `invalid_sport` if unknown |
 
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can

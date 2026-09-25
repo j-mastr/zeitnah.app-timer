@@ -36,13 +36,15 @@ final class OperationReducer
     // Mirrors SPORTS in frontend/index.html.
     public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
 
+    public const DEFAULT_SPORT = 'generic';
+
     private const ID_PATTERN = '/^[A-Za-z0-9_-]{1,40}$/';
     private const MAX_PARTICIPANT_NAME = 60;
     private const MAX_RACE_NAME = 80;
 
     public static function emptyState(): array
     {
-        return ['name' => null, 'archived' => false, 'sport' => 'generic', 'participants' => [], 'ranking' => [], 'captures' => []];
+        return ['name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [], 'ranking' => [], 'captures' => []];
     }
 
     /**
@@ -247,6 +249,17 @@ final class OperationReducer
         $name = $source['name'] ?? null;
         if (null === $state['name'] && is_string($name) && '' !== self::clean($name)) {
             $state['name'] = self::name($name, self::MAX_RACE_NAME, 'name');
+        }
+
+        $sport = $source['sport'] ?? null;
+        if (null !== $sport) {
+            if (!is_string($sport) || !in_array($sport, self::SPORTS, true)) {
+                throw new InvalidOperationException('invalid_sport');
+            }
+            // Only fills in a sport the race hasn't chosen yet (it still has the default).
+            if (self::DEFAULT_SPORT === $state['sport']) {
+                $state['sport'] = $sport;
+            }
         }
 
         return $state;

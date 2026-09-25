@@ -450,6 +450,7 @@
  * To support another sport, add a set with the same keys to TEXTS and its key to SPORTS.
  */
 const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
+const DEFAULT_SPORT = 'generic';
 const TEXTS = {
   common: {
     de: {
@@ -1212,7 +1213,7 @@ function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 // =====================================================================
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
-function emptyState(){ return {name:null, archived:false, sport:'generic', participants:[], ranking:[], captures:[]}; }
+function emptyState(){ return {name:null, archived:false, sport:DEFAULT_SPORT, participants:[], ranking:[], captures:[]}; }
 
 /** Sanitises a stored state. Also accepts the field names of earlier versions (boats, boatId). */
 function normalizeState(s){
@@ -1381,6 +1382,11 @@ function applyOp(s, op){
         s.captures.push({id, ts, tzOffset, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null});
       }
       if(s.name === null && typeof src.name === 'string' && cleanText(src.name) !== '') s.name = reqName(src.name, 80, 'name');
+      if(src.sport !== undefined && src.sport !== null){
+        if(typeof src.sport !== 'string' || !SPORTS.includes(src.sport)) throw new OpError('invalid_sport');
+        // Only fills in a sport the race hasn't chosen yet (it still has the default).
+        if(s.sport === DEFAULT_SPORT) s.sport = src.sport;
+      }
       return s;
     }
     default:
@@ -1801,7 +1807,7 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {name:s.name, participants:s.participants, ranking:s.ranking, captures:s.captures}; }
+function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, ranking:s.ranking, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
   if(e && e.code === 'network') return t('err.network');

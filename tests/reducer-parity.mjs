@@ -17,8 +17,10 @@ const start = script.indexOf('function uid()');
 const end = script.indexOf('// Operations that stay possible');
 if (start < 0 || end < 0) throw new Error('Could not locate the reducer in frontend/index.html');
 const sportsMatch = script.match(/const SPORTS = (\[[^\]]*\]);/);
-if (!sportsMatch) throw new Error('Could not locate SPORTS in frontend/index.html');
-const {applyOp, emptyState} = new Function(`const SPORTS = ${sportsMatch[1]};` + script.slice(start, end) + '; return {applyOp, emptyState};')();
+const defaultSportMatch = script.match(/const DEFAULT_SPORT = ('[^']*');/);
+if (!sportsMatch || !defaultSportMatch) throw new Error('Could not locate SPORTS/DEFAULT_SPORT in frontend/index.html');
+const preamble = `const SPORTS = ${sportsMatch[1]}; const DEFAULT_SPORT = ${defaultSportMatch[1]};`;
+const {applyOp, emptyState} = new Function(preamble + script.slice(start, end) + '; return {applyOp, emptyState};')();
 
 let seed = 42;
 const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -46,6 +48,7 @@ function randomOp(i) {
     case 'state.merge':
       op.state = {
         name: pick(['Local', null]),
+        sport: pick(['sailing', 'running', 'generic', undefined, null, 'bogus', 7]),
         participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
         ranking: ['m' + i, pick(participantIds)],
         captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), participantId: 'm' + i}, {id: pick(captureIds), ts: 5, participantId: null}],
