@@ -120,6 +120,15 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Keys 1–9** (top row or numpad) record a time for the participant at that position of the
   ranking (same removal rule). The first nine ranking rows show their key as a small
   keycap badge.
+- The 1–9 mapping **freezes for 5 s** (`SHORTCUT_HOLD_MS`) after each such capture, and every
+  further key press extends the freeze. In a dense field the operator can type the order the
+  participants were ranked in — ranked 1-2-3 but arriving 2-1-3 is typed `2 1 3`, not
+  `2 1 1` — without re-reading the badges between captures. `shortcutIds()` returns the
+  frozen ids (`shortcutHold`) or the live ranking; badges render from it, so they stay put
+  while frozen. A key whose participant has left the ranking does nothing, and a participant
+  ranked during the freeze gets no badge until it expires (a timer re-renders then).
+  Space, double-tap and the button are unaffected: they never freeze and always act on the
+  live ranking.
 - Shortcuts are ignored while typing in inputs/selects, while a dialog or the settings
   panel is open.
 - Shortcut hints are shown as keycap pictograms; a key and its description never wrap

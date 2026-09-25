@@ -2032,10 +2032,11 @@ function buildParticipantRow(participant, opts){
     handle.setAttribute('aria-label', t('action.drag'));
     row.appendChild(handle);
     initSortedDrag(handle);
-    if(opts.rankIndex < 9){
+    const key = shortcutIds().indexOf(participant.id);
+    if(key >= 0){
       const kbd = document.createElement('span');
       kbd.className = 'kbd';
-      kbd.textContent = String(opts.rankIndex + 1);
+      kbd.textContent = String(key + 1);
       row.appendChild(kbd);
     }
   }
@@ -2324,6 +2325,23 @@ importFile.addEventListener('change', async () => {
 });
 
 // ---------- captures ----------
+// Digit shortcuts keep pointing at the same participants for a moment after one was used.
+// In a dense finish the operator types the order the participants were ranked in (2-1-3),
+// without having to re-read the badges after every capture shifted the ranking.
+const SHORTCUT_HOLD_MS = 5000;
+let shortcutHold = null;   // {ids: [participantId], timer} while the mapping is frozen
+
+/** Participant ids for the keys 1–9: the frozen mapping if one is held, else the ranking. */
+function shortcutIds(){
+  return shortcutHold ? shortcutHold.ids : S().ranking.slice(0, 9);
+}
+/** Freezes the current mapping (or extends the freeze) for SHORTCUT_HOLD_MS. */
+function holdShortcuts(){
+  const ids = shortcutIds();
+  if(shortcutHold) clearTimeout(shortcutHold.timer);
+  shortcutHold = {ids, timer: setTimeout(() => { shortcutHold = null; renderAll(); }, SHORTCUT_HOLD_MS)};
+}
+
 function recordTime(participantId){
   const s = S();
   // Without an explicit participant the capture goes to the first sorted participant (if any).
@@ -2355,8 +2373,12 @@ document.addEventListener('keydown', (e) => {
   }
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
   if(m && !e.repeat){
-    const participantId = S().ranking[parseInt(m[2], 10) - 1];
-    if(participantId){ e.preventDefault(); recordTime(participantId); }
+    const participantId = shortcutIds()[parseInt(m[2], 10) - 1];
+    if(participantId && S().ranking.includes(participantId)){
+      e.preventDefault();
+      holdShortcuts();
+      recordTime(participantId);
+    }
   }
 });
 
