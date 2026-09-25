@@ -225,6 +225,16 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   segmented filters, assign selects and search results grow to ~42 px hit targets (WCAG 2.5.5),
   and the fixed left column widens to 360 px to keep the participant names readable. `:hover`
   styles only apply under `@media (hover: hover)` so touch taps don't leave sticky hover states.
+- **Nothing may be wider than the viewport** (a phone must never need pinch-zoom): grid
+  tracks are `minmax(0, …)`, `.panel` has `min-width:0`, and the finishes rows and
+  participant rows are wrapping flex boxes, so the assignment select (whose min-content is
+  its longest option) and the row buttons move to a second line instead of stretching the
+  page. The settings drawer is a fixed **shell** (`width:min(420px,100%)`, `overflow:hidden`)
+  containing the sliding `.drawer-panel`, so nothing is ever laid out beyond the right edge —
+  iOS Safari counts that towards the page width, which inflated `100vw` and with it the
+  drawer, pushing its ✕ off-screen. `html{overflow-x:clip}` is the backstop (`clip`, not
+  `hidden`: no scroll container, so the sticky clock keeps working) and
+  `-webkit-text-size-adjust:100%` stops iOS from inflating text.
 - Dark navy theme with amber accent, light theme via `prefers-color-scheme`; colours are
   CSS tokens on `:root`. Numbers use Space Mono, text IBM Plex Sans. Touch targets and
   safe-area insets matter (iPad).
@@ -334,6 +344,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   that strip instead of starting below it — see Pinned clock).
 
 ### Settings panel (slide-over from the right)
+- Shell + `.drawer-panel` (see the overflow rule under Layout). `visibility` switches at once
+  when opening and only after the slide when closing (`transition: visibility 0s linear .22s`,
+  delay 0 while open) — a transitioned `visibility` stays hidden for part of the duration,
+  which swallowed the focus call for the ✕ and left Escape without a handler in the drawer.
 - Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
   Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
   data" · server mode: status with transport, client count and pending count, code (read-only), direct

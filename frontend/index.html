@@ -37,7 +37,9 @@
   }
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
-  html{scroll-padding-top:var(--safe-top);}
+  /* Backstop against anything widening the page (iOS then zooms the whole app out).
+     `clip`, unlike `hidden`, makes no scroll container, so the sticky clock keeps working. */
+  html{scroll-padding-top:var(--safe-top); overflow-x:clip; -webkit-text-size-adjust:100%;}
   body{
     margin:0; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',system-ui,sans-serif; min-height:100%;
     padding-top:var(--safe-top); padding-bottom:env(safe-area-inset-bottom,0px);
@@ -64,7 +66,9 @@
   /* ---------- app grid: default (narrow window) ---------- */
   .app{
     display:grid;
-    grid-template-columns:1fr;
+    /* minmax(0,…) everywhere: no child's intrinsic width may widen the page (a <select>
+       reports its longest option as min-content). */
+    grid-template-columns:minmax(0,1fr);
     grid-template-areas:"clock" "sorted" "participants" "captures";
     gap:14px;
     align-items:start;
@@ -102,7 +106,7 @@
   /* ---------- wide window: clock on top, participants left / captures right ---------- */
   @media (min-width:700px){
     .app{
-      grid-template-columns:320px 1fr;
+      grid-template-columns:minmax(0,320px) minmax(0,1fr);
       grid-template-areas:
         "clock   clock"
         "sorted  captures"
@@ -113,7 +117,7 @@
     }
   }
 
-  .panel{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px;}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; min-width:0;}
   .panel-head{display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:4px;}
   .panel-head h2{margin:0; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px;}
   .panel-head .count{color:var(--muted); font-weight:400; font-size:12px;}
@@ -154,29 +158,30 @@
 
   ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
 
-  .participant-row, .sorted-row{display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
+  .participant-row, .sorted-row{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
   .sorted-row{touch-action:none;}
   .sorted-row.dragging{opacity:.45;}
   .drag-handle{cursor:grab; color:var(--muted); font-size:16px; padding:2px 6px; touch-action:none; user-select:none; flex-shrink:0;}
   .kbd{display:inline-flex; align-items:center; justify-content:center; min-width:19px; height:19px; padding:0 4px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-shrink:0;}
-  .participant-main{flex:1; min-width:0; cursor:default;}
+  .participant-main{flex:1 1 110px; min-width:0; cursor:default;}
   .participant-main .nm{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .participant-main .meta{font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-top:2px;}
-  .ops{display:flex; gap:4px; flex-shrink:0;}
+  .ops{display:flex; gap:4px; flex-shrink:0; margin-left:auto;}
   .mini{display:inline-flex; align-items:center; justify-content:center; background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; width:26px; height:26px; padding:0; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0; font-family:inherit; touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
   .mini.wide{width:auto; padding:6px 9px;}
   .mini:active{color:var(--text); border-color:var(--muted); background:var(--panel);}
   .edit-input{background:var(--panel); border:1px solid var(--accent); color:var(--text); border-radius:6px; padding:5px 7px; font-size:14px; font-family:inherit; width:100%;}
   .empty{color:var(--muted); font-size:13px; padding:8px 2px;}
 
-  .cap-row{display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .cap-row{display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .cap-mid{flex:1 1 auto; min-width:0;}
   .cap-time{font-family:'Space Mono',monospace; font-weight:700; font-size:16px; white-space:nowrap;}
   .cap-delta{color:var(--muted); font-size:11px; font-family:'Space Mono',monospace;}
   .cap-date{color:var(--muted); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
   .pending-mark{color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
-  .cap-side{display:flex; flex-direction:column; gap:6px; align-items:end;}
-  select.assign{width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
-  .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right;}
+  .cap-side{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 160px; min-width:0;}
+  select.assign{flex:1 1 auto; min-width:0; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
+  .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right; flex:0 0 auto;}
   #importFile{display:none;}
   /* Borderless icon buttons: panel headers and the clock's pin. */
   .icon-btn{display:inline-flex; align-items:center; justify-content:center; background:none; border:none; border-radius:8px;
@@ -209,7 +214,7 @@
     .cap-side{gap:8px;}
     /* The wider buttons need more room in the fixed left column. */
     @media (min-width:700px){
-      .app{grid-template-columns:360px 1fr;}
+      .app{grid-template-columns:minmax(0,360px) minmax(0,1fr);}
     }
   }
 
@@ -225,10 +230,17 @@
 
   /* ---------- settings drawer ---------- */
   .overlay{position:fixed; inset:0; background:var(--shade); z-index:60;}
-  .drawer{position:fixed; top:0; right:0; bottom:0; width:min(420px,100vw); background:var(--bg); border-left:1px solid var(--border); z-index:61;
-    transform:translateX(100%); visibility:hidden; transition:transform .22s ease, visibility .22s;
-    overflow-y:auto; padding:calc(16px + var(--safe-top)) 16px calc(24px + env(safe-area-inset-bottom,0px));}
-  .drawer.open{transform:none; visibility:visible;}
+  /* Shell and sliding panel: the panel slides *inside* the shell, so nothing is ever laid
+     out beyond the right edge of the viewport (which iOS Safari counts as page width and
+     which then made 100vw — and the drawer with it — wider than the screen). */
+  .drawer{position:fixed; top:0; right:0; bottom:0; width:min(420px,100%); z-index:61;
+    overflow:hidden; visibility:hidden; transition:visibility 0s linear .22s;}
+  .drawer.open{visibility:visible; transition-delay:0s;}
+  .drawer-panel{height:100%; overflow-y:auto; overflow-x:hidden;
+    background:var(--bg); border-left:1px solid var(--border);
+    padding:calc(16px + var(--safe-top)) 16px calc(24px + env(safe-area-inset-bottom,0px));
+    transform:translateX(100%); transition:transform .22s ease;}
+  .drawer.open .drawer-panel{transform:none;}
   .drawer-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
   .drawer-head h2{margin:0; font-size:16px; font-weight:600;}
   .drawer section{background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px;}
@@ -238,7 +250,7 @@
   .code-input{font-family:'Space Mono',monospace; text-transform:uppercase; letter-spacing:1px;}
   .row{display:flex; gap:8px; align-items:center;}
   .row .input{flex:1;}
-  .help{font-size:12px; color:var(--muted); margin:6px 0 0; line-height:1.45;}
+  .help{font-size:12px; color:var(--muted); margin:6px 0 0; line-height:1.45; overflow-wrap:anywhere;}
   .error-text{font-size:12px; color:var(--danger); margin-top:8px;}
   .divider{display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; margin:12px 0;}
   .divider::before, .divider::after{content:''; flex:1; height:1px; background:var(--border);}
@@ -271,7 +283,7 @@
 
   @media (prefers-reduced-motion: reduce){
     .dot.connecting{animation:none;}
-    .drawer{transition:none;}
+    .drawer, .drawer-panel{transition:none;}
   }
 </style>
 </head>
@@ -374,6 +386,7 @@
 <!-- ---------- settings drawer ---------- -->
 <div class="overlay" id="drawerOverlay" hidden></div>
 <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+ <div class="drawer-panel">
   <div class="drawer-head">
     <h2 id="drawerTitle" data-i18n="settings.title"></h2>
     <button class="mini" id="drawerClose" data-i18n-title="settings.close">✕</button>
@@ -472,6 +485,7 @@
   </div>
 
   <div class="action"><button class="link-btn" id="showShortcutsBtn" data-i18n="shortcuts.show"></button></div>
+ </div>
 </aside>
 
 <!-- ---------- shortcuts dialog ---------- -->
@@ -2627,6 +2641,7 @@ function renderCaptures(){
     rank.textContent = '#' + (i + 1);
 
     const mid = document.createElement('span');
+    mid.className = 'cap-mid';
     const time = document.createElement('div');
     time.className = 'cap-time';
     time.textContent = fmtTime(c.ts, c.tzOffset);
@@ -2770,7 +2785,9 @@ function openSettings(){
   renderSettings();
   drawerOverlay.hidden = false;
   drawer.classList.add('open');
-  document.getElementById('drawerClose').focus();
+  // Still hidden in this frame, so focus() would be dropped — and Escape needs the focus
+  // inside the drawer to reach its handler.
+  requestAnimationFrame(() => document.getElementById('drawerClose').focus());
 }
 function closeSettings(){
   drawer.classList.remove('open');
