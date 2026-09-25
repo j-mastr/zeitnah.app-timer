@@ -75,8 +75,11 @@
   .clock-card{
     background:var(--panel); border:1px solid var(--border); border-radius:14px;
     padding:20px 18px; text-align:center;
-    position:sticky; top:env(safe-area-inset-top,0px); z-index:5;
   }
+  body.pin-clock .clock-card{position:sticky; top:env(safe-area-inset-top,0px); z-index:5;}
+  /* Its own row rather than an overlay: the clock is as wide as the card on small screens. */
+  .clock-tools{display:flex; justify-content:flex-end; margin:-12px -8px -4px;}
+  .pin-btn.on{color:var(--accent); border-color:var(--accent);}
   .clock{font-family:'Space Mono',monospace; font-weight:700; font-variant-numeric:tabular-nums; font-size:clamp(38px,11vw,86px); letter-spacing:1px; line-height:1;}
   .clock .cs{font-size:0.45em; color:var(--muted);}
   .date{color:var(--muted); font-size:12px; margin-top:6px; font-family:'Space Mono',monospace;}
@@ -95,8 +98,10 @@
         "clock   clock"
         "sorted  captures"
         "participants   captures";
+      /* A long finishes list must not push the participants panel away from the ranking:
+         the slack of the spanned rows goes to the last one, below the participants. */
+      grid-template-rows:auto auto 1fr;
     }
-    .clock-card{position:static;}
   }
 
   .panel{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px;}
@@ -189,7 +194,7 @@
   body.archived .clock-card, body.archived .sorted-panel{display:none;}
   body.archived .app{grid-template-areas:"participants" "captures";}
   @media (min-width:700px){
-    body.archived .app{grid-template-areas:"participants captures";}
+    body.archived .app{grid-template-areas:"participants captures"; grid-template-rows:auto;}
   }
 
   /* ---------- settings drawer ---------- */
@@ -256,6 +261,7 @@
 
   <div class="app">
     <div class="clock-card">
+      <div class="clock-tools"><button class="mini pin-btn" id="pinClockBtn">📌</button></div>
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
       <div class="date" id="dateLine"></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical" data-i18n="clock.capture"></button>
@@ -470,6 +476,8 @@ const TEXTS = {
       'clock.capture': 'ZEIT ERFASSEN',
       'clock.hintDirect': 'Position direkt erfassen',
       'clock.captureFree': 'Zeit ohne Zuordnung erfassen',
+      'clock.pin': 'Uhr beim Scrollen oben festhalten',
+      'clock.unpin': 'Uhr nicht mehr oben festhalten',
       'clock.hintFree': 'ohne Zuordnung erfassen',
       'sorted.title': 'Im Zieleinlauf',
       'sorted.pill': 'Zieleinlauf #{n}',
@@ -562,6 +570,8 @@ const TEXTS = {
       'clock.capture': 'RECORD TIME',
       'clock.hintDirect': 'record a position directly',
       'clock.captureFree': 'Record a time without assigning it',
+      'clock.pin': 'Keep the clock at the top while scrolling',
+      'clock.unpin': 'Stop keeping the clock at the top',
       'clock.hintFree': 'record without assigning',
       'sorted.title': 'Approaching the finish',
       'sorted.pill': 'Approaching #{n}',
@@ -1191,7 +1201,7 @@ function removeKey(key){
 
 // Per-device preferences (never synced).
 const prefs = Object.assign(
-  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null},
+  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null, pinClock:true},
   readJson(KEYS.prefs) || {}
 );
 if(!['manual','alpha','time'].includes(prefs.sortField)) prefs.sortField = 'manual';
@@ -1986,6 +1996,16 @@ function applyI18n(){
   lastDateText = '';
 }
 
+const pinClockBtn = document.getElementById('pinClockBtn');
+function renderPinClock(){
+  document.body.classList.toggle('pin-clock', !!prefs.pinClock);
+  pinClockBtn.classList.toggle('on', !!prefs.pinClock);
+  pinClockBtn.setAttribute('aria-pressed', prefs.pinClock ? 'true' : 'false');
+  pinClockBtn.title = prefs.pinClock ? t('clock.unpin') : t('clock.pin');
+  pinClockBtn.setAttribute('aria-label', pinClockBtn.title);
+}
+pinClockBtn.addEventListener('click', () => { prefs.pinClock = !prefs.pinClock; savePrefs(); renderPinClock(); });
+
 let editingTitle = false;
 function renderHeader(){
   const s = S();
@@ -2528,6 +2548,7 @@ document.getElementById('renameRaceBtn').addEventListener('click', () => {
 
 function renderAll(){
   applyI18n();
+  renderPinClock();
   renderHeader();
   renderSorted();
   renderParticipants();

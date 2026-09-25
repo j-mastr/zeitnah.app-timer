@@ -188,9 +188,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 
 ### Layout (responsive, purely width-based)
 - One breakpoint at **700 px viewport width**, independent of device type or orientation.
-- `< 700 px`: single column — clock (sticky at the top), ranking, participants, finishes.
+- `< 700 px`: single column — clock, ranking, participants, finishes.
 - `≥ 700 px`: clock full width on top; left column (320 px) ranking + participants; right
-  column finishes. Content centred with `max-width: 1200px`.
+  column finishes. Content centred with `max-width: 1200px`. The rows are
+  `auto auto 1fr`, so a long finishes list (it spans both lower rows) adds its slack to the
+  last row instead of spreading it over the ranking row — the participants panel keeps its
+  14 px distance to the ranking and the whitespace ends up below it.
 - **Touch devices** (`@media (hover: none) and (pointer: coarse)`): the row buttons (`.mini`),
   segmented filters, assign selects and search results grow to ~42 px hit targets (WCAG 2.5.5),
   and the fixed left column widens to 360 px to keep the participant names readable. `:hover`
@@ -198,6 +201,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Dark navy theme with amber accent, light theme via `prefers-color-scheme`; colours are
   CSS tokens on `:root`. Numbers use Space Mono, text IBM Plex Sans. Touch targets and
   safe-area insets matter (iPad).
+
+### Pinned clock
+- A 📌 button in the clock card's top row (its own flex row, so the clock keeps the full
+  width) makes the card sticky at the top while scrolling — at every window width, not just
+  the narrow layout. `prefs.pinClock` (per-device, never synced, default on) toggles
+  `body.pin-clock`; the button shows the state via `.on` and `aria-pressed`.
 
 ### Language
 - German / English switch in the settings panel. Default from `navigator.language`.
