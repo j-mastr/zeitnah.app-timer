@@ -287,7 +287,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): the
   last `RECENT_MAX` = 3 races this browser connected to, newest first, as
   `{serverUrl, code, name}`. Written on every connect and updated with the race name once it
-  is known (`rememberConnection()` / `rememberName()`). In local mode the settings list them
+  is known (`rememberConnection()` / `rememberName()`). Connecting passes `keepKnown`, so a
+  reconnect keeps the name from last time instead of blanking it until the state arrives;
+  `rememberName()` is authoritative, so clearing a race's name clears it in the list too. In local mode the settings list them
   above "Create a new race" as **quick-connect buttons** labelled with the name, or the code
   when the race has none; the row's second column shows the code (when the name is the label)
   and the server host (only when it differs from the server this page would use anyway).

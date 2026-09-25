@@ -1906,9 +1906,16 @@ function recentConnections(){
   const list = readJson(KEYS.recent);
   return Array.isArray(list) ? list.filter(e => e && typeof e.serverUrl === 'string' && typeof e.code === 'string') : [];
 }
-function rememberConnection(serverUrl, code, name){
-  const rest = recentConnections().filter(e => !(e.serverUrl === serverUrl && e.code === code));
-  writeJson(KEYS.recent, [{serverUrl, code, name: name || null}, ...rest].slice(0, RECENT_MAX));
+/**
+ * Moves a race to the top of the list. `keepKnown` means "the name isn't known yet" (while
+ * connecting) — the stored one survives; without it the name given is the authoritative one,
+ * so clearing a race's name clears it here too.
+ */
+function rememberConnection(serverUrl, code, name, keepKnown = false){
+  const list = recentConnections();
+  const known = list.find(e => e.serverUrl === serverUrl && e.code === code);
+  const next = name || (keepKnown && known ? known.name : null) || null;
+  writeJson(KEYS.recent, [{serverUrl, code, name: next}, ...list.filter(e => e !== known)].slice(0, RECENT_MAX));
 }
 
 function setBackend(next){
@@ -1925,7 +1932,8 @@ function useLocal(){
 }
 function useServer(serverUrl, code){
   writeJson(KEYS.connection, {serverUrl, code});
-  rememberConnection(serverUrl, code, null);
+  rememberConnection(serverUrl, code, null, true);
+  rememberedName = null;   // the name of this race is asserted again on the next render
   setFragment(code);
   const next = new ServerBackend(serverUrl, code, backendHandlers);
   setBackend(next);
