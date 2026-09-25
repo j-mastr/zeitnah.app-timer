@@ -20,8 +20,10 @@ const step = (name) => console.log('✓', name);
 
 let server = null;
 async function startServer() {
+  // Own process group: with PHP_CLI_SERVER_WORKERS the workers outlive a SIGTERM to the
+  // master alone and keep the port open, so stopServer() signals the whole group.
   server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', 'public'], {
-    cwd: root, stdio: 'ignore', env: {...process.env, PHP_CLI_SERVER_WORKERS: '4'},
+    cwd: root, stdio: 'ignore', detached: true, env: {...process.env, PHP_CLI_SERVER_WORKERS: '4'},
   });
   for (let i = 0; i < 50; i++) {
     try { if ((await fetch(BASE + 'api/config')).ok) return; } catch (e) {}
@@ -32,7 +34,7 @@ async function startServer() {
 async function stopServer() {
   if (!server) return;
   const exited = new Promise((r) => server.once('exit', r));
-  server.kill('SIGTERM');
+  process.kill(-server.pid, 'SIGTERM');
   await exited;
   server = null;
   const stillUp = await fetch(BASE).then(() => true, () => false);
