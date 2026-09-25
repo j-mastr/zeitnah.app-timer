@@ -373,9 +373,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   safe-area insets matter (iPad).
 
 ### Pinned clock
-- A borderless 📌 `.icon-btn` in the clock card's top row (its own flex row, so the clock
-  keeps the full width) makes the card sticky at the top while scrolling; it is greyscale and
-  dimmed while inactive and shows its colours when the clock is pinned. Pinned, the card
+- A borderless pushpin `.icon-btn` (inline SVG in `currentColor`, sized like the ⚑ kind button next to it) in the clock card's top row (its own flex row, so the clock
+  keeps the full width) makes the card sticky at the top while scrolling; it is muted while
+  inactive and in the accent colour when the clock is pinned. Pinned, the card
   sticks at `top: var(--safe-top)` (the `env(safe-area-inset-top)` token on `:root`).
   A scroll listener sets `body.clock-stuck` while the card actually sits at the top edge;
   only then does it square its top corners and paint a `::before` strip over the status bar,

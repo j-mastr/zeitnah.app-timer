@@ -182,7 +182,6 @@
   @media (hover: hover){
     .link-btn:hover{color:var(--text);}
     .icon-btn:hover{color:var(--text);}
-    .pin-btn:hover{opacity:.85;}
     .foot-link:hover{color:var(--accent);}
     .mini:hover{color:var(--text); border-color:var(--muted);}
     .search-results .res:hover{background:var(--panel2);}
@@ -224,9 +223,13 @@
     padding:4px 6px; color:var(--muted); font-size:19px; line-height:1; cursor:pointer; font-family:inherit;
     touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
   .icon-btn:active{color:var(--text);}
-  /* The pin keeps its colour only while it is active. */
-  .pin-btn{filter:grayscale(1); opacity:.55;}
-  .pin-btn.on{filter:none; opacity:1;}
+  /* The clock's tool buttons share one box. The pin is an inline SVG in the text colour, sized
+     like the ⚑ glyph next to it (an emoji draws far larger, and no text pushpin is reliable). */
+  .clock-tools .icon-btn{min-width:30px; min-height:30px;}
+  /* Shifted down to the optical centre of the ⚑ glyph, whose ink sits low in its line box. */
+  .pin-btn svg{width:.8em; height:.8em; display:block; position:relative; top:.1em;}
+  /* Muted like the other icon buttons while inactive, in the accent colour while pinned. */
+  .pin-btn.on, .pin-btn.on:active{color:var(--accent);}
 
   /* ---------- touch devices: roomier hit targets (~44 px, WCAG 2.5.5) ---------- */
   @media (hover: none) and (pointer: coarse){
@@ -237,6 +240,7 @@
     #footShortcutsKey{display:none;}
     .footer-shortcuts .touch-only{display:inline;}
     .icon-btn{padding:9px 11px; font-size:22px;}
+    .clock-tools .icon-btn{min-width:44px; min-height:42px;}
     /* iOS zooms into any focused field whose text is smaller than 16px, which enlarges the
        layout and pushes controls out of view. Nothing focusable may be below that here. */
     input, select, textarea, .input, .edit-input, select.assign{font-size:16px;}
@@ -371,7 +375,7 @@
     <div class="clock-card">
       <div class="clock-tools">
         <button class="icon-btn" id="kindMenuBtn" type="button" data-edit="critical" data-i18n-title="kinds.menu" aria-haspopup="menu" aria-expanded="false" aria-controls="kindMenu">⚑</button>
-        <button class="icon-btn pin-btn" id="pinClockBtn">📌</button>
+        <button class="icon-btn pin-btn" id="pinClockBtn"><svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><g transform="rotate(45 8 8)"><rect x="4.5" y="0" width="7" height="2.2" rx="1.1"/><path d="M5.8 2.2h4.4l.9 5.4H4.9z"/><rect x="2.6" y="7.4" width="10.8" height="2" rx="1"/><path d="M7.3 9.4h1.4L8 16z"/></g></svg></button>
       </div>
       <div class="kind-menu" id="kindMenu" role="menu" hidden></div>
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
