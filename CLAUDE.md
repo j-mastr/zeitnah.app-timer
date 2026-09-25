@@ -244,6 +244,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   drawer, pushing its ✕ off-screen. `html{overflow-x:clip}` is the backstop (`clip`, not
   `hidden`: no scroll container, so the sticky clock keeps working) and
   `-webkit-text-size-adjust:100%` stops iOS from inflating text.
+  On touch devices **every focusable field is at least 16 px** (`input, select, textarea,
+  .input, .edit-input, select.assign` in the touch media query): below that, iOS zooms into
+  the field on focus, which enlarges the layout and scrolls controls — the drawer's ✕ among
+  them — out of view. Desktop keeps 14 px, where no browser auto-zooms.
 - Dark navy theme with amber accent, light theme via `prefers-color-scheme`; colours are
   CSS tokens on `:root`. Numbers use Space Mono, text IBM Plex Sans. Touch targets and
   safe-area insets matter (iPad).

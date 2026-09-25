@@ -200,6 +200,10 @@
     #footShortcutsKey{display:none;}
     .footer-shortcuts .touch-only{display:inline;}
     .icon-btn{padding:9px 11px; font-size:22px;}
+    /* iOS zooms into any focused field whose text is smaller than 16px, which enlarges the
+       layout and pushes controls out of view. Nothing focusable may be below that here. */
+    input, select, textarea, .input, .edit-input, select.assign{font-size:16px;}
+    .title-input{font-size:17px;}   /* the rule above must not shrink it */
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -208,7 +212,7 @@
     .participant-main{padding:2px 0;}
     .seg button{padding:10px 14px; font-size:13px;}
     .btn.small{padding:11px 14px; font-size:14px;}
-    select.assign{padding:11px 10px; font-size:14px;}
+    select.assign{padding:11px 10px;}
     .search-results .res{padding:13px 12px;}
     .cap-side{gap:8px;}
     /* The wider buttons need more room in the fixed left column. */
