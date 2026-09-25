@@ -16,6 +16,8 @@ participants, and — optionally — keep several devices in sync in real time.
   connection are buffered and synced once it's back.
 - **Multi-device real-time sync** over a shared race code — one iPad at the line, a
   laptop for corrections, both always in sync.
+- **Several stations per race** (e.g. start line, gate, finish line), each with its own
+  approaching queue and event type; every recorded time remembers its station.
 - **CSV import/export** for participant lists and results.
 - **German and English**, sport-neutral under the hood so other sports can be added later.
 

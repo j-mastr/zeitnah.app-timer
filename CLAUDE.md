@@ -12,8 +12,9 @@ approaching the line together can be put into an "approaching the finish" queue 
 they cross, so
 recorded times are assigned to them automatically. Besides finishes, a time can be of another
 **kind** (start, split, or a custom kind such as a protest). Data lives in the browser by default;
-optionally several devices share one race through the server with real-time sync. The
-primary device is an iPad (touch), laptops with keyboards are also used.
+optionally several devices share one race through the server with real-time sync. Devices can
+work at different **stations** (e.g. start line, a gate, finish line), each with its own queue
+and kind. The primary device is an iPad (touch), laptops with keyboards are also used.
 
 The app supports several sports: **generic** (the sport-neutral default), **sailing**
 (regattas: participants are boats, identified by sail number or name), **running**
@@ -57,11 +58,11 @@ product owner before implementing.
 | --- | --- |
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
-| `capture` (`{id, ts, tzOffset, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
-| `ranking` — the queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
+| `capture` (`{id, ts, tzOffset, participantId, kind, worksetId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
+| `ranking` — a workset's queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
 | capture `kind` — what a capture marks: built-in `start` / `split` / `finish` or a custom kind | Start / Tonnenrundung / Zieldurchlauf, Zeitart / event type |
 | custom kind (`{id, name, role}`, role `split` or `marker`) | e.g. Protest (a marker) |
-| workset — `ranking` + `captureKind` (the kind new captures get); today one default workset per race | – |
+| `workset` (`{id, number, name, ranking, captureKind}`) — a station: its ranking + the kind its captures get | Station / station (all sports, in `common`) |
 
 The other sport sets (`generic`, `running`, `swimming`, `motor`) use the same concepts with
 their own vocabulary, e.g. `participant` is "Runner"/"Läufer" in `running`, "Swimmer"/
@@ -144,15 +145,16 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `fmtDateLong` / `fmtIso`), so a race recorded elsewhere or before a DST change still shows
   the wall-clock time it was taken at. `tzOffset` is `null` only for data from earlier
   versions; those captures fall back to this device's zone.
-  - If the ranking is non-empty, the capture is assigned to its **first** participant and that
-    participant leaves the ranking (not for a marker kind, see Capture kinds). Otherwise the
-    capture is stored unassigned. The capture gets the one-shot kind if one is armed, else the
-    selected kind (`effectiveKind()`).
+  - If the ranking of the device's station is non-empty, the capture is assigned to its
+    **first** participant and that participant leaves that ranking (not for a marker kind, see
+    Capture kinds). Otherwise the capture is stored unassigned. The capture gets the one-shot
+    kind if one is armed, else the station's kind (`effectiveKind()`), and the station's id as
+    `worksetId` (null while the device has no station, see Stations).
 - A link-styled button under the big one ("Zeit ohne Zuordnung erfassen" / "Record a time
   without assigning it", `.link-btn`) and the key **0** (top row or numpad) record a capture
   that stays unassigned, whatever the ranking holds (`recordTime(null)`).
 - That link (`#captureFreeRow`) and the assignment hints (`#hintDirect`, `#hintFree`) are
-  shown **only while the ranking is not empty** (`renderClockCard()`): with nobody
+  shown **only while the station's ranking is not empty** (`renderClockCard()`): with nobody
   approaching, the big button already records an unassigned time. The space hint stays, with
   its text switching between `clock.hintNext` ("next participant approaching") and
   `clock.hintRecord` ("record a time") — it is set on every render, so it carries no
@@ -212,12 +214,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - A capture takes its participant out of the ranking **unless its kind is a marker**. An unknown
   kind id (a custom kind deleted, possibly concurrently) counts as a marker. Deleting a kind keeps
   its id on the captures ("(gelöschte Zeitart)" / "(deleted event type)").
-- **Selected kind** (`state.captureKind`, `workset.setKind`): sticky and synced — every device on
-  the race records that kind until someone changes it. It is a field of the race's implicit
-  **default workset** together with `ranking`. Planned (not built): several worksets per race, each
-  with its own ranking and kind; a device works on exactly one, devices on the same workset share
-  both, and a participant can be in several worksets' rankings (once each). Operations would gain
-  an optional `worksetId` (absent = default workset); keep new code compatible with that.
+- **Selected kind** (a workset's `captureKind`, `workset.setKind`): sticky and synced — every
+  device on the same station records that kind until someone changes it (`stickyKind()`; finish
+  without a station). Choosing a kind (segmented control, menu, **K**) needs a station, so it
+  joins or creates one first (see Stations); arming a one-shot kind does not.
 - **One-shot kind** (`nextKind`, per device, in memory): applies to the next capture only, then the
   sticky kind applies again. Armed via "next time only" in the kind menu, a long press (touch) or
   right-click on the segmented control, or **Shift+K**; cancelled with Escape or the note's link.
@@ -248,6 +248,11 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   applies there) and while a dialog or the settings are open. Listed in the shortcuts dialog.
 - Capture kinds: choosing the sticky kind (`workset.setKind`), retyping a capture and the custom
   kind operations are undoable; arming a one-shot kind is not an operation and isn't recorded.
+- Stations: adding, renaming, deleting (restored in place with number, name, ranking and kind)
+  and making one the default are undoable; switching this device's station is not an operation.
+  An action that creates a station on the way (ranking the first participant, choosing a kind)
+  is one step together with it: `perform([ops])` takes several operations as one history entry
+  (`combinedEntry()`), undone in reverse order.
 - Every action is undoable except `race.archive` and `state.merge` (both clear the history), as
   are resetting the local data and copying server data (not operations).
 - **Compensating operations**, no reducer or server involvement: `perform()` asks
@@ -258,8 +263,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   operations always get a fresh `opId`.
 - **Conflicts are refused with a toast** (`history.undoConflict` / `history.redoConflict`) and the
   entry is dropped, so the next step continues below it. Each entry lists the state `parts` it
-  touches (`name`, `sport`, `participant`, `ranked`, `next` = ranking neighbour, `capture`) and
-  stores their `footprint()` before and after. Undo requires the current footprint to equal
+  touches (`name`, `sport`, `participant`, `capture`, `kind`; per workset `ranked`, `next` =
+  ranking neighbour and `captureKind`; `workset` = a whole workset, `worksetName`,
+  `worksetOrder`) and stores their `footprint()` before and after. Undo requires the current footprint to equal
   "after" (nobody changed those parts since) and checks on a copy (`footprintAfter()`) that the
   compensating operations really lead back to "before"; redo the other way round. The copy check
   also catches what the reducers can't restore, e.g. a capture of a deleted participant.
@@ -283,14 +289,18 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (`prefs.captureFilter`, per device) appears under the header.
 - Captures not yet confirmed by the server show a "⏳ not synced" marker.
 - Header count uses the same `.count` style as the other panels.
+- Once captures come from more than one station (`stationsShown()`), the row's `title` also names
+  the capture's station ("(deleted station)" for a deleted one). The station of a capture can't
+  be changed.
 - CSV export via the ↧ icon button in the panel header (`.icon-btn`: borderless, muted,
-  right-aligned, tooltip only), in ascending order; header and file name come from the texts
-  (sailing: `Platz;Zeitstempel;Uhrzeit;Boot` / `Place;Timestamp;Time;Boat`). The
-  *Zeitstempel/Timestamp* column is the full ISO 8601 timestamp with date and offset
+  right-aligned, tooltip only), in ascending order. The header is **assembled from column texts**
+  (`export.col.<column>`; the participant column is per sport, e.g. sailing `Boot` / `Boat`),
+  so more columns can join later: `Platz;Zeitstempel;Uhrzeit;Boot` / `Place;Timestamp;Time;Boat`.
+  The *Zeitstempel/Timestamp* column is the full ISO 8601 timestamp with date and offset
   (`2026-09-25T14:33:12.45+02:00`), the *Uhrzeit/Time* column the same instant as a readable
-  local time. As long as every capture is a finish that is the whole file; otherwise the header
-  is `export.headerKinds` (… `;Zeitart;Laufzeit` / `;Event type;Elapsed`) and the place column
-  counts within each kind (empty for markers).
+  local time. As long as every capture is a finish that is the whole file; otherwise
+  *Zeitart;Laufzeit* / *Event type;Elapsed* follow and the place column counts within each kind
+  (empty for markers). With captures from more than one station a *Station* column follows.
 
 ### Participants (overall list)
 - Add by name (sailing UI: sail number or boat name; max 60 chars; whitespace
@@ -306,6 +316,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   "No finish time" and "Hide approaching" can be active at the same time; clicking "All"
   turns both off; activating either turns "All" off. By default ranked participants are shown
   in the overall list too, marked with an "Approaching #n" badge and a ↩ button instead of →/✕.
+  Badge, ↩/→ and "Hide approaching" refer to the ranking of the device's station.
 - Sorting: **Order added / Name / Finish time** (and **Elapsed** once a start has been
   recorded, sorting like Finish time by the elapsed times) plus a direction toggle (↑/↓).
   "Finish time", "Elapsed" and the "No finish time" filter only look at finishes.
@@ -315,7 +326,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Filters, sort order and language are per-device preferences (never synced).
 
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
-- Holds the expected crossing order of participants approaching the line together.
+- Holds the expected crossing order of participants approaching the line together. Every
+  station has its own; the panel shows the one of the device's station and is **hidden while
+  the device has none** (`body.no-workset`, same grid as archived minus the clock). With more
+  than one station its title names the station (`#sortedStation`).
+- → in the overall list, the quick search and **F** need a station: they join the default one
+  or create the first one (`performOnWorkset()`), so ranking stays a single step.
 - Add with → in the overall list or via the **fuzzy quick search** (ranking: prefix >
   substring > characters in order). Keyboard in the search field: **Enter** takes the
   selected suggestion, or the first one when nothing is selected · **↓/↑** move the selection
@@ -329,7 +345,39 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   has `touch-action: none` — the row must not, or a swipe over a long ranking list would be
   captured by the drag instead of scrolling the page.
 - Remove with ↩ (the participant stays in the overall list).
-- A participant is in the ranking at most once.
+- A participant is in a ranking at most once, but can be in several stations' rankings.
+
+### Stations (worksets)
+- A **workset** ("Station" in every sport, texts in `common`) holds a ranking and the kind its
+  captures get. A race starts **without** any; the first is created automatically when a
+  device ranks a participant or chooses a kind without having a station (the actions would have
+  no home otherwise). The first workset in `state.worksets` is the **default**;
+  `workset.makeDefault` (★ in the settings) moves one to the front. Deleting the default makes
+  the next one the default; deleting the last one resets the race as if it never had one
+  (numbering starts at 1 again).
+- Unnamed worksets are called "Station {number}"; `number` is fixed when the workset is created
+  (highest existing + 1), so deleting one never renames the others or the captures' stations.
+  Names are ≤ 40 chars and unique case-insensitively (also against the other stations' labels
+  in the UI).
+- **This device's station** is per connection, never synced: `localStorage['zeitnah.workset:
+  <serverUrl>|<code>']` (or `…:local`) = `{id}` with a workset id or `null` for "No station" (an
+  explicit choice). It is always **explicit**: nothing falls back to the default implicitly.
+  Nothing stored means the device never joined one, which only lasts while the race has no
+  workset — as soon as one exists the device joins the default and stores it
+  (`syncDeviceWorkset()`, before every render). An action that needs a station while the device
+  is on "No station" switches it explicitly to the default (`ensureWorkset()`).
+- Deleted on another device while this device is on it: the device switches to "No station"
+  and a dismissible notice at the bottom of the clock card names the station and offers the
+  remaining ones (`#worksetNotice`). A station this device deleted itself (including undo)
+  gives no notice (`removedLocally`). None left: back to "never joined".
+- Settings section "Stations" (between event types and the server connection): one row per
+  station — ●/○ to use it on this device, the name inline (placeholder = "Station n"), "default"
+  and the number of devices on it (WebSocket presence), ★ make default, ✕ delete (confirmation)
+  — plus a "No station" row and "+ Add station" (`.link-btn`). In server mode the section is
+  always there; a **local** race only shows it (and with it switching) once it has more than one
+  station, e.g. after copying server data. A single local station is created silently.
+- Every capture stores the `worksetId` of the device that recorded it (null without a station);
+  it only leaves that station's ranking. The UI can't change it afterwards.
 
 ### Race name
 - Shown instead of the default title (`header.defaultName`; sailing: "⛵ Zielzeiten" /
@@ -408,9 +456,11 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   field is required.
 - The active connection `{serverUrl, code}` is stored in
   `localStorage['zeitnah.connection']` and resumed after a reload.
-- **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): the
-  last `RECENT_MAX` = 3 races this browser connected to, newest first, as
-  `{serverUrl, code, name}`. Written on every connect and updated with the race name once it
+- **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): every
+  race this browser connected to, newest first, as `{serverUrl, code, name}`; the settings show
+  the latest `RECENT_MAX` = 3. Each row has a ✕ (no confirmation) that removes the entry, so the
+  next one moves up; it also deletes the race's cache and stored station unless changes are
+  still waiting to be sent (then the cache stays, so reconnecting delivers them). Written on every connect and updated with the race name once it
   is known (`rememberConnection()` / `rememberName()`). Connecting passes `keepKnown`, so a
   reconnect keeps the name from last time instead of blanking it until the state arrives;
   `rememberName()` is authoritative, so clearing a race's name clears it in the list too. In local mode the settings list them
@@ -427,10 +477,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Settings → Sync data** (server mode):
   - *Upload local data*: merge local → server; the local data stays in this browser
     (reset it explicitly in local mode if you want it gone). Merging never deletes:
-    participants are matched by id or case-insensitive name, missing ranked participants appended,
-    custom kinds matched by id or case-insensitive name (captures' kinds remapped), captures
-    added unless their id exists, name only set if the race has none, sport only set if the race
-    still has the default (`generic`); the selected kind is not merged.
+    participants are matched by id or case-insensitive name, custom kinds matched by id or
+    case-insensitive name (captures' kinds remapped), stations matched by id or (both named)
+    name, else appended with the next number (captures' stations remapped), missing ranked
+    participants appended to each station's ranking, captures added unless their id exists,
+    name only set if the race has none, sport only set if the race still has the default
+    (`generic`); an existing station's selected kind is not merged.
   - *Copy server data to this browser*: overwrite local data with the race (never merge).
 - **Disconnect** switches back to local storage; the server race is untouched.
 
@@ -443,10 +495,11 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `localStorage['zeitnah.cache:<serverUrl>|<code>']`, so buffered changes survive
   reloads.
 - Allowed while not connected (buffered, sent on reconnect): `capture.add`,
-  `capture.assign`, `capture.delete`, `capture.setKind`, `workset.setKind`, `ranking.add`,
-  `ranking.remove`, `ranking.move` (`OFFLINE_OPS` in the frontend).
-- Everything else (rename race, add/import/rename/delete participants, custom kinds, merge,
-  archive) is
+  `capture.assign`, `capture.delete`, `capture.setKind`, `workset.add`, `workset.setKind`,
+  `workset.ranking.add`, `workset.ranking.remove`, `workset.ranking.move` (`OFFLINE_OPS` in the
+  frontend). `workset.add` is among them so the first station can be created offline.
+- Everything else (rename race, add/import/rename/delete participants, custom kinds, rename /
+  delete stations or change the default, merge, archive) is
   disabled until the connection is back: elements marked `data-edit="normal"` are dimmed
   via `body.lock-normal`, and `perform()` refuses with a toast.
 - Status (local / connecting / connected / connection lost, plus pending count and
@@ -456,13 +509,15 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (`backend.clientCount()`); while the HTTP fallback is in use it is unknown and omitted,
   since polling requests can't be attributed to a client. The settings panel spells the same
   number out in its status details ("2 Geräte verbunden" / "2 devices connected",
-  `settings.clientsOne` / `settings.clientsMany`).
+  `settings.clientsOne` / `settings.clientsMany`). Each device announces its station
+  (`{"type":"workset"}`), and `presence` also counts the devices per station
+  (`backend.worksetClientCount()`), shown in the settings' station rows.
 
 ### Archiving
 - Settings → "Archive race" (server mode only, confirmation, irreversible).
 - The server rejects every operation on an archived race (`archived`).
-- Archiving empties the ranking (the reducers do it, so both sides agree): nothing is
-  approaching the line any more.
+- Archiving empties every station's ranking (the reducers do it, so both sides agree): nothing
+  is approaching the line any more.
 - Clients show a banner, dim every `data-edit` element (`body.lock-all`) and refuse all
   operations. `body.archived` hides the clock card and the ranking panel entirely and
   re-lays the grid to participants + finishes. A local copy pulled from an archived race is
@@ -503,7 +558,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   top and undoes the restore. The panel and the modal backdrop use
   `overscroll-behavior: contain`.
 - Opened by ⚙ in the top bar (next to the status pill and the undo/redo buttons).
-- Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) · local mode: status, race code +
+- Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) ·
+  Stations (see Stations) · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced
   settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
@@ -525,27 +581,35 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `race.setSport` | `sport` (one of `SPORTS`) | rejects with `invalid_sport` if not a known sport |
 | `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |
-| `participant.delete` | `participantId` | also removes it from the ranking; captures keep the id |
-| `ranking.add` | `participantId` | appends if the participant exists and isn't ranked |
-| `ranking.remove` | `participantId` | |
-| `ranking.move` | `participantId, beforeId` (null = end) | no-op if not ranked |
-| `capture.add` | `capture: {id, ts, tzOffset, participantId, kind}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); ignored if id exists; unknown participant → unassigned; removes the participant from the ranking unless the kind is a marker |
+| `participant.delete` | `participantId` | also removes it from every ranking; captures keep the id |
+| `capture.add` | `capture: {id, ts, tzOffset, participantId, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown participant → unassigned; removes the participant from that workset's ranking unless the kind is a marker |
 | `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
 | `capture.delete` | `captureId` | |
 | `capture.setKind` | `captureId, kind` | same `kind` rules as `capture.add`; no-op if the capture is gone; ranking untouched |
-| `workset.setKind` | `kind` | sets `captureKind`; no-op unless the kind is built-in or an existing custom kind |
+| `workset.add` | `workset: {id, name?, number?, ranking?, captureKind?}`, `beforeId?` | skips an existing id and a name taken case-insensitively; name ≤ 40 (`invalid_workset_name`, null/blank = unnamed); `number` defaults to the highest + 1 (else 1…1000000, `invalid_workset_number`); `ranking` (≤ 5000 ids, `invalid_ranking`, unknown participants dropped) and `captureKind` (unknown → `finish`) and `beforeId` (insert before it, else append) restore a deleted workset (undo) |
+| `workset.rename` | `worksetId, name` (null/blank = unnamed) | no-op if the workset is gone |
+| `workset.delete` | `worksetId` | captures keep the id; the next one becomes the default |
+| `workset.makeDefault` | `worksetId` | moves it to the front |
+| `workset.setKind` | `worksetId, kind` | sets its `captureKind`; no-op unless the workset exists and the kind is built-in or an existing custom kind |
+| `workset.ranking.add` | `worksetId, participantId` | appends if workset and participant exist and it isn't ranked there |
+| `workset.ranking.remove` | `worksetId, participantId` | |
+| `workset.ranking.move` | `worksetId, participantId, beforeId` (null = end) | no-op if not ranked there |
 | `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
 | `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
-| `kind.delete` | `kindId` | captures keep the id; resets `captureKind` to `finish` if it was this kind |
-| `state.merge` | `state: {name, sport, participants, ranking, kinds, captures}` | non-destructive merge (see above); `sport` and `kinds` optional, `sport` rejected with `invalid_sport` if unknown |
+| `kind.delete` | `kindId` | captures keep the id; resets every workset's `captureKind` that was this kind to `finish` |
+| `state.merge` | `state: {name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
+
+Every `workset.*` operation except `workset.add` requires `worksetId` (`invalid_workset_id`);
+there is no implicit default workset in operations.
 
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captureKind, kinds:[{id,name,role}], captures:[{id,ts,tzOffset,participantId,kind}]}`.
-States stored by earlier versions lack `captureKind`, `kinds` and the captures' `kind`:
-`OperationReducer::upgrade()` fills them in when the repository loads a race, `normalizeState()`
-on the client.
+`{name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,participantId,kind,worksetId}]}`.
+States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
+and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
+former and drops the latter when the repository loads a race (a race starts without worksets),
+`normalizeState()` does the same on the client.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
@@ -569,14 +633,16 @@ events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README.
 ### WebSocket protocol (`SyncServer`)
 ```
 client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state"}
+client → {"type":"workset","worksetId"}             (the device's station, null = none; only for presence)
 client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers)
-                                                    server → {"type":"presence","code","clients"} (to all subscribers)
+                                                    server → {"type":"presence","code","clients","worksets":{id:n}} (to all subscribers)
                                                     server → {"type":"ack","opId"}  (duplicate, already applied)
                                                     server → {"type":"rejected","opId","error"}
 client → {"type":"ping"}                            server → {"type":"pong"}
                                                     server → {"type":"error","error":"not_found"|...}
 ```
-`presence` is sent to a race's subscribers whenever one joins or leaves; `clients` counts
+`presence` is sent to a race's subscribers whenever one joins, leaves or switches its station
+(`worksets` counts the devices per station); `clients` counts
 only the WebSocket connections of *this* process, so it is a lower bound when several
 WebSocket servers run, and HTTP-polling clients are never counted.
 
@@ -587,8 +653,8 @@ and drops connections idle for 75 s.
 ### Client (`frontend/index.html`)
 - `LocalBackend` / `ServerBackend` share one interface: `getState()`, `getStatus()`,
   `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`,
-  `clientCount()`, `destroy()`.
-- All UI mutations go through `perform(op)`, which checks `blockReason` first.
+  `clientCount()`, `worksetClientCount(id)`, `isReady()`, `announceWorkset(id)`, `destroy()`.
+- All UI mutations go through `perform(op | [ops])`, which checks `blockReason` first.
 - `ServerBackend`: `confirmed` + `seq` + `pending` → `view`. Server events are applied in
   `seq` order (gap → resync with a snapshot); an event whose `op.opId` matches a pending op
   settles it; `waitFor(opId)` resolves when an op is confirmed or rejected.
@@ -627,7 +693,7 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 ## Known limitations / ideas not yet requested
 - Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
   group) they are wrong for all but the last group. Groups are not modelled yet.
-- Only the default workset exists: all devices on a race share one ranking and one selected kind.
+- Stations are not access-controlled yet: every device may see and manage all of them.
 - No authentication: anyone who knows a race code can read and edit it.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
   run service workers; the app still works, but a reload then needs the server.
