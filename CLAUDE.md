@@ -98,7 +98,12 @@ tests/undo-history.mjs             Undo/redo: random sequences undone and redone
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
 tests/e2e/offline-start.mjs        PWA test: starts/stops its own PHP server, checks offline start
 tools/generate-icons.mjs           Renders public/icons/*.png from the SVG definition inside it
+docs/groups.md                     Design + progress: groups, capture targets, fields, schema versioning
 ```
+
+`docs/` holds design documents for features in progress. Keep the one you work on up to date
+(progress table, decisions, deviations); once a phase is built, its behaviour is documented
+here in `CLAUDE.md`, which stays the reference for what is implemented.
 
 ## Hard rules
 
@@ -789,7 +794,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 
 ## Known limitations / ideas not yet requested
 - Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
-  group) they are wrong for all but the last group. Groups are not modelled yet.
+  group) they are wrong for all but the last group. Groups are not modelled yet; the accepted
+  concept and the plan are in `docs/groups.md`.
 - No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
   create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
