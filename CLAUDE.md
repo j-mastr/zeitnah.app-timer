@@ -190,7 +190,13 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
 - Holds the expected crossing order of participants approaching the line together.
 - Add with → in the overall list or via the **fuzzy quick search** (ranking: prefix >
-  substring > characters in order; Enter takes the best match).
+  substring > characters in order). Keyboard in the search field: **Enter** takes the
+  selected suggestion, or the first one when nothing is selected · **↓/↑** move the selection
+  (the first press of either selects the first suggestion, then it wraps) · **Tab** selects
+  the first suggestion while nothing is selected, and otherwise still leaves the field ·
+  **Escape** clears and leaves. The selection is kept by participant id while typing, as long
+  as that participant is still among the matches (`selectedMatchId`); the list is a
+  `role="listbox"` with `aria-activedescendant` on the input.
 - Reorder with ▲▼ buttons and drag & drop (drag handle ⠿; pointer events with document-level
   listeners so it works with touch and when the pointer leaves the handle).
 - Remove with ↩ (the participant stays in the overall list).

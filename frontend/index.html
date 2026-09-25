@@ -139,6 +139,7 @@
   .search-wrap{position:relative; margin-bottom:10px;}
   .search-results{position:absolute; top:100%; left:0; right:0; background:var(--panel); border:1px solid var(--border); border-radius:8px; margin-top:4px; max-height:220px; overflow:auto; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,.3);}
   .search-results .res{padding:9px 12px; font-size:13px; cursor:pointer;}
+  .search-results .res.sel{background:var(--panel2);}
 
   .search-empty{padding:9px 12px; font-size:12px; color:var(--muted);}
 
@@ -312,8 +313,8 @@
       </div>
       <div class="hint-line" data-i18n="sorted.hint"></div>
       <div class="search-wrap" data-edit="critical">
-        <input class="input" id="rankSearch" type="text" data-i18n-placeholder="sorted.search" autocomplete="off">
-        <div class="search-results" id="rankSearchResults" hidden></div>
+        <input class="input" id="rankSearch" type="text" data-i18n-placeholder="sorted.search" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="rankSearchResults">
+        <div class="search-results" id="rankSearchResults" role="listbox" hidden></div>
       </div>
       <ul id="sortedList"></ul>
       <div class="empty" id="sortedEmpty" data-i18n="sorted.empty"></div>
@@ -2360,10 +2361,11 @@ function initSortedDrag(handle){
 const rankSearch = document.getElementById('rankSearch');
 const rankSearchResults = document.getElementById('rankSearchResults');
 let currentMatches = [];
+let selectedMatchId = null;   // kept across re-renders while the participant is still listed
 function renderSearchResults(){
   const q = rankSearch.value.trim();
   rankSearchResults.innerHTML = '';
-  if(!q){ rankSearchResults.hidden = true; currentMatches = []; return; }
+  if(!q){ rankSearchResults.hidden = true; currentMatches = []; selectedMatchId = null; rankSearch.removeAttribute('aria-activedescendant'); return; }
   const s = S();
   currentMatches = s.participants
     .filter(b => !s.ranking.includes(b.id))
@@ -2378,15 +2380,31 @@ function renderSearchResults(){
     d.textContent = t('sorted.noMatch');
     rankSearchResults.appendChild(d);
   }
-  currentMatches.forEach(b => {
+  if(!currentMatches.some(b => b.id === selectedMatchId)) selectedMatchId = null;
+  currentMatches.forEach((b, i) => {
     const d = document.createElement('div');
-    d.className = 'res';
+    d.className = 'res' + (b.id === selectedMatchId ? ' sel' : '');
+    d.id = 'rankMatch' + i;
+    d.setAttribute('role', 'option');
+    d.setAttribute('aria-selected', b.id === selectedMatchId ? 'true' : 'false');
     d.textContent = b.name;
     d.addEventListener('mousedown', e => e.preventDefault());
     d.addEventListener('click', () => { addFromSearch(b.id); rankSearch.focus(); });
     rankSearchResults.appendChild(d);
+    if(b.id === selectedMatchId){
+      rankSearch.setAttribute('aria-activedescendant', d.id);
+      requestAnimationFrame(() => d.scrollIntoView({block: 'nearest'}));
+    }
   });
+  if(!selectedMatchId) rankSearch.removeAttribute('aria-activedescendant');
   rankSearchResults.hidden = false;
+}
+/** Moves the selection; without one, both directions start at the first match. */
+function moveSearchSelection(step){
+  if(!currentMatches.length) return;
+  const i = currentMatches.findIndex(b => b.id === selectedMatchId);
+  selectedMatchId = currentMatches[i < 0 ? 0 : (i + step + currentMatches.length) % currentMatches.length].id;
+  renderSearchResults();
 }
 function addFromSearch(participantId){
   perform({type:'ranking.add', participantId});
@@ -2395,7 +2413,12 @@ function addFromSearch(participantId){
 }
 rankSearch.addEventListener('input', renderSearchResults);
 rankSearch.addEventListener('keydown', (e) => {
-  if(e.key === 'Enter'){ e.preventDefault(); if(currentMatches[0]) addFromSearch(currentMatches[0].id); }
+  const selected = currentMatches.find(b => b.id === selectedMatchId) || currentMatches[0];
+  if(e.key === 'Enter'){ e.preventDefault(); if(selected) addFromSearch(selected.id); }
+  else if(e.key === 'ArrowDown'){ e.preventDefault(); moveSearchSelection(1); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); moveSearchSelection(-1); }
+  // Tab picks up the list, but only while nothing is selected — otherwise it still leaves the field.
+  else if(e.key === 'Tab' && !e.shiftKey && !selectedMatchId && currentMatches.length){ e.preventDefault(); moveSearchSelection(1); }
   else if(e.key === 'Escape'){ rankSearch.value = ''; renderSearchResults(); rankSearch.blur(); }
 });
 document.addEventListener('click', (e) => { if(!e.target.closest('.search-wrap')) rankSearchResults.hidden = true; });
