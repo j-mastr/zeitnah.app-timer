@@ -21,6 +21,35 @@ and **motor sports** (participants are vehicles). That vocabulary exists **only 
 user-facing text sets**; the code itself is sport-neutral. The sport is a per-race field
 (`state.sport`), picked from a select in Settings and synced like the race name.
 
+## Product premises (apply to every new feature)
+
+The current feature set is the MVP and forms the **core**: record times, add and rank
+participants, assign times automatically (via the ranking) or manually. Every extension
+must uphold these premises; if a request seems to conflict with one, raise it with the
+product owner before implementing.
+
+1. **Works local-only and synced.** Every feature must work in local mode (no server,
+   including the standalone artifact copy) *and* in server mode with real-time sync across
+   devices. Shared race data therefore goes through operations handled by both reducers
+   (see Architecture); per-device preferences stay in `localStorage`. Decide explicitly how
+   the feature behaves offline (`OFFLINE_OPS`, `data-edit` locks). A server-only or
+   local-only feature is not acceptable.
+2. **The core stays frictionless.** The MVP is the easiest and cleanest surface and must
+   stay that way: opening the app and capturing times needs no configuration, adding and
+   ranking participants stays simple, and automatic and manual assignment keep working
+   without extra steps. A new feature must never add a required step, dialog, setting or
+   decision in front of a core task, and its defaults must leave the core behaviour
+   unchanged.
+3. **Discreet, discoverable, unlockable.** The UI stays clean and focused on the key
+   tasks. Non-core features are kept discreet: someone who needs one or knows what to look
+   for finds it easily (settings, a panel-header icon button, a keyboard shortcut, a
+   link-styled button), and using it "unlocks" the related views, columns or options —
+   typically because the data it creates now exists (e.g. a column appears once some
+   participant has that value), not through a separate feature toggle. As long as nobody
+   uses a feature, it adds no visible panels, columns, badges or controls to the core
+   screens. Prefer the existing discreet patterns (`.icon-btn`, `.link-btn`, the settings
+   drawer, the shortcuts dialog) over new prominent controls.
+
 ## Vocabulary
 
 | Concept in code | Sailing UI (de / en) |
@@ -479,6 +508,8 @@ BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install fi
 debugging, and `php bin/console cache:clear` after changing config or service wiring.
 
 ### Checklist for adding an operation
+0. Check the feature against the product premises (local + synced, core untouched,
+   discreet until used).
 1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`.
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
