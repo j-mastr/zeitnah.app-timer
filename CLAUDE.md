@@ -245,8 +245,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Archiving
 - Settings → "Archive race" (server mode only, confirmation, irreversible).
 - The server rejects every operation on an archived race (`archived`).
+- Archiving empties the ranking (the reducers do it, so both sides agree): nothing is
+  approaching the line any more.
 - Clients show a banner, dim every `data-edit` element (`body.lock-all`) and refuse all
-  operations. A local copy pulled from an archived race is editable again.
+  operations. `body.archived` hides the clock card and the sorted panel entirely and
+  re-lays the grid to participants + finishes. A local copy pulled from an archived race is
+  editable again.
 - In local mode the settings show "Reset local data" instead of "Archive".
 
 ### Progressive web app (offline start)
@@ -284,7 +288,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | type | fields | semantics |
 | --- | --- | --- |
 | `race.rename` | `name` (null/blank = default) | max 80 chars |
-| `race.archive` | – | sets `archived: true` |
+| `race.archive` | – | sets `archived: true` and clears the ranking |
 | `race.setSport` | `sport` (one of `SPORTS`) | rejects with `invalid_sport` if not a known sport |
 | `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |

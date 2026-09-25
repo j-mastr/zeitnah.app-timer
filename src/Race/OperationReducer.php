@@ -66,6 +66,8 @@ final class OperationReducer
 
             case 'race.archive':
                 $state['archived'] = true;
+                // An archived race is read-only, so the expected crossing order is meaningless.
+                $state['ranking'] = [];
 
                 return $state;
 

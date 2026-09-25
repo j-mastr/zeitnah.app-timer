@@ -181,6 +181,13 @@
   /* Actions that need a live server connection (normal) or are blocked in archived races (all). */
   body.lock-normal [data-edit="normal"], body.lock-all [data-edit]{opacity:.4; pointer-events:none;}
 
+  /* An archived race records nothing any more: no clock, no sorted list. */
+  body.archived .clock-card, body.archived .sorted-panel{display:none;}
+  body.archived .app{grid-template-areas:"participants" "captures";}
+  @media (min-width:700px){
+    body.archived .app{grid-template-areas:"participants captures";}
+  }
+
   /* ---------- settings drawer ---------- */
   .overlay{position:fixed; inset:0; background:var(--shade); z-index:60;}
   .drawer{position:fixed; top:0; right:0; bottom:0; width:min(420px,100vw); background:var(--bg); border-left:1px solid var(--border); z-index:61;
@@ -1264,6 +1271,8 @@ function applyOp(s, op){
     }
     case 'race.archive':
       s.archived = true;
+      // An archived race is read-only, so the expected crossing order is meaningless.
+      s.ranking = [];
       return s;
     case 'race.setSport': {
       const sport = op.sport;
@@ -1953,6 +1962,8 @@ function renderHeader(){
   if(!editingTitle) document.getElementById('raceTitle').textContent = s.name || t('header.defaultName');
   document.title = s.name ? `${s.name} · ${t('app.title')}` : t('app.title');
   document.getElementById('archivedBanner').hidden = !s.archived;
+  // Archived races are read-only: the clock and the sorted list have nothing left to do.
+  document.body.classList.toggle('archived', !!s.archived);
 }
 
 function statusInfo(){
