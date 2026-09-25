@@ -22,18 +22,22 @@
     --bg:#0A1929; --panel:#112A45; --panel2:#14314F; --text:#EAF0F5; --muted:#7E94A8;
     --accent:#E0A63B; --accent-ink:#2A1C04; --danger:#E0625A; --ok:#3FB37F; --border:rgba(255,255,255,0.09);
     --shade:rgba(2,10,20,0.55);
+    /* Capture kinds by role (finish has none: it is the default look). */
+    --kind-start:#3FB37F; --kind-split:#5AA9E6; --kind-marker:#C184E6;
   }
   @media (prefers-color-scheme: light){
     :root:not([data-theme="dark"]){
       --bg:#EEF2F5; --panel:#FFFFFF; --panel2:#F4F7F9; --text:#0F2438; --muted:#5C7690;
       --accent:#B9822A; --accent-ink:#FFFFFF; --danger:#B23B32; --ok:#1E8A5A; --border:rgba(15,36,56,0.10);
       --shade:rgba(15,36,56,0.35);
+      --kind-start:#1E8A5A; --kind-split:#2F7BB8; --kind-marker:#8A4BAE;
     }
   }
   :root[data-theme="light"]{
     --bg:#EEF2F5; --panel:#FFFFFF; --panel2:#F4F7F9; --text:#0F2438; --muted:#5C7690;
     --accent:#B9822A; --accent-ink:#FFFFFF; --danger:#B23B32; --ok:#1E8A5A; --border:rgba(15,36,56,0.10);
     --shade:rgba(15,36,56,0.35);
+    --kind-start:#1E8A5A; --kind-split:#2F7BB8; --kind-marker:#8A4BAE;
   }
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
@@ -84,6 +88,7 @@
   .captures-panel{grid-area:captures;}
 
   .clock-card{
+    position:relative;
     background:var(--panel); border:1px solid var(--border); border-radius:14px;
     padding:20px 18px; text-align:center;
   }
@@ -103,6 +108,28 @@
   .date{color:var(--muted); font-size:12px; margin-top:6px; font-family:'Space Mono',monospace;}
   .capture-btn{margin-top:16px; width:100%; max-width:420px; border:none; border-radius:12px; background:var(--accent); color:var(--accent-ink); font-family:'Space Mono',monospace; font-weight:700; font-size:18px; padding:16px; cursor:pointer; letter-spacing:.5px; transition:transform .08s ease;}
   .capture-btn:active{transform:scale(0.97);}
+  /* A kind other than finish shows as a stripe in its role colour; a one-shot kind adds a dashed ring. */
+  .capture-btn.kind-start{box-shadow:inset 10px 0 0 var(--kind-start);}
+  .capture-btn.kind-split{box-shadow:inset 10px 0 0 var(--kind-split);}
+  .capture-btn.kind-marker{box-shadow:inset 10px 0 0 var(--kind-marker);}
+  .capture-btn.once{outline:2px dashed var(--text); outline-offset:3px;}
+  .seg.kind-seg{display:inline-flex; max-width:100%; justify-content:center; margin-top:14px;}
+  .kind-seg button{-webkit-touch-callout:none; user-select:none; -webkit-user-select:none;}
+  .kind-seg button.once{outline:1px dashed var(--text); outline-offset:-3px;}
+  .kind-dot{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; vertical-align:1px; background:transparent; border:1px solid var(--muted);}
+  .kind-dot.kind-start{background:var(--kind-start); border-color:var(--kind-start);}
+  .kind-dot.kind-split{background:var(--kind-split); border-color:var(--kind-split);}
+  .kind-dot.kind-marker{background:var(--kind-marker); border-color:var(--kind-marker);}
+  .kind-note{color:var(--muted); font-size:12px; margin-top:8px;}
+  .kind-note .link-btn{margin-top:0;}
+  .kind-menu{position:absolute; top:34px; right:12px; z-index:30; min-width:220px; max-width:calc(100% - 24px); text-align:left;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,.3);}
+  .kind-opt{display:flex; align-items:center; gap:6px;}
+  .kind-pick{flex:1; min-width:0; text-align:left; background:none; border:none; border-radius:6px; color:var(--text); font:inherit; font-size:13px; padding:8px 10px; cursor:pointer;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .kind-pick.active{background:var(--panel2); font-weight:600;}
+  .kind-opt .link-btn{margin-top:0; font-size:12px; white-space:nowrap;}
+  .kind-menu .kind-new{display:block; margin:4px 0 0; padding:8px 10px;}
   .link-btn{display:inline-block; margin-top:10px; background:none; border:none; padding:2px 6px; color:var(--muted); font-family:inherit; font-size:13px; text-decoration:underline; text-underline-offset:3px; cursor:pointer;}
   .link-btn:active{color:var(--text);}
   .hint-line{color:var(--muted); font-size:11px; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
@@ -185,6 +212,11 @@
   .pending-mark{color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
   .cap-side{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 160px; min-width:0;}
   select.assign{flex:1 1 auto; min-width:0; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
+  select.assign.kind-select{flex:0 1 auto; max-width:45%; border-left-width:4px;}
+  select.kind-select.kind-start{border-left-color:var(--kind-start);}
+  select.kind-select.kind-split{border-left-color:var(--kind-split);}
+  select.kind-select.kind-marker{border-left-color:var(--kind-marker);}
+  .cap-filter{margin:8px 0 4px;}
   .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right; flex:0 0 auto;}
   #importFile{display:none;}
   /* Borderless icon buttons: panel headers and the clock's pin. */
@@ -221,6 +253,8 @@
     select.assign{padding:11px 10px;}
     .search-results .res{padding:13px 12px;}
     .cap-side{gap:8px;}
+    .kind-pick{padding:12px 10px; font-size:15px;}
+    .kind-opt .link-btn{font-size:13px;}
     /* The wider buttons need more room in the fixed left column. */
     @media (min-width:700px){
       .app{grid-template-columns:minmax(0,360px) minmax(0,1fr);}
@@ -276,6 +310,14 @@
   .link-out{font-size:13px; color:var(--accent); word-break:break-all;}
   .action{margin-top:12px;}
   .action:first-of-type{margin-top:0;}
+  .kind-list{margin-bottom:10px;}
+  .kind-row{display:flex; gap:6px; align-items:center;}
+  .kind-row .input{flex:1 1 auto; min-width:0; padding:8px 10px;}
+  .kind-row .input.kind-role, .input.kind-role{flex:0 0 auto; width:auto; padding:8px 6px;}
+  .kind-add{flex-wrap:wrap;}
+  .kind-add #kindNameInput{flex:1 1 100%;}
+  .kind-add .kind-role{flex:1 1 auto;}
+  .kind-suggest{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--muted);}
 
   /* ---------- dialog ---------- */
   .modal-backdrop{position:fixed; inset:0; background:var(--shade); z-index:80; display:flex; align-items:center; justify-content:center; padding:16px; overflow-y:auto; overscroll-behavior:contain;}
@@ -327,10 +369,16 @@
 
   <div class="app">
     <div class="clock-card">
-      <div class="clock-tools"><button class="icon-btn pin-btn" id="pinClockBtn">📌</button></div>
+      <div class="clock-tools">
+        <button class="icon-btn" id="kindMenuBtn" type="button" data-edit="critical" data-i18n-title="kinds.menu" aria-haspopup="menu" aria-expanded="false" aria-controls="kindMenu">⚑</button>
+        <button class="icon-btn pin-btn" id="pinClockBtn">📌</button>
+      </div>
+      <div class="kind-menu" id="kindMenu" role="menu" hidden></div>
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
       <div class="date" id="dateLine"></div>
-      <button class="capture-btn" id="captureBtn" data-edit="critical" data-i18n="clock.capture"></button>
+      <div><div class="seg kind-seg" id="kindSeg" role="radiogroup" data-edit="critical" data-i18n-title="kinds.segHint" hidden></div></div>
+      <button class="capture-btn" id="captureBtn" data-edit="critical"></button>
+      <div class="kind-note" id="kindOnceNote" hidden><span id="kindOnceText"></span> <button class="link-btn" id="kindOnceCancel" data-i18n="kinds.onceCancel"></button></div>
       <div id="captureFreeRow"><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
       <div class="hint-line" id="clockHints">
         <span class="hint-pair"><span class="kbd">␣</span><span id="hintSpace"></span></span>
@@ -341,7 +389,7 @@
 
     <div class="panel sorted-panel">
       <div class="panel-head">
-        <h2><span data-i18n="sorted.title"></span> <span class="count" id="sortedCount">0</span></h2>
+        <h2><span id="sortedTitle"></span> <span class="count" id="sortedCount">0</span></h2>
       </div>
       <div class="hint-line" data-i18n="sorted.hint"></div>
       <div class="search-wrap" data-edit="critical">
@@ -371,6 +419,7 @@
           <button data-sf="manual" data-i18n="sort.manual"></button>
           <button data-sf="alpha" data-i18n="sort.alpha"></button>
           <button data-sf="time" data-i18n="sort.time"></button>
+          <button data-sf="elapsed" data-i18n="sort.elapsed" hidden></button>
         </div>
         <button class="mini wide" id="sortDirBtn" data-i18n-title="sort.dir">↑</button>
       </div>
@@ -384,9 +433,10 @@
 
     <div class="panel captures-panel">
       <div class="panel-head">
-        <h2><span data-i18n="captures.title"></span> <span class="count" id="capCount">0</span></h2>
+        <h2><span id="capTitle"></span> <span class="count" id="capCount">0</span></h2>
         <button class="icon-btn" id="exportBtn" data-i18n-title="captures.export">↧</button>
       </div>
+      <div class="seg cap-filter" id="capFilterSeg" hidden></div>
       <ul id="capList" style="margin-top:12px;"></ul>
       <div class="empty" id="capEmpty" data-i18n="captures.empty"></div>
     </div>
@@ -423,6 +473,19 @@
   <section>
     <h3 data-i18n="settings.sport"></h3>
     <select class="input" id="sportSelect" data-edit="normal"></select>
+  </section>
+
+  <section id="kindsSection">
+    <h3 data-i18n="kinds.title"></h3>
+    <p class="help" id="kindsHelp" style="margin:0 0 10px;"></p>
+    <ul class="kind-list" id="kindList"></ul>
+    <div class="add-row kind-add" data-edit="normal">
+      <input class="input" id="kindNameInput" type="text" maxlength="40" autocomplete="off" data-i18n-placeholder="kinds.placeholder">
+      <select class="input kind-role" id="kindRoleSelect" data-i18n-title="kinds.role"></select>
+      <button class="btn" id="addKindBtn" data-i18n="kinds.add"></button>
+    </div>
+    <div class="kind-suggest" id="kindSuggest" data-edit="normal"></div>
+    <p class="help" data-i18n="kinds.roleHelp"></p>
   </section>
 
 
@@ -523,6 +586,8 @@
       <li><span class="keys"><span class="kbd">␣</span></span><span data-i18n="clock.hintNext"></span></li>
       <li><span class="keys"><span class="kbd">1</span>–<span class="kbd">9</span></span><span data-i18n="clock.hintDirect"></span></li>
       <li><span class="keys"><span class="kbd">0</span></span><span data-i18n="clock.hintFree"></span></li>
+      <li><span class="keys"><span class="kbd">K</span></span><span data-i18n="shortcuts.kind"></span></li>
+      <li><span class="keys"><span class="kbd">⇧</span><span class="kbd">K</span></span><span data-i18n="shortcuts.kindOnce"></span></li>
       <li><span class="keys"><span class="kbd">F</span></span><span data-i18n="shortcuts.focusSearch"></span></li>
       <li><span class="keys"><span class="kbd">N</span></span><span data-i18n="shortcuts.focusAdd"></span></li>
       <li><span class="keys"><span class="kbd">A</span></span><span data-i18n="shortcuts.filterAll"></span></li>
@@ -709,6 +774,41 @@ const TEXTS = {
       'history.sport': 'Sportart ändern',
       'shortcuts.undo': 'letzte Änderung rückgängig machen',
       'shortcuts.redo': 'rückgängig gemachte Änderung wiederholen',
+      'clock.captureKind': '{kind} ERFASSEN',
+      'captures.recordedKind': '{kind} erfasst',
+      'captures.titleAll': 'Zeiten',
+      'captures.elapsed': 'Laufzeit {time}',
+      'captures.filterAll': 'Alle',
+      'sort.elapsed': 'Laufzeit',
+      'sorted.titleStart': 'Vor dem Start',
+      'sorted.titleSplit': 'Im Anlauf: {kind}',
+      'kinds.title': 'Zeitarten',
+      'kinds.help': '{start}, {split} und {finish} gibt es immer. Eigene Zeitarten (z. B. Protest) gelten für das ganze Rennen und alle Geräte.',
+      'kinds.menu': 'Zeitart wählen',
+      'kinds.segHint': 'Tippen: Zeitart wählen · lange drücken oder Rechtsklick: nur für die nächste Zeit',
+      'kinds.once': 'nur nächste Zeit',
+      'kinds.new': 'Neue Zeitart …',
+      'kinds.onceNote': 'Nächste Zeit: {kind} – danach wieder {sticky}.',
+      'kinds.onceCancel': 'Abbrechen',
+      'kinds.placeholder': 'Neue Zeitart, z. B. Protest',
+      'kinds.add': 'Hinzufügen',
+      'kinds.role': 'Bedeutung',
+      'kinds.role.split': 'Durchgang',
+      'kinds.role.marker': 'Vermerk',
+      'kinds.roleHelp': 'Ein Durchgang wird je Teilnehmer gezählt und nimmt ihn aus dem Zieleinlauf. Ein Vermerk (z. B. Protest) hält nur den Zeitpunkt fest.',
+      'kinds.suggest': 'Vorschläge:',
+      'kinds.none': 'Noch keine eigenen Zeitarten.',
+      'kinds.exists': '„{name}“ gibt es schon.',
+      'kinds.deleted': '(gelöschte Zeitart)',
+      'kinds.deleteTitle': 'Zeitart löschen?',
+      'kinds.deleteText': '„{name}“ wird gelöscht. Bereits erfasste Zeiten bleiben erhalten und erscheinen als „gelöschte Zeitart“.',
+      'history.captureKind': 'Zeitart einer Zeit ändern',
+      'history.worksetKind': 'Zeitart wählen',
+      'history.kindAdd': 'Zeitart hinzufügen',
+      'history.kindUpdate': 'Zeitart bearbeiten',
+      'history.kindDelete': 'Zeitart löschen',
+      'shortcuts.kind': 'Zeitart wechseln',
+      'shortcuts.kindOnce': 'Zeitart nur für die nächste Zeit (Esc: abbrechen)',
     },
     en: {
       'app.title': 'zeitnah',
@@ -835,6 +935,41 @@ const TEXTS = {
       'history.sport': 'Change sport',
       'shortcuts.undo': 'undo the last change',
       'shortcuts.redo': 'redo the undone change',
+      'clock.captureKind': 'RECORD {kind}',
+      'captures.recordedKind': '{kind} recorded',
+      'captures.titleAll': 'Times',
+      'captures.elapsed': 'Elapsed {time}',
+      'captures.filterAll': 'All',
+      'sort.elapsed': 'Elapsed',
+      'sorted.titleStart': 'Approaching the start',
+      'sorted.titleSplit': 'Approaching: {kind}',
+      'kinds.title': 'Event types',
+      'kinds.help': '{start}, {split} and {finish} are always there. Custom event types (e.g. protest) apply to the whole race and every device.',
+      'kinds.menu': 'Choose the event type',
+      'kinds.segHint': 'Tap: choose the event type · long press or right-click: for the next time only',
+      'kinds.once': 'next time only',
+      'kinds.new': 'New event type …',
+      'kinds.onceNote': 'Next time: {kind} – then back to {sticky}.',
+      'kinds.onceCancel': 'Cancel',
+      'kinds.placeholder': 'New event type, e.g. protest',
+      'kinds.add': 'Add',
+      'kinds.role': 'Meaning',
+      'kinds.role.split': 'Passage',
+      'kinds.role.marker': 'Note',
+      'kinds.roleHelp': 'A passage is counted per participant and takes them out of the approaching list. A note (e.g. a protest) only records the moment.',
+      'kinds.suggest': 'Suggestions:',
+      'kinds.none': 'No custom event types yet.',
+      'kinds.exists': '“{name}” already exists.',
+      'kinds.deleted': '(deleted event type)',
+      'kinds.deleteTitle': 'Delete event type?',
+      'kinds.deleteText': '“{name}” will be deleted. Times already recorded are kept and show as “deleted event type”.',
+      'history.captureKind': 'Change the event type of a time',
+      'history.worksetKind': 'Choose event type',
+      'history.kindAdd': 'Add event type',
+      'history.kindUpdate': 'Edit event type',
+      'history.kindDelete': 'Delete event type',
+      'shortcuts.kind': 'switch the event type',
+      'shortcuts.kindOnce': 'event type for the next time only (Esc: cancel)',
     },
   },
 
@@ -888,6 +1023,12 @@ const TEXTS = {
       'err.notFound': 'Das Rennen „{code}“ wurde auf dem Server nicht gefunden.',
       'err.codeEmpty': 'Bitte einen Rennen-Code eingeben.',
       'err.gone': 'Das Rennen ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+      // Built-in capture kinds, suggestions for custom ones (name:role, comma-separated).
+      'kind.start': 'Start',
+      'kind.split': 'Zwischenzeit',
+      'kind.finish': 'Ziel',
+      'kinds.suggestions': 'Notiz:marker, Aufgabe:marker',
+      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Teilnehmer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏁 Finish Times',
@@ -937,6 +1078,11 @@ const TEXTS = {
       'err.notFound': 'Race “{code}” was not found on the server.',
       'err.codeEmpty': 'Please enter a race code.',
       'err.gone': 'The race no longer exists on the server. You have been disconnected.',
+      'kind.start': 'Start',
+      'kind.split': 'Split',
+      'kind.finish': 'Finish',
+      'kinds.suggestions': 'Note:marker, Retired:marker',
+      'export.headerKinds': 'Place;Timestamp;Time;Participant;Event type;Elapsed',
     },
   },
 
@@ -991,6 +1137,11 @@ const TEXTS = {
       'err.notFound': 'Die Regatta „{code}“ wurde auf dem Server nicht gefunden.',
       'err.codeEmpty': 'Bitte einen Regatta-Code eingeben.',
       'err.gone': 'Die Regatta ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+      'kind.start': 'Start',
+      'kind.split': 'Tonnenrundung',
+      'kind.finish': 'Zieldurchlauf',
+      'kinds.suggestions': 'Protest:marker, Aufgabe:marker',
+      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Boot;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '⛵ Finish Times',
@@ -1040,6 +1191,11 @@ const TEXTS = {
       'err.notFound': 'Regatta “{code}” was not found on the server.',
       'err.codeEmpty': 'Please enter a regatta code.',
       'err.gone': 'The regatta no longer exists on the server. You have been disconnected.',
+      'kind.start': 'Start',
+      'kind.split': 'Mark rounding',
+      'kind.finish': 'Finish',
+      'kinds.suggestions': 'Protest:marker, Retired:marker',
+      'export.headerKinds': 'Place;Timestamp;Time;Boat;Event type;Elapsed',
     },
   },
 
@@ -1093,6 +1249,11 @@ const TEXTS = {
       'err.notFound': 'Der Lauf „{code}“ wurde auf dem Server nicht gefunden.',
       'err.codeEmpty': 'Bitte einen Lauf-Code eingeben.',
       'err.gone': 'Der Lauf ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+      'kind.start': 'Start',
+      'kind.split': 'Zwischenzeit',
+      'kind.finish': 'Ziel',
+      'kinds.suggestions': 'Aufgabe:marker, Verpflegung:split',
+      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Läufer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏃 Finish Times',
@@ -1142,6 +1303,11 @@ const TEXTS = {
       'err.notFound': 'Race “{code}” was not found on the server.',
       'err.codeEmpty': 'Please enter a race code.',
       'err.gone': 'The race no longer exists on the server. You have been disconnected.',
+      'kind.start': 'Start',
+      'kind.split': 'Split',
+      'kind.finish': 'Finish',
+      'kinds.suggestions': 'Retired:marker, Aid station:split',
+      'export.headerKinds': 'Place;Timestamp;Time;Runner;Event type;Elapsed',
     },
   },
 
@@ -1195,6 +1361,11 @@ const TEXTS = {
       'err.notFound': 'Der Wettkampf „{code}“ wurde auf dem Server nicht gefunden.',
       'err.codeEmpty': 'Bitte einen Wettkampf-Code eingeben.',
       'err.gone': 'Der Wettkampf ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+      'kind.start': 'Start',
+      'kind.split': 'Zwischenzeit',
+      'kind.finish': 'Anschlag',
+      'kinds.suggestions': 'Wende:split, Disqualifikation:marker',
+      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Schwimmer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏊 Finish Times',
@@ -1244,6 +1415,11 @@ const TEXTS = {
       'err.notFound': 'Meet “{code}” was not found on the server.',
       'err.codeEmpty': 'Please enter a meet code.',
       'err.gone': 'The meet no longer exists on the server. You have been disconnected.',
+      'kind.start': 'Start',
+      'kind.split': 'Split',
+      'kind.finish': 'Finish',
+      'kinds.suggestions': 'Turn:split, Disqualification:marker',
+      'export.headerKinds': 'Place;Timestamp;Time;Swimmer;Event type;Elapsed',
     },
   },
 
@@ -1297,6 +1473,11 @@ const TEXTS = {
       'err.notFound': 'Das Rennen „{code}“ wurde auf dem Server nicht gefunden.',
       'err.codeEmpty': 'Bitte einen Rennen-Code eingeben.',
       'err.gone': 'Das Rennen ist auf dem Server nicht mehr vorhanden. Die Verbindung wurde getrennt.',
+      'kind.start': 'Start',
+      'kind.split': 'Runde',
+      'kind.finish': 'Ziel',
+      'kinds.suggestions': 'Boxeneinfahrt:split, Boxenausfahrt:split, Strafe:marker',
+      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Fahrzeug;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏎️ Finish Times',
@@ -1346,6 +1527,11 @@ const TEXTS = {
       'err.notFound': 'Race “{code}” was not found on the server.',
       'err.codeEmpty': 'Please enter a race code.',
       'err.gone': 'The race no longer exists on the server. You have been disconnected.',
+      'kind.start': 'Start',
+      'kind.split': 'Lap',
+      'kind.finish': 'Finish',
+      'kinds.suggestions': 'Pit in:split, Pit out:split, Penalty:marker',
+      'export.headerKinds': 'Place;Timestamp;Time;Vehicle;Event type;Elapsed',
     },
   },
 };
@@ -1415,10 +1601,11 @@ function removeKey(key){
 
 // Per-device preferences (never synced).
 const prefs = Object.assign(
-  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null, pinClock:true},
+  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null, pinClock:true, captureFilter:'all'},
   readJson(KEYS.prefs) || {}
 );
-if(!['manual','alpha','time'].includes(prefs.sortField)) prefs.sortField = 'manual';
+if(!['manual','alpha','time','elapsed'].includes(prefs.sortField)) prefs.sortField = 'manual';
+if(typeof prefs.captureFilter !== 'string') prefs.captureFilter = 'all';
 if(prefs.lang !== 'de' && prefs.lang !== 'en'){
   prefs.lang = (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' : 'en';
 }
@@ -1475,7 +1662,7 @@ function normalizeState(s){
   const sport = SPORTS.includes(s.sport) ? s.sport : 'generic';
   return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, ranking, captureKind, kinds, captures};
 }
-function hasData(s){ return !!s.name || s.participants.length > 0 || s.captures.length > 0; }
+function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.captures.length > 0; }
 
 /*
  * Mirror of App\Race\OperationReducer (PHP). The server is authoritative; this copy
@@ -2277,7 +2464,7 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, ranking:s.ranking, captures:s.captures}; }
+function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, ranking:s.ranking, kinds:s.kinds, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
   if(e && e.code === 'network') return t('err.network');
@@ -2327,6 +2514,11 @@ const HISTORY_LABELS = {
   'capture.add': () => t('history.captureAdd'),
   'capture.assign': () => t('history.captureAssign'),
   'capture.delete': () => t('history.captureDelete'),
+  'capture.setKind': () => t('history.captureKind'),
+  'workset.setKind': () => t('history.worksetKind'),
+  'kind.add': () => t('history.kindAdd'),
+  'kind.update': () => t('history.kindUpdate'),
+  'kind.delete': () => t('history.kindDelete'),
 };
 const historyLabel = (entry) => HISTORY_LABELS[entry.type]();
 
@@ -2567,19 +2759,104 @@ function onDoubleActivate(el, cb){
 
 // ---------- participant helpers ----------
 const participantById = (id) => S().participants.find(b => b.id === id);
+/** The participant's finishes (captures of the finish kind), or null without any. */
 function participantCaptureInfo(participantId){
-  const list = S().captures.filter(c => c.participantId === participantId).sort((a, b) => b.ts - a.ts);
+  const s = S();
+  const list = s.captures.filter(c => c.participantId === participantId && kindRole(s, c.kind) === 'finish').sort((a, b) => b.ts - a.ts);
   if(!list.length) return null;
   return {last:list[0], first:list[list.length - 1], count:list.length};
 }
 function metaText(participantId){
   const info = participantCaptureInfo(participantId);
-  return info ? fmtTime(info.last.ts, info.last.tzOffset) + (info.count > 1 ? ` +${info.count - 1}` : '') : '';
+  if(!info) return '';
+  const elapsed = captureFacts().get(info.last.id).elapsed;
+  return fmtTime(info.last.ts, info.last.tzOffset) + (info.count > 1 ? ` +${info.count - 1}` : '')
+    + (elapsed !== null ? ' · ' + t('captures.elapsed', {time: fmtDelta(elapsed)}) : '');
 }
 // "Finish time" sorting: ascending by first recorded time, descending by last recorded time.
-function timeSortKey(participantId, dir){
+// "Elapsed" works the same way with the elapsed time of those finishes.
+function timeSortKey(participantId, dir, elapsed = false){
   const info = participantCaptureInfo(participantId);
-  return info ? (dir === 'desc' ? info.last.ts : info.first.ts) : null;
+  if(!info) return null;
+  const c = dir === 'desc' ? info.last : info.first;
+  return elapsed ? captureFacts().get(c.id).elapsed : c.ts;
+}
+
+// ---------- capture kinds ----------
+function kindLabel(kind, s = S()){
+  if(BUILTIN_KINDS.includes(kind)) return t(`kind.${kind}`);
+  const k = findKind(s, kind);
+  return k ? k.name : t('kinds.deleted');
+}
+const allKinds = (s = S()) => [...BUILTIN_KINDS, ...s.kinds.map(k => k.id)];
+const roleClass = (kind, s = S()) => 'kind-' + kindRole(s, kind);
+// The kind for the next capture only (this device, in memory); afterwards the workset's kind applies again.
+let nextKind = null;
+function effectiveKind(){
+  const s = S();
+  return nextKind && isKnownKind(s, nextKind) ? nextKind : s.captureKind;
+}
+/** Kinds stay out of sight until somebody uses them: a kind picked, a custom kind, a typed capture. */
+function kindsUnlocked(){
+  const s = S();
+  return !!nextKind || s.captureKind !== DEFAULT_KIND || s.kinds.length > 0 || s.captures.some(c => c.kind !== DEFAULT_KIND);
+}
+/** Sticky choice: synced to every device on the race (the default workset). */
+function setStickyKind(kind){
+  nextKind = null;
+  if(kind !== S().captureKind) perform({type:'workset.setKind', kind});
+  renderAll();
+}
+function armNextKind(kind){
+  nextKind = kind && kind !== S().captureKind ? kind : null;
+  renderAll();
+}
+function cycleKind(once){
+  const kinds = allKinds();
+  const current = once ? effectiveKind() : S().captureKind;
+  const next = kinds[(kinds.indexOf(current) + 1) % kinds.length];
+  if(once) armNextKind(next); else setStickyKind(next);
+}
+
+/*
+ * Derived facts per capture, computed once per render: its role, its place among the
+ * captures of the same kind, the previous capture of that kind, the number of a split-role
+ * capture among the participant's captures of that kind, and the elapsed time of a finish
+ * (since the participant's own start, else the latest unassigned start before it).
+ */
+let factsCache = null;
+function captureFacts(){
+  if(factsCache) return factsCache;
+  const s = S();
+  const facts = new Map(), count = new Map(), last = new Map(), numbers = new Map(), ownStart = new Map();
+  let freeStart = null;
+  for(const c of sortedCaptures(s)){
+    const role = kindRole(s, c.kind);
+    const place = (count.get(c.kind) || 0) + 1;
+    count.set(c.kind, place);
+    const prev = last.get(c.kind) || null;
+    last.set(c.kind, c);
+    let number = null, elapsed = null;
+    if(role === 'split' && c.participantId){
+      const key = c.kind + '|' + c.participantId;
+      number = (numbers.get(key) || 0) + 1;
+      numbers.set(key, number);
+    }
+    if(role === 'start'){
+      if(c.participantId) ownStart.set(c.participantId, c); else freeStart = c;
+    }else if(role === 'finish'){
+      const start = (c.participantId && ownStart.get(c.participantId)) || freeStart;
+      if(start) elapsed = c.ts - start.ts;
+    }
+    facts.set(c.id, {role, place, prev, number, elapsed});
+  }
+  return (factsCache = facts);
+}
+function sortedCaptures(s){ return [...s.captures].sort((a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1)); }
+/** Label of a capture's kind, with its number for split-role kinds ("Mark rounding 2"). */
+function captureKindText(c){
+  const f = captureFacts().get(c.id);
+  return kindLabel(c.kind) + (f && f.number ? ' ' + f.number : '');
 }
 
 // Fuzzy matching: prefix > substring > characters in order.
@@ -2620,8 +2897,31 @@ function applyI18n(){
 
 // Assigning a time only makes sense while somebody is approaching: with an empty ranking
 // the big button already records an unassigned time, so the link and the hints are noise.
+const captureBtn = document.getElementById('captureBtn');
+const kindSeg = document.getElementById('kindSeg');
 function renderClockCard(){
-  const ranked = S().ranking.length > 0;
+  const s = S();
+  const kind = effectiveKind();
+  captureBtn.textContent = kind === DEFAULT_KIND ? t('clock.capture') : t('clock.captureKind', {kind: kindLabel(kind).toLocaleUpperCase(locale())});
+  captureBtn.className = 'capture-btn' + (kind !== DEFAULT_KIND ? ' ' + roleClass(kind) : '') + (nextKind ? ' once' : '');
+  kindSeg.hidden = !kindsUnlocked();
+  kindSeg.replaceChildren(...allKinds(s).map(k => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.kind = k;
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', k === s.captureKind ? 'true' : 'false');
+    b.className = (k === s.captureKind ? 'active' : '') + (k === nextKind ? ' once' : '');
+    const dot = document.createElement('span');
+    dot.className = 'kind-dot ' + roleClass(k);
+    b.append(dot, kindLabel(k));
+    return b;
+  }));
+  document.getElementById('kindOnceNote').hidden = !nextKind;
+  if(nextKind) document.getElementById('kindOnceText').textContent = t('kinds.onceNote', {kind: kindLabel(nextKind), sticky: kindLabel(s.captureKind)});
+  if(!kindMenu.hidden) renderKindMenu();
+
+  const ranked = s.ranking.length > 0;
   document.getElementById('captureFreeRow').hidden = !ranked;
   document.getElementById('hintDirect').hidden = !ranked;
   document.getElementById('hintFree').hidden = !ranked;
@@ -2796,6 +3096,10 @@ function buildParticipantRow(participant, opts){
 const sortedList = document.getElementById('sortedList');
 function renderSorted(){
   const s = S();
+  // The list is the queue towards the point this workset records.
+  const role = kindRole(s, s.captureKind);
+  document.getElementById('sortedTitle').textContent = role === 'start' ? t('sorted.titleStart')
+    : role === 'split' ? t('sorted.titleSplit', {kind: kindLabel(s.captureKind)}) : t('sorted.title');
   sortedList.innerHTML = '';
   document.getElementById('sortedCount').textContent = s.ranking.length;
   document.getElementById('sortedEmpty').hidden = s.ranking.length > 0;
@@ -2935,7 +3239,10 @@ participantInput.addEventListener('keydown', (e) => {
   else if(e.key === 'Escape'){ participantInput.value = ''; participantInput.blur(); }
 });
 
-const SORT_FIELDS = ['manual', 'alpha', 'time'];
+const SORT_FIELDS = ['manual', 'alpha', 'time', 'elapsed'];
+// Elapsed times need a start: until one is recorded the option is hidden and sorts like finish time.
+const hasStarts = () => S().captures.some(c => kindRole(S(), c.kind) === 'start');
+const sortField = () => (prefs.sortField === 'elapsed' && !hasStarts() ? 'time' : prefs.sortField);
 function setFilter(which){
   if(which === 'all'){ prefs.filterOpen = false; prefs.filterHideSorted = false; }
   else if(which === 'open') prefs.filterOpen = !prefs.filterOpen;
@@ -2943,7 +3250,10 @@ function setFilter(which){
   savePrefs(); renderParticipants();
 }
 function setSortField(field){ prefs.sortField = field; savePrefs(); renderParticipants(); }
-function cycleSortField(){ setSortField(SORT_FIELDS[(SORT_FIELDS.indexOf(prefs.sortField) + 1) % SORT_FIELDS.length]); }
+function cycleSortField(){
+  const fields = hasStarts() ? SORT_FIELDS : SORT_FIELDS.filter(f => f !== 'elapsed');
+  setSortField(fields[(fields.indexOf(sortField()) + 1) % fields.length]);
+}
 function toggleSortDir(){ prefs.sortDir = prefs.sortDir === 'asc' ? 'desc' : 'asc'; savePrefs(); renderParticipants(); }
 
 document.getElementById('filterSeg').addEventListener('click', (e) => {
@@ -2962,18 +3272,21 @@ function renderParticipants(){
     const f = b.dataset.f;
     b.classList.toggle('active', f === 'all' ? (!prefs.filterOpen && !prefs.filterHideSorted) : (f === 'open' ? prefs.filterOpen : prefs.filterHideSorted));
   });
-  document.querySelectorAll('#sortFieldSeg button').forEach(b => b.classList.toggle('active', b.dataset.sf === prefs.sortField));
+  const field = sortField();
+  document.querySelectorAll('#sortFieldSeg button').forEach(b => b.classList.toggle('active', b.dataset.sf === field));
+  document.querySelector('#sortFieldSeg [data-sf="elapsed"]').hidden = !hasStarts();
   document.getElementById('sortDirBtn').textContent = prefs.sortDir === 'desc' ? '↓' : '↑';
 
   let list = s.participants.map((b, i) => ({b, i}));
   if(prefs.filterHideSorted) list = list.filter(x => !s.ranking.includes(x.b.id));
   if(prefs.filterOpen) list = list.filter(x => !participantCaptureInfo(x.b.id));
   const dir = prefs.sortDir === 'desc' ? -1 : 1;
-  if(prefs.sortField === 'alpha'){
+  if(field === 'alpha'){
     list.sort((x, y) => dir * x.b.name.localeCompare(y.b.name, locale(), {numeric:true}));
-  }else if(prefs.sortField === 'time'){
+  }else if(field === 'time' || field === 'elapsed'){
+    const elapsed = field === 'elapsed';
     list.sort((x, y) => {
-      const kx = timeSortKey(x.b.id, prefs.sortDir), ky = timeSortKey(y.b.id, prefs.sortDir);
+      const kx = timeSortKey(x.b.id, prefs.sortDir, elapsed), ky = timeSortKey(y.b.id, prefs.sortDir, elapsed);
       if(kx === null && ky === null) return x.i - y.i;
       if(kx === null) return 1;
       if(ky === null) return -1;
@@ -3050,13 +3363,103 @@ function recordTime(participantId){
   const s = S();
   // Without an explicit participant the capture goes to the first sorted participant (if any).
   const target = participantId !== undefined ? participantId : (s.ranking[0] || null);
-  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target};
+  const kind = effectiveKind();
+  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target, kind};
   if(perform({type:'capture.add', capture})){
+    // A one-shot kind applies to this capture only.
+    if(nextKind){ nextKind = null; renderAll(); }
     const participant = target ? participantById(target) : null;
-    toast(t('captures.recorded') + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts, capture.tzOffset));
+    toast((kind === DEFAULT_KIND ? t('captures.recorded') : t('captures.recordedKind', {kind: kindLabel(kind)}))
+      + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts, capture.tzOffset));
   }
 }
-document.getElementById('captureBtn').addEventListener('click', () => recordTime());
+captureBtn.addEventListener('click', () => recordTime());
+
+// ---------- kind picker (menu, segmented control, one-shot) ----------
+const kindMenu = document.getElementById('kindMenu');
+const kindMenuBtn = document.getElementById('kindMenuBtn');
+function renderKindMenu(){
+  const s = S();
+  const rows = allKinds(s).map(k => {
+    const row = document.createElement('div');
+    row.className = 'kind-opt';
+    const pick = document.createElement('button');
+    pick.type = 'button';
+    pick.className = 'kind-pick' + (k === s.captureKind ? ' active' : '');
+    pick.setAttribute('role', 'menuitemradio');
+    pick.setAttribute('aria-checked', k === s.captureKind ? 'true' : 'false');
+    const dot = document.createElement('span');
+    dot.className = 'kind-dot ' + roleClass(k);
+    pick.append(dot, kindLabel(k));
+    pick.addEventListener('click', () => { closeKindMenu(); setStickyKind(k); });
+    const once = document.createElement('button');
+    once.type = 'button';
+    once.className = 'link-btn';
+    once.setAttribute('role', 'menuitem');
+    once.textContent = t('kinds.once');
+    once.setAttribute('aria-label', kindLabel(k) + ': ' + t('kinds.once'));
+    once.addEventListener('click', () => { closeKindMenu(); armNextKind(k); });
+    row.append(pick, once);
+    return row;
+  });
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'link-btn kind-new';
+  add.setAttribute('role', 'menuitem');
+  add.dataset.edit = 'normal';
+  add.textContent = t('kinds.new');
+  add.addEventListener('click', () => {
+    closeKindMenu();
+    openSettings();
+    document.getElementById('kindNameInput').focus({preventScroll: true});
+  });
+  kindMenu.replaceChildren(...rows, add);
+}
+function openKindMenu(){
+  renderKindMenu();
+  kindMenu.hidden = false;
+  kindMenuBtn.setAttribute('aria-expanded', 'true');
+  const active = kindMenu.querySelector('.kind-pick.active');
+  if(active) active.focus({preventScroll: true});
+}
+function closeKindMenu(focusButton){
+  if(kindMenu.hidden) return;
+  kindMenu.hidden = true;
+  kindMenuBtn.setAttribute('aria-expanded', 'false');
+  if(focusButton) kindMenuBtn.focus({preventScroll: true});
+}
+kindMenuBtn.addEventListener('click', (e) => { e.stopPropagation(); if(kindMenu.hidden) openKindMenu(); else closeKindMenu(); });
+kindMenu.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeKindMenu(true); }
+});
+document.addEventListener('click', (e) => { if(!e.target.closest('#kindMenu')) closeKindMenu(); });
+document.getElementById('kindOnceCancel').addEventListener('click', () => armNextKind(null));
+
+// Tap: sticky kind. Long press (touch) or right-click: the next capture only.
+const LONG_PRESS_MS = 550;
+let kindPress = null;
+kindSeg.addEventListener('pointerdown', (e) => {
+  const b = e.target.closest('button[data-kind]');
+  if(!b || e.button > 0) return;
+  clearTimeout(kindPress && kindPress.timer);
+  kindPress = {kind: b.dataset.kind, fired: false};
+  kindPress.timer = setTimeout(() => { kindPress.fired = true; armNextKind(kindPress.kind); }, LONG_PRESS_MS);
+});
+['pointerup', 'pointercancel', 'pointerleave'].forEach(type => kindSeg.addEventListener(type, () => { if(kindPress) clearTimeout(kindPress.timer); }));
+kindSeg.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-kind]');
+  if(!b) return;
+  // The click that ends a long press (not one from the keyboard) was the long press.
+  const longPress = kindPress && kindPress.fired && e.detail !== 0;
+  kindPress = null;
+  if(!longPress) setStickyKind(b.dataset.kind);
+});
+kindSeg.addEventListener('contextmenu', (e) => {
+  const b = e.target.closest('button[data-kind]');
+  if(!b) return;
+  e.preventDefault();
+  armNextKind(b.dataset.kind);
+});
 // Explicit null: record the time but leave it unassigned, whatever the ranking holds.
 document.getElementById('captureFreeBtn').addEventListener('click', () => recordTime(null));
 
@@ -3072,10 +3475,17 @@ const LIST_SHORTCUTS = {
   d: () => toggleSortDir(),
 };
 document.addEventListener('keydown', (e) => {
-  if(!dialogEl.hidden || !shortcutsEl.hidden || drawer.classList.contains('open')) return;
+  if(!dialogEl.hidden || !shortcutsEl.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
+  if(e.key === 'Escape' && nextKind){ e.preventDefault(); armNextKind(null); return; }
+  // K: next sticky kind · Shift+K: next kind for the next capture only.
+  if(e.key.toLowerCase() === 'k' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat){
+    e.preventDefault();
+    if(!S().archived) cycleKind(e.shiftKey);
+    return;
+  }
   if(e.code === 'Space' && !e.repeat){
     e.preventDefault();
     recordTime();
@@ -3110,25 +3520,51 @@ document.addEventListener('keydown', (e) => {
 });
 
 const capList = document.getElementById('capList');
+/** Kinds present among the captures, in picker order (unknown ids only show under "All"). */
+function capturedKinds(s){
+  const present = new Set(s.captures.map(c => c.kind));
+  return allKinds(s).filter(k => present.has(k));
+}
 function renderCaptures(){
   const s = S();
-  const pendingIds = backend.pendingCaptureIds();
-  capList.innerHTML = '';
+  const facts = captureFacts();
+  const unlocked = kindsUnlocked();
+  const kinds = capturedKinds(s);
+  const typed = s.captures.some(c => c.kind !== DEFAULT_KIND);
+  document.getElementById('capTitle').textContent = typed ? t('captures.titleAll') : t('captures.title');
   document.getElementById('capCount').textContent = s.captures.length;
   document.getElementById('capEmpty').hidden = s.captures.length > 0;
-  const asc = [...s.captures].sort((a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1));
-  const desc = [...asc].reverse();
-  const place = new Map(asc.map((c, i) => [c.id, i + 1]));
 
+  // Filter by kind: only once the list holds more than one kind.
+  const filterSeg = document.getElementById('capFilterSeg');
+  const filter = kinds.length > 1 && kinds.includes(prefs.captureFilter) ? prefs.captureFilter : 'all';
+  filterSeg.hidden = kinds.length < 2;
+  filterSeg.replaceChildren(...(kinds.length < 2 ? [] : ['all', ...kinds].map(k => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.kind = k;
+    b.className = k === filter ? 'active' : '';
+    if(k === 'all') b.textContent = t('captures.filterAll');
+    else{
+      const dot = document.createElement('span');
+      dot.className = 'kind-dot ' + roleClass(k);
+      b.append(dot, kindLabel(k));
+    }
+    return b;
+  })));
+
+  const pendingIds = backend.pendingCaptureIds();
+  capList.innerHTML = '';
+  const desc = sortedCaptures(s).reverse().filter(c => filter === 'all' || c.kind === filter);
   desc.forEach((c) => {
-    const i = place.get(c.id) - 1;
-    const prev = asc[i - 1];
+    const f = facts.get(c.id);
     const li = document.createElement('li');
     li.className = 'cap-row';
 
+    // Places count within a kind; a marker (e.g. a protest) has none.
     const rank = document.createElement('span');
     rank.className = 'rank';
-    rank.textContent = '#' + (i + 1);
+    rank.textContent = f.role === 'marker' ? '' : '#' + f.place;
 
     const mid = document.createElement('span');
     mid.className = 'cap-mid';
@@ -3151,11 +3587,32 @@ function renderCaptures(){
     }
     const delta = document.createElement('div');
     delta.className = 'cap-delta';
-    delta.textContent = prev ? '+' + fmtDelta(c.ts - prev.ts) : t('captures.first');
+    // A marker has no sequence: no delta to the previous one.
+    delta.textContent = f.role === 'marker' ? '' : (f.prev ? '+' + fmtDelta(c.ts - f.prev.ts) : t('captures.first'))
+      + (f.elapsed !== null ? ' · ' + t('captures.elapsed', {time: fmtDelta(f.elapsed)}) : '');
     mid.append(time, delta);
 
     const side = document.createElement('span');
     side.className = 'cap-side';
+    if(unlocked){
+      const kindSel = document.createElement('select');
+      kindSel.className = 'assign kind-select ' + roleClass(c.kind);
+      kindSel.dataset.edit = 'critical';
+      kindSel.title = t('kinds.menu');
+      kindSel.setAttribute('aria-label', kindSel.title);
+      const options = isKnownKind(s, c.kind) ? allKinds(s) : [...allKinds(s), c.kind];
+      options.forEach(k => {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = k === c.kind ? captureKindText(c) : kindLabel(k);
+        o.selected = k === c.kind;
+        kindSel.appendChild(o);
+      });
+      kindSel.addEventListener('change', () => {
+        if(!perform({type:'capture.setKind', captureId:c.id, kind:kindSel.value})) renderCaptures();
+      });
+      side.appendChild(kindSel);
+    }
     const sel = document.createElement('select');
     sel.className = 'assign';
     sel.dataset.edit = 'critical';
@@ -3193,16 +3650,31 @@ function renderCaptures(){
     capList.appendChild(li);
   });
 }
+document.getElementById('capFilterSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-kind]');
+  if(!b) return;
+  prefs.captureFilter = b.dataset.kind;
+  savePrefs();
+  renderCaptures();
+});
 
 // ---------- CSV export ----------
 document.getElementById('exportBtn').addEventListener('click', async () => {
   const s = S();
   if(!s.captures.length){ toast(t('export.none')); return; }
-  const asc = [...s.captures].sort((a, b) => a.ts - b.ts);
-  let csv = t('export.header') + '\n';
+  const asc = sortedCaptures(s);
+  const cell = (v) => String(v).replace(/;/g, ',');
+  // Only finishes: the familiar four columns. With other kinds: places per kind, plus kind and elapsed time.
+  const typed = s.captures.some(c => c.kind !== DEFAULT_KIND);
+  const facts = captureFacts();
+  let csv = t(typed ? 'export.headerKinds' : 'export.header') + '\n';
   asc.forEach((c, i) => {
     const participant = participantById(c.participantId);
-    csv += `${i + 1};${fmtIso(c.ts, c.tzOffset)};${fmtTime(c.ts, c.tzOffset)};${participant ? participant.name.replace(/;/g, ',') : ''}\n`;
+    const f = facts.get(c.id);
+    const row = [typed ? (f.role === 'marker' ? '' : f.place) : i + 1, fmtIso(c.ts, c.tzOffset), fmtTime(c.ts, c.tzOffset),
+      participant ? cell(participant.name) : ''];
+    if(typed) row.push(cell(captureKindText(c)), f.elapsed !== null ? fmtDelta(f.elapsed) : '');
+    csv += row.join(';') + '\n';
   });
   const filename = t('export.filename') + '.csv';
   // Inside claude.ai the page must ask the host to save files; elsewhere a plain download works.
@@ -3255,6 +3727,7 @@ document.getElementById('renameRaceBtn').addEventListener('click', () => {
 });
 
 function renderAll(){
+  factsCache = null;
   applyI18n();
   renderPinClock();
   renderClockCard();
@@ -3310,6 +3783,121 @@ sportSelect.addEventListener('change', () => {
   perform({type:'race.setSport', sport:sportSelect.value});
 });
 
+// ---------- custom capture kinds ----------
+const kindList = document.getElementById('kindList');
+const kindNameInput = document.getElementById('kindNameInput');
+const kindRoleSelect = document.getElementById('kindRoleSelect');
+function fillRoleSelect(select, role){
+  select.replaceChildren(...CUSTOM_KIND_ROLES.map(r => {
+    const o = document.createElement('option');
+    o.value = r;
+    o.textContent = t(`kinds.role.${r}`);
+    o.selected = r === role;
+    return o;
+  }));
+}
+/** A custom kind name must differ from the other custom kinds and the built-in labels. */
+function kindNameTaken(name, exceptId){
+  const s = S();
+  return s.kinds.some(k => k.id !== exceptId && nameKey(k.name) === nameKey(name))
+    || BUILTIN_KINDS.some(k => nameKey(kindLabel(k, s)) === nameKey(name));
+}
+function addKind(name, role){
+  name = cleanText(name).slice(0, 40);
+  if(!name) return false;
+  if(kindNameTaken(name)){ toast(t('kinds.exists', {name})); return false; }
+  return !!perform({type:'kind.add', kind:{id:uid(), name, role}});
+}
+/** Suggestions of the sport text set ("name:role, …") that don't exist yet. */
+function kindSuggestions(){
+  return t('kinds.suggestions').split(',').map(entry => {
+    const [name, role] = entry.split(':').map(v => cleanText(v || ''));
+    return {name, role: CUSTOM_KIND_ROLES.includes(role) ? role : 'marker'};
+  }).filter(x => x.name && !kindNameTaken(x.name));
+}
+function renderKinds(){
+  const s = S();
+  document.getElementById('kindsHelp').textContent = t('kinds.help', {start: kindLabel('start'), split: kindLabel('split'), finish: kindLabel('finish')});
+  if(!kindRoleSelect.options.length || kindRoleSelect.options[0].textContent !== t('kinds.role.split')){
+    fillRoleSelect(kindRoleSelect, kindRoleSelect.value || 'marker');
+  }
+  // Re-rendered on every change while the drawer is open: leave a row alone while it is being edited.
+  if(!kindList.contains(document.activeElement)){
+    kindList.replaceChildren(...s.kinds.map(k => {
+      const li = document.createElement('li');
+      li.className = 'kind-row';
+      li.dataset.edit = 'normal';
+      const name = document.createElement('input');
+      name.className = 'input';
+      name.type = 'text';
+      name.maxLength = 40;
+      name.value = k.name;
+      name.setAttribute('aria-label', t('kinds.title'));
+      const commit = () => {
+        const value = cleanText(name.value);
+        const current = findKind(S(), k.id);
+        if(!current) return;
+        if(!value || value === current.name){ name.value = current.name; return; }
+        if(kindNameTaken(value, k.id)){ toast(t('kinds.exists', {name:value})); name.value = current.name; return; }
+        if(!perform({type:'kind.update', kindId:k.id, name:value, role:current.role})) name.value = current.name;
+      };
+      name.addEventListener('change', commit);
+      name.addEventListener('keydown', (e) => {
+        if(e.key === 'Enter'){ e.preventDefault(); name.blur(); }
+        else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); name.value = k.name; name.blur(); }
+      });
+      name.addEventListener('blur', () => renderKinds());
+      const role = document.createElement('select');
+      role.className = 'input kind-role';
+      role.title = t('kinds.role');
+      role.setAttribute('aria-label', role.title);
+      fillRoleSelect(role, k.role);
+      role.addEventListener('change', () => {
+        const current = findKind(S(), k.id);
+        if(current) perform({type:'kind.update', kindId:k.id, name:current.name, role:role.value});
+        role.blur();
+      });
+      const del = document.createElement('button');
+      del.className = 'mini';
+      del.textContent = '✕';
+      del.title = t('action.delete');
+      del.setAttribute('aria-label', del.title);
+      del.addEventListener('click', async () => {
+        const ok = await askConfirm({title:t('kinds.deleteTitle'), text:t('kinds.deleteText', {name:k.name}), ok:t('action.delete'), danger:true});
+        if(ok) perform({type:'kind.delete', kindId:k.id});
+      });
+      li.append(name, role, del);
+      return li;
+    }));
+    if(!s.kinds.length){
+      const li = document.createElement('li');
+      li.className = 'help';
+      li.style.margin = '0';
+      li.textContent = t('kinds.none');
+      kindList.appendChild(li);
+    }
+  }
+  const suggestions = kindSuggestions();
+  const wrap = document.getElementById('kindSuggest');
+  wrap.hidden = suggestions.length === 0;
+  wrap.replaceChildren(t('kinds.suggest'), ...suggestions.map(x => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small';
+    b.textContent = x.name;
+    b.title = t(`kinds.role.${x.role}`);
+    b.addEventListener('click', () => addKind(x.name, x.role));
+    return b;
+  }));
+}
+function addKindFromInput(){
+  if(addKind(kindNameInput.value, kindRoleSelect.value)) kindNameInput.value = '';
+}
+document.getElementById('addKindBtn').addEventListener('click', addKindFromInput);
+kindNameInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); addKindFromInput(); }
+});
+
 function showConnectError(message){
   const el = document.getElementById('connectError');
   el.textContent = message || '';
@@ -3327,6 +3915,7 @@ function renderSettings(){
     o.selected = code === sport;
     sportSelect.appendChild(o);
   });
+  renderKinds();
 
   const isServer = backend.kind === 'server';
   document.getElementById('localSection').hidden = isServer;

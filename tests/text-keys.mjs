@@ -22,6 +22,7 @@ const DYNAMIC_KEYS = [
   'action.drag', 'action.up', 'action.down', 'action.unsort', 'action.sort', 'action.rename', 'action.delete',
   'lock.offline', 'lock.archived', 'settings.transportWs', 'settings.transportPoll',
   'sport.generic', 'sport.sailing', 'sport.running', 'sport.swimming', 'sport.motor',
+  'kind.start', 'kind.split', 'kind.finish', 'kinds.role.split', 'kinds.role.marker', 'export.header', 'export.headerKinds',
 ];
 const used = new Set([
   ...[...script.matchAll(/\bt\('([\w.]+)'/g)].map((m) => m[1]),

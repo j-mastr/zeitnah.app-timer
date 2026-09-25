@@ -68,6 +68,32 @@ try {
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
   step('space bar assigns the first sorted participant on all clients');
 
+  // Capture kinds: custom kinds and the selected kind are race data; a one-shot kind stays on its device.
+  await b.click('#settingsBtn');
+  await b.fill('#kindNameInput', 'Protest');
+  await b.click('#addKindBtn');
+  await b.click('#drawerClose');
+  await a.waitForSelector('#kindSeg:not([hidden]) button:has-text("Protest")');
+  await a.click('#kindSeg button[data-kind="start"]');
+  await b.waitForFunction(() => document.getElementById('captureBtn').textContent === 'RECORD START');
+  assert.equal(await b.textContent('#sortedTitle'), 'Approaching the start');
+  await a.click('#kindSeg button:has-text("Protest")', {button: 'right'});
+  assert.equal(await a.textContent('#captureBtn'), 'PROTEST ERFASSEN');
+  assert.equal(await b.textContent('#captureBtn'), 'RECORD START');
+  await a.click('h1');
+  await a.keyboard.press('Space');
+  await sleep(800);
+  assert.equal(await a.textContent('#captureBtn'), 'START ERFASSEN');
+  assert.equal(await b.textContent('#capCount'), '3');
+  // A protest is a marker: the participant keeps its place in the approaching list.
+  assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  await b.selectOption('#capList .cap-row >> nth=0 >> select.kind-select', 'finish');
+  await a.click('#kindSeg button[data-kind="finish"]');
+  await sleep(800);
+  assert.equal(await a.inputValue('#capList .cap-row >> nth=0 >> select.kind-select'), 'finish');
+  assert.equal(await b.textContent('#captureBtn'), 'RECORD TIME');
+  step('capture kinds: custom kind, synced selection, local one-shot, retyping');
+
   await b.click('#renameRaceBtn');
   await b.fill('#raceTitle input', 'Smoke Test Race');
   await b.keyboard.press('Enter');
@@ -79,7 +105,7 @@ try {
   assert.equal(await a.isVisible('#archivedBanner'), true);
   await a.keyboard.press('Space');
   await sleep(300);
-  assert.equal(await a.textContent('#capCount'), '2');
+  assert.equal(await a.textContent('#capCount'), '3');
   step('rename and archive; archived race is read-only');
 
   await a.goto(BASE);
