@@ -210,11 +210,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   connected the fragment always reflects the current code; it is removed on disconnect.
 - **Initialisation prompt:** when connecting fresh (by code, link or "new race") to a
   race that is still empty on the server (`seq === 0`) while this browser has local
-  data, ask whether to upload it. Yes → send `state.merge`, reset local data once the
-  server confirms. No, or race already has data → connect; local data is kept for
-  later. Not asked when resuming a stored connection.
+  data, ask whether to upload it. Yes → send `state.merge`. No, or race already has
+  data → connect. The local data is always kept in the browser, whatever the answer.
+  Not asked when resuming a stored connection.
 - **Settings → Sync data** (server mode):
-  - *Upload local data*: merge local → server, then reset local. Merging never deletes:
+  - *Upload local data*: merge local → server; the local data stays in this browser
+    (reset it explicitly in local mode if you want it gone). Merging never deletes:
     participants are matched by id or case-insensitive name, missing sorted participants appended,
     captures added unless their id exists, name only set if the race has none.
   - *Copy server data to this browser*: overwrite local data with the race (never merge).
