@@ -13,19 +13,25 @@ recorded times are assigned to them automatically. Data lives in the browser by 
 optionally several devices share one race through the server with real-time sync. The
 primary device is an iPad (touch), laptops with keyboards are also used.
 
-The first (and currently only) use case is **sailing regattas**: participants are boats,
-identified by sail number or name, and a race is a regatta. That vocabulary exists **only
-in the user-facing text set `sailing`**; the code is sport-neutral so that other sports
-(motor racing, running, …) can be added later with another text set.
+The app supports several sports: **generic** (the sport-neutral default), **sailing**
+(regattas: participants are boats, identified by sail number or name), **running**
+(participants are runners), **swimming** (participants are swimmers, a race is a meet)
+and **motor sports** (participants are vehicles). That vocabulary exists **only in the
+user-facing text sets**; the code itself is sport-neutral. The sport is a per-race field
+(`state.sport`), picked from a select in Settings and synced like the race name.
 
 ## Vocabulary
 
 | Concept in code | Sailing UI (de / en) |
 | --- | --- |
-| `race` (one timed event, has a code, name, archive flag) | Regatta / regatta |
+| `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
 | `capture` (`{id, ts, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
 | `ranking` — the sorted queue of participants expected to cross next | Sortiert / sorted |
+
+The other sport sets (`generic`, `running`, `swimming`, `motor`) use the same concepts with
+their own vocabulary, e.g. `participant` is "Runner"/"Läufer" in `running`, "Swimmer"/
+"Schwimmer" in `swimming`, "Vehicle"/"Fahrzeug" in `motor`.
 
 ## Repository layout
 
@@ -61,12 +67,14 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
    Only exception: name/description in `public/manifest.webmanifest` (the installed app's
    name can't be localised per user; it is the product name, "zeitnah", not translated).
 2. **Sport-neutral code.** Identifiers, operation types, state fields, database tables,
-   API routes, storage keys, CSS classes and comments use the vocabulary above — never
-   sailing terms (boat, regatta, sail number, …). Sport-specific wording belongs in the
-   sport text set only. `TEXTS.common` holds texts that fit every sport; `TEXTS.sailing`
-   holds everything that names participants or races (and the ⛵ default title).
-   `TEXT_SET` selects the set; `t()` looks up the sport set, then `common`, then German.
-   A new sport = a new set with the same keys as `sailing` (see the key check below).
+   API routes, storage keys, CSS classes and comments use the vocabulary above — never a
+   specific sport's terms (boat, regatta, sail number, runner, vehicle, …). Sport-specific
+   wording belongs in a sport text set only. `TEXTS.common` holds texts that fit every
+   sport; each sport set (`generic`, `sailing`, `running`, `swimming`, `motor`, listed in
+   `SPORTS`) holds everything that names participants or races (and its default title).
+   `state.sport` (per race, changed with `race.setSport`) selects the active set; `t()`
+   looks up that set, then `common`, then German. A new sport = a new key in `SPORTS` plus
+   a `TEXTS` entry with the same keys as the others (see the key check below).
    Exceptions: the legacy storage migration (reads old `boats`/`boatId` fields) and the
    CSV header pattern, which is itself a text (`import.headerPattern`).
 3. **Frontend stays a single file with vanilla JS/HTML/CSS** and no build step
@@ -147,6 +155,13 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Shown instead of the default title (`header.defaultName`; sailing: "⛵ Zielzeiten" /
   "⛵ Finish Times"); edited inline via a small ✎ button; stored in the backend state; also used for `document.title`.
 
+### Sport
+- Selects the vocabulary (see Vocabulary above): `generic` (default for new races),
+  `sailing`, `running`, `swimming`, `motor`. A select in Settings (below Language) changes
+  it via `race.setSport`; the choice is per-race state, synced like the race name — not a
+  per-device preference. Changing it re-renders every text immediately (`applyI18n()` runs
+  on every `renderAll()`).
+
 ### Layout (responsive, purely width-based)
 - One breakpoint at **700 px viewport width**, independent of device type or orientation.
 - `< 700 px`: single column — clock (sticky at the top), sorted list, participants, finishes.
@@ -158,14 +173,17 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 
 ### Language
 - German / English switch in the settings panel. Default from `navigator.language`.
-  Texts come from `TEXTS[TEXT_SET]` (sport-specific) and `TEXTS.common`. Static text uses
+  Texts come from `TEXTS[state.sport]` (sport-specific) and `TEXTS.common`. Static text uses
   `data-i18n`, `data-i18n-placeholder`, `data-i18n-title`; dynamic text uses `t(key, vars)`.
+  Language is a per-device preference, unlike sport (see above), which is per-race.
 
 ### Storage backends
 - **Local (default):** state in `localStorage['zeitnah.local']`.
   Data of earlier versions is migrated once on load: `segel-zielzeit-v1` (one key incl.
   preferences) and `regatta-timer.*` keys, both with the old field names `boats`/`boatId`
-  (`normalizeState()` accepts them). Old server caches are dropped (rebuilt from the server).
+  (`normalizeState()` accepts them) and no `sport` field — migrated data is tagged
+  `sport:'sailing'` since that was the only sport those versions supported. Old server
+  caches are dropped (rebuilt from the server).
 - **Server:** connect by race code or create a new race (the server generates a
   random 6-character code from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; codes are
   case-insensitive, non-alphanumerics ignored).
@@ -231,11 +249,11 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `env(safe-area-inset-*)` (including the sticky clock).
 
 ### Settings panel (slide-over from the right)
-- Language · local mode: status, race code + Connect, "Create a new race on the
-  server", advanced settings (server URL), "Reset local data" · server mode: status with
-  transport and pending count, code (read-only), direct link `<serverUrl>/#r=<CODE>` with
-  copy button, read-only server URL under advanced settings, Disconnect, Sync data
-  (upload / copy to browser), Archive (or archived notice).
+- Language · Sport (select, `data-edit="normal"`) · local mode: status, race code +
+  Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
+  data" · server mode: status with transport and pending count, code (read-only), direct
+  link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
+  settings, Disconnect, Sync data (upload / copy to browser), Archive (or archived notice).
 
 ## Architecture
 
@@ -249,6 +267,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | --- | --- | --- |
 | `race.rename` | `name` (null/blank = default) | max 80 chars |
 | `race.archive` | – | sets `archived: true` |
+| `race.setSport` | `sport` (one of `SPORTS`) | rejects with `invalid_sport` if not a known sport |
 | `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |
 | `participant.delete` | `participantId` | also removes it from the ranking; captures keep the id |
@@ -263,8 +282,9 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,participantId}]}`.
-Capture order in the state is not meaningful; the UI sorts by `ts`.
+`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,participantId}]}`.
+Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
+`'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
 ### Server storage
 - Table `race` (`code`, `seq`, `state` JSON = materialised state) and append-only

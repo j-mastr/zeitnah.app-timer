@@ -13,7 +13,7 @@ import {fileURLToPath} from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(root, 'frontend/index.html'), 'utf8');
 const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
-const start = script.indexOf('const TEXT_SET');
+const start = script.indexOf('const SPORTS');
 const end = script.indexOf('// Browser storage');
 const {TEXTS} = new Function(script.slice(start, script.lastIndexOf('\n', end)) + '\n; return {TEXTS};')();
 
@@ -21,6 +21,7 @@ const DYNAMIC_KEYS = [
   'status.local', 'status.connecting', 'status.online', 'status.offline',
   'action.drag', 'action.up', 'action.down', 'action.unsort', 'action.sort', 'action.rename', 'action.delete',
   'lock.offline', 'lock.archived', 'settings.transportWs', 'settings.transportPoll',
+  'sport.generic', 'sport.sailing', 'sport.running', 'sport.swimming', 'sport.motor',
 ];
 const used = new Set([
   ...[...script.matchAll(/\bt\('([\w.]+)'/g)].map((m) => m[1]),

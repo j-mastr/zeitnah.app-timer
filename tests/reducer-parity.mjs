@@ -16,7 +16,9 @@ const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
 const start = script.indexOf('function uid()');
 const end = script.indexOf('// Operations that stay possible');
 if (start < 0 || end < 0) throw new Error('Could not locate the reducer in frontend/index.html');
-const {applyOp, emptyState} = new Function(script.slice(start, end) + '; return {applyOp, emptyState};')();
+const sportsMatch = script.match(/const SPORTS = (\[[^\]]*\]);/);
+if (!sportsMatch) throw new Error('Could not locate SPORTS in frontend/index.html');
+const {applyOp, emptyState} = new Function(`const SPORTS = ${sportsMatch[1]};` + script.slice(start, end) + '; return {applyOp, emptyState};')();
 
 let seed = 42;
 const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -25,7 +27,7 @@ const pick = (list) => list[Math.floor(rnd() * list.length)];
 const participantIds = ['b1', 'b2', 'b3', 'b4', 'b5', 'bX', 'not valid!'];
 const captureIds = ['c1', 'c2', 'c3', 'c4'];
 const names = ['GER 1', 'ger 1', '  NED  7 ', 'Ö-Team', '', 'x'.repeat(61), 'FRA 12', 42, '🏁 Emoji'];
-const types = ['race.rename', 'race.archive', 'participants.add', 'participant.rename', 'participant.delete', 'ranking.add',
+const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add', 'participant.rename', 'participant.delete', 'ranking.add',
   'ranking.remove', 'ranking.move', 'capture.add', 'capture.assign', 'capture.delete', 'state.merge', 'bogus'];
 
 function randomOp(i) {
@@ -33,6 +35,7 @@ function randomOp(i) {
   const op = {type};
   switch (type) {
     case 'race.rename': op.name = pick(['Kieler Woche', null, '   ', 'y'.repeat(81)]); break;
+    case 'race.setSport': op.sport = pick(['generic', 'sailing', 'running', 'swimming', 'motor', 'bogus', null]); break;
     case 'participants.add': op.participants = [{id: pick(participantIds), name: pick(names)}, {id: pick(participantIds), name: pick(names)}]; break;
     case 'participant.rename': op.participantId = pick(participantIds); op.name = pick(names); break;
     case 'participant.delete': case 'ranking.add': case 'ranking.remove': op.participantId = pick(participantIds); break;

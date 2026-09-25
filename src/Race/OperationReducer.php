@@ -8,8 +8,11 @@ namespace App\Race;
  * (applyOp in frontend/index.html) used for optimistic updates. Keep both in sync.
  *
  * State shape:
- *   name: ?string, archived: bool,
+ *   name: ?string, archived: bool, sport: string,
  *   participants: list<{id, name}>, ranking: list<participantId>, captures: list<{id, ts, participantId: ?string}>
+ *
+ * `sport` selects the UI text set (see TEXTS in frontend/index.html); the reducer only
+ * validates it against SPORTS, it carries no other meaning server-side.
  *
  * Operations are lenient about references (e.g. assigning a capture to a participant that
  * was deleted concurrently is a no-op) so that buffered offline operations can
@@ -18,12 +21,15 @@ namespace App\Race;
 final class OperationReducer
 {
     public const TYPES = [
-        'race.rename', 'race.archive',
+        'race.rename', 'race.archive', 'race.setSport',
         'participants.add', 'participant.rename', 'participant.delete',
         'ranking.add', 'ranking.remove', 'ranking.move',
         'capture.add', 'capture.assign', 'capture.delete',
         'state.merge',
     ];
+
+    // Mirrors SPORTS in frontend/index.html.
+    public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
 
     private const ID_PATTERN = '/^[A-Za-z0-9_-]{1,40}$/';
     private const MAX_PARTICIPANT_NAME = 60;
@@ -31,7 +37,7 @@ final class OperationReducer
 
     public static function emptyState(): array
     {
-        return ['name' => null, 'archived' => false, 'participants' => [], 'ranking' => [], 'captures' => []];
+        return ['name' => null, 'archived' => false, 'sport' => 'generic', 'participants' => [], 'ranking' => [], 'captures' => []];
     }
 
     /**
@@ -55,6 +61,15 @@ final class OperationReducer
 
             case 'race.archive':
                 $state['archived'] = true;
+
+                return $state;
+
+            case 'race.setSport':
+                $sport = $op['sport'] ?? null;
+                if (!is_string($sport) || !in_array($sport, self::SPORTS, true)) {
+                    throw new InvalidOperationException('invalid_sport');
+                }
+                $state['sport'] = $sport;
 
                 return $state;
 
