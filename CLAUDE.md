@@ -226,7 +226,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Pinned clock
 - A borderless 📌 `.icon-btn` in the clock card's top row (its own flex row, so the clock
   keeps the full width) makes the card sticky at the top while scrolling; it is greyscale and
-  dimmed while inactive and shows its colours when the clock is pinned — at every window width, not just
+  dimmed while inactive and shows its colours when the clock is pinned. Pinned, the card
+  sticks at `top: var(--safe-top)` (the `env(safe-area-inset-top)` token on `:root`).
+  A scroll listener sets `body.clock-stuck` while the card actually sits at the top edge;
+  only then does it square its top corners and paint a `::before` strip over the status bar,
+  so on iOS standalone nothing scrolls visibly through that gap. The strip is painted, never
+  laid out — sticking adds no headroom and shifts nothing below the card — at every window width, not just
   the narrow layout. `prefs.pinClock` (per-device, never synced, default on) toggles
   `body.pin-clock`; the button shows the state via `.on` and `aria-pressed`.
 
@@ -319,7 +324,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (`window.TIMER_CONFIG` set) in a secure context (HTTPS or localhost) — never in the
   standalone/artifact copy.
 - iOS standalone: `black-translucent` status bar, so everything respects
-  `env(safe-area-inset-*)` (including the sticky clock).
+  `env(safe-area-inset-*)` (the top inset is the `--safe-top` token; the pinned clock covers
+  that strip instead of starting below it — see Pinned clock).
 
 ### Settings panel (slide-over from the right)
 - Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
