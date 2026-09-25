@@ -65,7 +65,7 @@
   .history-btn{background:none; border:0; color:var(--text); padding:5px 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
   .history-btn + .history-btn{border-left:1px solid var(--border);}
   .history-btn:disabled{opacity:.35; cursor:default;}
-  body.archived .history-btns{display:none;}
+  .history-btns[hidden], body.archived .history-btns{display:none;}
   .banner{background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:14px;}
 
   /* ---------- app grid: default (narrow window) ---------- */
@@ -314,7 +314,7 @@
       <div class="sub" data-i18n="header.subtitle"></div>
     </div>
     <div class="top-actions">
-      <div class="history-btns">
+      <div class="history-btns" id="historyBtns" hidden>
         <button class="history-btn" id="undoBtn" type="button" data-edit="critical" disabled>↶</button>
         <button class="history-btn" id="redoBtn" type="button" data-edit="critical" disabled>↷</button>
       </div>
@@ -2255,6 +2255,8 @@ const undoBtn = document.getElementById('undoBtn');
 const redoBtn = document.getElementById('redoBtn');
 function renderHistory(){
   const undo = undoStack[undoStack.length - 1], redo = redoStack[redoStack.length - 1];
+  // Discreet until used: the pair appears with the first step that can be undone.
+  document.getElementById('historyBtns').hidden = !undo && !redo;
   undoBtn.disabled = !undo;
   redoBtn.disabled = !redo;
   undoBtn.title = (undo ? t('history.undo', {action: historyLabel(undo)}) : t('history.undoNone')) + ` (${keyCombo(UNDO_KEYS)})`;

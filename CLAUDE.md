@@ -191,9 +191,11 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   https://github.com/j-mastr/zeitnah.app-timer.
 
 ### Undo / redo
-- Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar; disabled while
-  there is nothing to undo/redo, tooltip names the step and the shortcut ("Undo: Record time
-  (⌘Z)"), hidden when the race is archived. Keys follow the platform: **⌘Z / ⇧⌘Z** on Apple
+- Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar. Discreet until
+  used (premise 3): the pair is hidden while both stacks are empty and appears with the first
+  undoable step; from then on either button is only disabled while its stack is empty. The
+  tooltip names the step and the shortcut ("Undo: Record time (⌘Z)"); the pair is hidden when
+  the race is archived. Keys follow the platform: **⌘Z / ⇧⌘Z** on Apple
   devices (`APPLE`), **Ctrl+Z / Ctrl+Y** (and Ctrl+Shift+Z) elsewhere; ⌘Y is left alone (Chrome
   history). Like the other shortcuts they are ignored while typing in inputs (the native text undo
   applies there) and while a dialog or the settings are open. Listed in the shortcuts dialog.
