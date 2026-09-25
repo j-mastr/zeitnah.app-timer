@@ -40,7 +40,8 @@ try {
   const code = await a.inputValue('#srvCode');
   assert.match(await a.evaluate(() => location.hash), new RegExp('#r=' + code));
   assert.equal(await a.locator('#participantList li').count(), 3);
-  assert.equal(await a.evaluate(() => JSON.parse(localStorage.getItem('zeitnah.local')).participants.length), 0);
+  // Uploading to the server keeps the local data in this browser.
+  assert.equal(await a.evaluate(() => JSON.parse(localStorage.getItem('zeitnah.local')).participants.length), 3);
   await a.click('#drawerClose');
   step(`new race ${code} initialised with local data`);
 

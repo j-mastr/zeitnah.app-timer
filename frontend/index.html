@@ -510,6 +510,8 @@ const TEXTS = {
       'settings.reset': 'Lokale Daten zurücksetzen',
       'settings.transportWs': 'Echtzeit-Synchronisation per WebSocket',
       'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
+      'settings.clientsOne': '1 Gerät verbunden',
+      'settings.clientsMany': '{n} Geräte verbunden',
       'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
       'settings.link': 'Direkt-Link',
       'settings.copy': 'Kopieren',
@@ -598,6 +600,8 @@ const TEXTS = {
       'settings.reset': 'Reset local data',
       'settings.transportWs': 'Real-time sync via WebSocket',
       'settings.transportPoll': 'Sync via HTTP polling',
+      'settings.clientsOne': '1 device connected',
+      'settings.clientsMany': '{n} devices connected',
       'settings.pendingDetail': '{n} change(s) waiting to be sent.',
       'settings.link': 'Direct link',
       'settings.copy': 'Copy',
@@ -1406,6 +1410,7 @@ class LocalBackend {
   getState(){ return this.state; }
   getStatus(){ return 'local'; }
   pendingCount(){ return 0; }
+  clientCount(){ return null; }
   pendingCaptureIds(){ return new Set(); }
   blockReason(){ return null; }
   dispatch(op){
@@ -1461,6 +1466,7 @@ class ServerBackend {
     this.hasSnapshot = !!cache;
     this.status = 'connecting';
     this.transport = null;       // 'ws' | 'poll' | null
+    this.clients = null;         // clients on this race, only known over WebSocket
     this.wsUrl = undefined;      // undefined = not fetched yet, null = disabled
     this.ws = null;
     this.wsFailures = 0;
@@ -1477,6 +1483,8 @@ class ServerBackend {
   getState(){ return this.view; }
   getStatus(){ return this.status; }
   pendingCount(){ return this.pending.length; }
+  /** Number of clients on this race, or null while polling (the HTTP API can't tell). */
+  clientCount(){ return this.transport === 'ws' ? this.clients : null; }
   pendingCaptureIds(){
     return new Set(this.pending.filter(o => o.type === 'capture.add' && o.capture).map(o => o.capture.id));
   }
@@ -1603,6 +1611,9 @@ class ServerBackend {
         this.flush();
         break;
       case 'events': this.applyEvents(msg.events || []); break;
+      case 'presence':
+        if(Number.isInteger(msg.clients) && msg.clients !== this.clients){ this.clients = msg.clients; this.handlers.onStatus(); }
+        break;
       case 'ack': this.settle(msg.opId, true); this.persist(); this.recompute(); break;
       case 'rejected': this.settle(msg.opId, false, msg.error); this.persist(); this.recompute(); break;
       case 'error': if(msg.error === 'not_found') this.fatal('not_found'); break;
@@ -1612,8 +1623,11 @@ class ServerBackend {
     clearTimeout(this.timers.heartbeat);
     if(this.destroyed) return;
     this.transport = null;
+    this.clients = null;
     this.sent.clear();
     this.wsFailures++;
+    // The status text carries the transport and the client count, and neither is known now.
+    this.handlers.onStatus();
     // Fall back to HTTP right away and retry the WebSocket with backoff.
     this.startPolling();
     this.later('wsRetry', () => this.openWs(), Math.min(30000, 1000 * 2 ** Math.min(this.wsFailures, 5)));
@@ -1970,7 +1984,11 @@ function statusInfo(){
   const status = backend.getStatus();
   const labels = {local:'status.local', connecting:'status.connecting', online:'status.online', offline:'status.offline'};
   let text = t(labels[status]);
-  if(backend.kind === 'server' && status === 'online') text += ' · ' + backend.code;
+  if(backend.kind === 'server' && status === 'online'){
+    text += ' · ' + backend.code;
+    const clients = backend.clientCount();
+    if(clients) text += ' (' + clients + ')';
+  }
   const pending = backend.pendingCount();
   if(pending > 0) text += ' · ' + t('status.pending', {n: pending});
   if(S().archived) text = t('status.archived') + ' · ' + text;
@@ -2550,6 +2568,8 @@ function renderSettings(){
   document.getElementById('srvStatus').textContent = t(labels[status]);
   const details = [];
   if(status === 'online') details.push(t(backend.transport === 'ws' ? 'settings.transportWs' : 'settings.transportPoll'));
+  const clients = backend.clientCount();
+  if(clients) details.push(clients === 1 ? t('settings.clientsOne') : t('settings.clientsMany', {n: clients}));
   if(backend.pendingCount()) details.push(t('settings.pendingDetail', {n: backend.pendingCount()}));
   const detailEl = document.getElementById('srvDetail');
   detailEl.textContent = details.join(' · ');

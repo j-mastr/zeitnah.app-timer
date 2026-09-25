@@ -242,6 +242,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   via `body.lock-normal`, and `perform()` refuses with a toast.
 - Status (local / connecting / connected / connection lost, plus pending count and
   "Archived") is shown in a pill next to the settings button; clicking it opens settings.
+- Over a WebSocket the pill also shows how many clients are on this race, after the code:
+  "Server verbunden · ABC123 (5)". The count comes from the server's `presence` message
+  (`backend.clientCount()`); while the HTTP fallback is in use it is unknown and omitted,
+  since polling requests can't be attributed to a client. The settings panel spells the same
+  number out in its status details ("2 Geräte verbunden" / "2 devices connected",
+  `settings.clientsOne` / `settings.clientsMany`).
 
 ### Archiving
 - Settings → "Archive race" (server mode only, confirmation, irreversible).
@@ -274,7 +280,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Settings panel (slide-over from the right)
 - Language · Sport (select, `data-edit="normal"`) · local mode: status, race code +
   Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
-  data" · server mode: status with transport and pending count, code (read-only), direct
+  data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
   settings, Disconnect, Sync data (upload / copy to browser), Archive (or archived notice).
 
@@ -330,18 +336,24 @@ events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README.
 ```
 client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state"}
 client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers)
+                                                    server → {"type":"presence","code","clients"} (to all subscribers)
                                                     server → {"type":"ack","opId"}  (duplicate, already applied)
                                                     server → {"type":"rejected","opId","error"}
 client → {"type":"ping"}                            server → {"type":"pong"}
                                                     server → {"type":"error","error":"not_found"|...}
 ```
+`presence` is sent to a race's subscribers whenever one joins or leaves; `clients` counts
+only the WebSocket connections of *this* process, so it is a lower bound when several
+WebSocket servers run, and HTTP-polling clients are never counted.
+
 The WebSocket process also polls the database (default every 0.25 s) for events written
 by the HTTP API (other PHP processes) and pushes them. It sends WS ping frames every 25 s
 and drops connections idle for 75 s.
 
 ### Client (`frontend/index.html`)
 - `LocalBackend` / `ServerBackend` share one interface: `getState()`, `getStatus()`,
-  `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`, `destroy()`.
+  `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`,
+  `clientCount()`, `destroy()`.
 - All UI mutations go through `perform(op)`, which checks `blockReason` first.
 - `ServerBackend`: `confirmed` + `seq` + `pending` → `view`. Server events are applied in
   `seq` order (gap → resync with a snapshot); an event whose `op.opId` matches a pending op

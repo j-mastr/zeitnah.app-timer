@@ -23,6 +23,7 @@ use React\Socket\ConnectionInterface;
  *   server → client  {"type":"snapshot","code","seq","state"}
  *   client → server  {"type":"ops","ops":[{opId,type,...}]}
  *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber
+ *   server → client  {"type":"presence","code","clients"}    subscriber count of this race
  *   server → client  {"type":"ack","opId"}                   op had already been applied
  *   server → client  {"type":"rejected","opId","error"}
  *   client ↔ server  {"type":"ping"} / {"type":"pong"}
@@ -214,6 +215,7 @@ final class SyncServer
         $this->pushedSeq[$code] ??= $snapshot['seq'];
         $session->send(['type' => 'snapshot'] + $snapshot);
         ($this->log)(sprintf('client #%d subscribed to %s', $session->id(), $code));
+        $this->broadcastPresence($code);
     }
 
     private function onOperations(ClientSession $session, mixed $ops): void
@@ -246,6 +248,18 @@ final class SyncServer
         $this->broadcast($session->code);
     }
 
+    /**
+     * Tells every subscriber how many clients watch this race. Only this process's
+     * WebSocket connections are counted; HTTP polling clients are invisible here.
+     */
+    private function broadcastPresence(string $code): void
+    {
+        $clients = count($this->subscribers[$code] ?? []);
+        foreach ($this->subscribers[$code] ?? [] as $subscriber) {
+            $subscriber->send(['type' => 'presence', 'code' => $code, 'clients' => $clients]);
+        }
+    }
+
     private function broadcast(string $code): void
     {
         $events = $this->races->eventsSince($code, $this->pushedSeq[$code] ?? 0);
@@ -272,9 +286,12 @@ final class SyncServer
             return;
         }
         unset($this->subscribers[$code][$session->id()]);
+        $session->code = null;
         if (empty($this->subscribers[$code])) {
             unset($this->subscribers[$code], $this->pushedSeq[$code]);
+
+            return;
         }
-        $session->code = null;
+        $this->broadcastPresence($code);
     }
 }
