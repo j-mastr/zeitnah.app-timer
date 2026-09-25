@@ -317,6 +317,7 @@
   .recent-row{display:flex; align-items:center; gap:6px;}
   .recent-item{display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex:1 1 auto; min-width:0; text-align:left;}
   .recent-item .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  #recentList .recent-more{align-self:flex-start; margin-top:0;}
   .recent-item .meta{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; white-space:nowrap;}
   .row{display:flex; gap:8px; align-items:center;}
   .row .input{flex:1;}
@@ -775,6 +776,7 @@ const TEXTS = {
       'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
       'settings.recent': 'Zuletzt verbunden',
       'settings.recentForget': 'Aus der Liste entfernen',
+      'settings.recentMore': '{n} weitere anzeigen',
       'settings.clientsOne': '1 Gerät verbunden',
       'settings.clientsMany': '{n} Geräte verbunden',
       'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
@@ -976,6 +978,7 @@ const TEXTS = {
       'settings.transportPoll': 'Sync via HTTP polling',
       'settings.recent': 'Recently connected',
       'settings.recentForget': 'Remove from the list',
+      'settings.recentMore': 'Show {n} more',
       'settings.clientsOne': '1 device connected',
       'settings.clientsMany': '{n} devices connected',
       'settings.pendingDetail': '{n} change(s) waiting to be sent.',
@@ -2836,8 +2839,10 @@ function setFragment(code){
 }
 
 // The races this browser connected to, newest first — a per-device shortcut list. All of them
-// are kept; the settings show the latest RECENT_MAX, so removing one brings the next one up.
+// are kept; the settings show the latest RECENT_MAX, so removing one brings the next one up,
+// and "show more" reveals RECENT_MAX further ones at a time (until the settings are reopened).
 const RECENT_MAX = 3;
+let recentShown = RECENT_MAX;
 function recentConnections(){
   const list = readJson(KEYS.recent);
   return Array.isArray(list) ? list.filter(e => e && typeof e.serverUrl === 'string' && typeof e.code === 'string') : [];
@@ -4491,6 +4496,7 @@ function renderAll(){
 const drawer = document.getElementById('drawer');
 const drawerOverlay = document.getElementById('drawerOverlay');
 function openSettings(){
+  recentShown = RECENT_MAX;
   renderSettings();
   lockScroll(true);
   drawerOverlay.hidden = false;
@@ -4872,7 +4878,8 @@ function requireServerUrl(){
 
 /** Quick-connect entries for the races this browser used last. */
 function renderRecent(){
-  const list = recentConnections().slice(0, RECENT_MAX);
+  const all = recentConnections();
+  const list = all.slice(0, recentShown);
   const wrap = document.getElementById('recentList');
   document.getElementById('recentField').hidden = list.length === 0;
   wrap.innerHTML = '';
@@ -4911,6 +4918,20 @@ function renderRecent(){
     row.append(b, forget);
     wrap.appendChild(row);
   });
+  const rest = all.length - list.length;
+  if(rest > 0){
+    const more = document.createElement('button');
+    more.className = 'link-btn recent-more';
+    more.type = 'button';
+    more.textContent = t('settings.recentMore', {n: Math.min(rest, RECENT_MAX)});
+    more.addEventListener('click', () => {
+      recentShown += RECENT_MAX;
+      renderRecent();
+      // The link is rebuilt (or gone); keep the focus on it or in the drawer.
+      (wrap.querySelector('.recent-more') || document.getElementById('codeInput')).focus({preventScroll: true});
+    });
+    wrap.appendChild(more);
+  }
 }
 /** Host of a server URL, left out when it is the one this page would use anyway. */
 function hostOf(serverUrl){

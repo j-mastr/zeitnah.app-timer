@@ -532,7 +532,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): every
   race this browser connected to, newest first, as `{serverUrl, code, name, worksetName}`
   (`worksetName` for a code bound to a station, shown as "Race (Station 2)"); the settings show
-  the latest `RECENT_MAX` = 3. Each row has a ✕ (no confirmation) that removes the entry, so the
+  the latest `RECENT_MAX` = 3, and while there are more a link "3 weitere anzeigen" / "Show 3
+  more" (`.link-btn`, the number is what is left, at most 3) below them reveals the next 3 each
+  time (`recentShown`, reset whenever the settings open). Each row has a ✕ (no confirmation) that removes the entry, so the
   next one moves up; it also deletes the race's cache and stored station unless changes are
   still waiting to be sent (then the cache stays, so reconnecting delivers them). Written on every connect and updated with the race name once it
   is known (`rememberConnection()` / `rememberName()`). Connecting passes `keepKnown`, so a
