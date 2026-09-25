@@ -27,17 +27,27 @@ let seed = 42;
 const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
 const pick = (list) => list[Math.floor(rnd() * list.length)];
 
-const participantIds = ['b1', 'b2', 'b3', 'b4', 'b5', 'bX', 'not valid!'];
+const participantIds = ['b1', 'b2', 'b3', 'b4', 'b5', 'bX', 'b1', 'b2', 'b3', 'not valid!'];
 const captureIds = ['c1', 'c2', 'c3', 'c4'];
-const names = ['GER 1', 'ger 1', '  NED  7 ', 'Ö-Team', '', 'x'.repeat(61), 'FRA 12', 42, '🏁 Emoji'];
+const names = ['GER 1', 'ger 1', '  NED  7 ', 'Ö-Team', '', 'x'.repeat(61), 'FRA 12', 42, '🏁 Emoji', 'ITA 3', 'ESP 9', 'DEN 4', 'SWE 2'];
 const kindIds = ['k1', 'k2', 'k3', 'start', 'split', 'finish', 'not valid!'];
 const captureKinds = [...kindIds, null, undefined, 7];
 const kindNames = ['Protest', 'protest', '  Pit  in ', '', 'y'.repeat(41), 3];
 const kindRoles = ['split', 'marker', 'marker', 'finish', null];
 const randomKind = () => ({id: pick(kindIds), name: pick(kindNames), role: pick(kindRoles)});
-const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add', 'participant.rename', 'participant.delete', 'ranking.add',
-  'ranking.remove', 'ranking.move', 'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'workset.setKind',
-  'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus'];
+const worksetIds = ['w1', 'w2', 'w3', 'w4', 'not valid!'];
+const worksetRefs = ['w1', 'w1', 'w1', 'w2', 'w2', 'w2', 'w3', 'w4', 'not valid!', null, undefined, 5];
+const worksetNames = ['Finish', 'finish', ' Gate  3 ', '', null, null, undefined, undefined, 'z'.repeat(41), 4];
+const rankings = [undefined, null, [], ['b1', 'b2', 'b1', 'bX'], ['b3', 'b2'], ['not valid!'], 'b1', [7]];
+const randomWorkset = () => (rnd() < 0.1 ? pick([null, 'w1', {}]) : {
+  id: pick(worksetIds), name: pick(worksetNames), number: pick([undefined, undefined, undefined, undefined, null, 3, 0, 1.5, '2']),
+  ranking: pick(rankings), captureKind: pick([undefined, undefined, ...captureKinds]),
+});
+const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
+  'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+  'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus',
+  'workset.add', 'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
+  'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move'];
 
 function randomOp(i) {
   const type = pick(types);
@@ -47,13 +57,19 @@ function randomOp(i) {
     case 'race.setSport': op.sport = pick(['generic', 'sailing', 'running', 'swimming', 'motor', 'bogus', null]); break;
     case 'participants.add': op.participants = [{id: pick(participantIds), name: pick(names)}, {id: pick(participantIds), name: pick(names)}]; break;
     case 'participant.rename': op.participantId = pick(participantIds); op.name = pick(names); break;
-    case 'participant.delete': case 'ranking.add': case 'ranking.remove': op.participantId = pick(participantIds); break;
-    case 'ranking.move': op.participantId = pick(participantIds); op.beforeId = pick([...participantIds, null]); break;
-    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null]), kind: pick(captureKinds)}; break;
+    case 'participant.delete': op.participantId = pick(participantIds); break;
+    case 'workset.ranking.add': case 'workset.ranking.remove':
+      op.worksetId = pick(worksetRefs); op.participantId = pick(participantIds); break;
+    case 'workset.ranking.move':
+      op.worksetId = pick(worksetRefs); op.participantId = pick(participantIds); op.beforeId = pick([...participantIds, null]); break;
+    case 'workset.add': op.workset = randomWorkset(); if (rnd() < 0.4) op.beforeId = pick([...worksetIds, null]); break;
+    case 'workset.rename': op.worksetId = pick(worksetRefs); op.name = pick(worksetNames); break;
+    case 'workset.delete': case 'workset.makeDefault': op.worksetId = pick(worksetRefs); break;
+    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null]), kind: pick(captureKinds), worksetId: pick(worksetRefs)}; break;
     case 'capture.assign': op.captureId = pick(captureIds); op.participantId = pick([...participantIds, null]); break;
     case 'capture.delete': op.captureId = pick(captureIds); break;
     case 'capture.setKind': op.captureId = pick(captureIds); op.kind = pick(captureKinds); break;
-    case 'workset.setKind': op.kind = pick(captureKinds); break;
+    case 'workset.setKind': op.worksetId = pick(worksetRefs); op.kind = pick(captureKinds); break;
     case 'kind.add': op.kind = rnd() < 0.1 ? pick([null, 'k1']) : randomKind(); break;
     case 'kind.update': op.kindId = pick(kindIds); op.name = pick(kindNames); op.role = pick(kindRoles); break;
     case 'kind.delete': op.kindId = pick(kindIds); break;
@@ -62,9 +78,12 @@ function randomOp(i) {
         name: pick(['Local', null]),
         sport: pick(['sailing', 'running', 'generic', undefined, null, 'bogus', 7]),
         participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
-        ranking: ['m' + i, pick(participantIds)],
         kinds: pick([undefined, [], [{id: 'mk' + i, name: pick(['Protest', 'Gate']), role: pick(['split', 'marker'])}], [randomKind()]]),
-        captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), participantId: 'm' + i, kind: pick(['mk' + i, ...captureKinds])},
+        worksets: pick([undefined, [], [randomWorkset()],
+          [{id: 'mw' + i, name: pick(['Finish', null, 'Gate']), ranking: ['m' + i, pick(participantIds)], captureKind: pick(['mk' + i, 'start', 'k1'])},
+            {id: pick(worksetIds), name: pick(worksetNames), ranking: pick(rankings)}]]),
+        captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), participantId: 'm' + i, kind: pick(['mk' + i, ...captureKinds]),
+          worksetId: pick(['mw' + i, ...worksetRefs])},
           {id: pick(captureIds), ts: 5, participantId: null}],
       };
       break;

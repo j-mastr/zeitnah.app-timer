@@ -12,6 +12,8 @@ final class ClientSession
     public ?MessageBuffer $messages = null;
     /** Race code this client is subscribed to. */
     public ?string $code = null;
+    /** Workset the device works on, as it announced it (only for the presence counts). */
+    public ?string $worksetId = null;
     public float $lastSeen;
 
     public function __construct(public readonly ConnectionInterface $connection)

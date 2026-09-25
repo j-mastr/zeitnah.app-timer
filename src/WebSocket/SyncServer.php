@@ -21,9 +21,11 @@ use React\Socket\ConnectionInterface;
  * Protocol (JSON text messages):
  *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a race
  *   server → client  {"type":"snapshot","code","seq","state"}
+ *   client → server  {"type":"workset","worksetId"}         the workset this device works on (null: none)
  *   client → server  {"type":"ops","ops":[{opId,type,...}]}
  *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber
- *   server → client  {"type":"presence","code","clients"}    subscriber count of this race
+ *   server → client  {"type":"presence","code","clients","worksets":{id:n}}
+ *                                                             subscriber count of this race, and per workset
  *   server → client  {"type":"ack","opId"}                   op had already been applied
  *   server → client  {"type":"rejected","opId","error"}
  *   client ↔ server  {"type":"ping"} / {"type":"pong"}
@@ -189,6 +191,7 @@ final class SyncServer
             match ($message['type'] ?? null) {
                 'hello' => $this->onHello($session, (string) ($message['code'] ?? '')),
                 'ops' => $this->onOperations($session, $message['ops'] ?? null),
+                'workset' => $this->onWorkset($session, $message['worksetId'] ?? null),
                 'ping' => $session->send(['type' => 'pong']),
                 default => $session->send(['type' => 'error', 'error' => 'invalid_message']),
             };
@@ -216,6 +219,19 @@ final class SyncServer
         $session->send(['type' => 'snapshot'] + $snapshot);
         ($this->log)(sprintf('client #%d subscribed to %s', $session->id(), $code));
         $this->broadcastPresence($code);
+    }
+
+    /** A device announces the workset it works on; it only feeds the presence counts. */
+    private function onWorkset(ClientSession $session, mixed $worksetId): void
+    {
+        $worksetId = is_string($worksetId) && preg_match('/^[A-Za-z0-9_-]{1,40}$/', $worksetId) ? $worksetId : null;
+        if ($worksetId === $session->worksetId) {
+            return;
+        }
+        $session->worksetId = $worksetId;
+        if (null !== $session->code) {
+            $this->broadcastPresence($session->code);
+        }
     }
 
     private function onOperations(ClientSession $session, mixed $ops): void
@@ -249,14 +265,21 @@ final class SyncServer
     }
 
     /**
-     * Tells every subscriber how many clients watch this race. Only this process's
-     * WebSocket connections are counted; HTTP polling clients are invisible here.
+     * Tells every subscriber how many clients watch this race, in total and per workset. Only
+     * this process's WebSocket connections are counted; HTTP polling clients are invisible here.
      */
     private function broadcastPresence(string $code): void
     {
-        $clients = count($this->subscribers[$code] ?? []);
-        foreach ($this->subscribers[$code] ?? [] as $subscriber) {
-            $subscriber->send(['type' => 'presence', 'code' => $code, 'clients' => $clients]);
+        $subscribers = $this->subscribers[$code] ?? [];
+        $worksets = [];
+        foreach ($subscribers as $subscriber) {
+            if (null !== $subscriber->worksetId) {
+                $worksets[$subscriber->worksetId] = ($worksets[$subscriber->worksetId] ?? 0) + 1;
+            }
+        }
+        $message = ['type' => 'presence', 'code' => $code, 'clients' => count($subscribers), 'worksets' => (object) $worksets];
+        foreach ($subscribers as $subscriber) {
+            $subscriber->send($message);
         }
     }
 

@@ -53,13 +53,18 @@ try {
   assert.equal(await b.locator('#participantList li').count(), 3);
   step('second client joins via #r= link (English UI)');
 
+  // No station yet, so no approaching list: F creates the first station and opens its search.
+  assert.equal(await b.isVisible('#rankSearch'), false);
+  await b.click('h1');
+  await b.keyboard.press('f');
   await b.fill('#rankSearch', 'gr123');
   await b.keyboard.press('Enter');
   await b.fill('#rankSearch', 'fra');
   await b.keyboard.press('Enter');
   await sleep(800);
+  // The other device joins the first station as soon as it exists.
   assert.deepEqual(await a.locator('#sortedList .nm').allTextContents(), ['GER 123', 'FRA 44']);
-  step('fuzzy quick-add and sorted list sync');
+  step('F creates the first station; fuzzy quick-add and sorted list sync');
 
   await a.click('h1');
   await a.keyboard.press('Space');
@@ -93,6 +98,37 @@ try {
   assert.equal(await a.inputValue('#capList .cap-row >> nth=0 >> select.kind-select'), 'finish');
   assert.equal(await b.textContent('#captureBtn'), 'RECORD TIME');
   step('capture kinds: custom kind, synced selection, local one-shot, retyping');
+
+  // Stations: a second one has its own approaching list and kind.
+  await b.click('#settingsBtn');
+  await b.click('#addWorksetBtn');
+  await b.waitForSelector('#worksetList .ws-row >> nth=2');
+  await b.click('#worksetList .ws-row >> nth=1 >> .ws-pick');
+  await b.click('#drawerClose');
+  assert.equal(await b.locator('#sortedList li').count(), 0);
+  assert.equal(await b.textContent('#sortedStation'), '· Station 2');
+  await b.click('h1');
+  await b.keyboard.press('f');
+  await b.fill('#rankSearch', 'ned');
+  await b.keyboard.press('Enter');
+  await b.click('#kindSeg button[data-kind="start"]');
+  await sleep(800);
+  assert.deepEqual(await a.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['NED 7']);
+  assert.equal(await a.textContent('#captureBtn'), 'ZEIT ERFASSEN');
+  assert.equal(await b.textContent('#captureBtn'), 'RECORD START');
+  // Deleted on another device: a notice offers the remaining stations.
+  await a.click('#settingsBtn');
+  await a.click('#worksetList .ws-row >> nth=1 >> button:has-text("✕")');
+  await a.click('#dialogOk');
+  await a.click('#drawerClose');
+  await b.waitForSelector('#worksetNotice:not([hidden])');
+  assert.equal(await b.textContent('#worksetNoticeText'), '“Station 2” was deleted – this device has no station now.');
+  assert.equal(await b.isVisible('.sorted-panel'), false);
+  await b.click('#worksetNoticePicks button');
+  assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  assert.equal(await b.isVisible('#worksetNotice'), false);
+  step('stations: own list and kind; deleted elsewhere, a notice switches to another');
 
   await b.click('#renameRaceBtn');
   await b.fill('#raceTitle input', 'Smoke Test Race');
