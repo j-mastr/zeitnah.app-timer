@@ -248,6 +248,10 @@
   .field{display:flex; flex-direction:column; gap:5px; margin-bottom:10px;}
   .field label{font-size:12px; color:var(--muted);}
   .code-input{font-family:'Space Mono',monospace; text-transform:uppercase; letter-spacing:1px;}
+  #recentList{display:flex; flex-direction:column; gap:6px;}
+  .recent-item{display:flex; align-items:baseline; justify-content:space-between; gap:10px; width:100%; text-align:left;}
+  .recent-item .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .recent-item .meta{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; white-space:nowrap;}
   .row{display:flex; gap:8px; align-items:center;}
   .row .input{flex:1;}
   .help{font-size:12px; color:var(--muted); margin:6px 0 0; line-height:1.45; overflow-wrap:anywhere;}
@@ -419,6 +423,10 @@
           <input class="input code-input" id="codeInput" type="text" maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC123">
           <button class="btn primary" id="connectBtn" data-i18n="settings.connect"></button>
         </div>
+      </div>
+      <div class="field" id="recentField" hidden>
+        <label data-i18n="settings.recent"></label>
+        <div id="recentList"></div>
       </div>
       <div class="divider" data-i18n="settings.or"></div>
       <button class="btn block" id="createBtn" data-i18n="settings.create"></button>
@@ -609,6 +617,7 @@ const TEXTS = {
       'settings.reset': 'Lokale Daten zurücksetzen',
       'settings.transportWs': 'Echtzeit-Synchronisation per WebSocket',
       'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
+      'settings.recent': 'Zuletzt verbunden',
       'settings.clientsOne': '1 Gerät verbunden',
       'settings.clientsMany': '{n} Geräte verbunden',
       'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
@@ -718,6 +727,7 @@ const TEXTS = {
       'settings.reset': 'Reset local data',
       'settings.transportWs': 'Real-time sync via WebSocket',
       'settings.transportPoll': 'Sync via HTTP polling',
+      'settings.recent': 'Recently connected',
       'settings.clientsOne': '1 device connected',
       'settings.clientsMany': '{n} devices connected',
       'settings.pendingDetail': '{n} change(s) waiting to be sent.',
@@ -1256,6 +1266,7 @@ const KEYS = {
   local: 'zeitnah.local',
   prefs: 'zeitnah.prefs',
   connection: 'zeitnah.connection',
+  recent: 'zeitnah.recent',
   cachePrefix: 'zeitnah.cache:',
 };
 // Keys used by earlier versions; their data is migrated on load (see migrateLegacyStorage).
@@ -1887,6 +1898,17 @@ function setFragment(code){
   try{ history.replaceState(null, '', location.pathname + location.search + (code ? '#r=' + code : '')); }catch(e){}
 }
 
+// The races this browser connected to last, newest first — a per-device shortcut list.
+const RECENT_MAX = 3;
+function recentConnections(){
+  const list = readJson(KEYS.recent);
+  return Array.isArray(list) ? list.filter(e => e && typeof e.serverUrl === 'string' && typeof e.code === 'string') : [];
+}
+function rememberConnection(serverUrl, code, name){
+  const rest = recentConnections().filter(e => !(e.serverUrl === serverUrl && e.code === code));
+  writeJson(KEYS.recent, [{serverUrl, code, name: name || null}, ...rest].slice(0, RECENT_MAX));
+}
+
 function setBackend(next){
   if(backend) backend.destroy();
   backend = next;
@@ -1901,6 +1923,7 @@ function useLocal(){
 }
 function useServer(serverUrl, code){
   writeJson(KEYS.connection, {serverUrl, code});
+  rememberConnection(serverUrl, code, null);
   setFragment(code);
   const next = new ServerBackend(serverUrl, code, backendHandlers);
   setBackend(next);
@@ -2206,11 +2229,19 @@ window.addEventListener('scroll', updateClockStuck, {passive: true});
 window.addEventListener('resize', () => { measureSafeTop(); updateClockStuck(); });
 
 let editingTitle = false;
+let rememberedName = null;   // avoids rewriting the recent list on every render
+function rememberName(name){
+  const key = backend.code + '|' + (name || '');
+  if(key === rememberedName) return;
+  rememberedName = key;
+  rememberConnection(backend.serverUrl, backend.code, name);
+}
 function renderHeader(){
   const s = S();
   if(!editingTitle) document.getElementById('raceTitle').textContent = s.name || t('header.defaultName');
   document.title = s.name ? `${s.name} · ${t('app.title')}` : t('app.title');
   document.getElementById('archivedBanner').hidden = !s.archived;
+  if(backend.kind === 'server') rememberName(s.name);
   // Archived races are read-only: the clock and the sorted list have nothing left to do.
   document.body.classList.toggle('archived', !!s.archived);
 }
@@ -2866,6 +2897,7 @@ function renderSettings(){
   document.getElementById('serverSection').hidden = !isServer;
 
   if(!isServer){
+    renderRecent();
     const urlInput = document.getElementById('serverUrlInput');
     if(document.activeElement !== urlInput) urlInput.value = prefs.serverUrl || '';
     urlInput.placeholder = DEFAULT_SERVER_URL || 'https://timing.example.org';
@@ -2930,6 +2962,40 @@ function requireServerUrl(){
     document.getElementById('serverUrlInput').focus();
   }
   return url;
+}
+
+/** Quick-connect entries for the races this browser used last. */
+function renderRecent(){
+  const list = recentConnections();
+  const wrap = document.getElementById('recentList');
+  document.getElementById('recentField').hidden = list.length === 0;
+  wrap.innerHTML = '';
+  list.forEach(entry => {
+    const b = document.createElement('button');
+    b.className = 'btn block recent-item';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = entry.name || entry.code;
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    // The code is redundant when it is the label; the host matters with several servers.
+    meta.textContent = [entry.name ? entry.code : '', hostOf(entry.serverUrl)].filter(Boolean).join(' · ');
+    b.append(nm, meta);
+    b.addEventListener('click', () => {
+      showConnectError('');
+      withBusy([b], async () => {
+        try{ await connectToRace(entry.serverUrl, entry.code); }
+        catch(e){ showConnectError(errorMessage(e, entry.code)); }
+      });
+    });
+    wrap.appendChild(b);
+  });
+}
+/** Host of a server URL, left out when it is the one this page would use anyway. */
+function hostOf(serverUrl){
+  const current = prefs.serverUrl || DEFAULT_SERVER_URL || '';
+  if(serverUrl === current) return '';
+  try{ return new URL(serverUrl).host; }catch(e){ return serverUrl; }
 }
 
 document.getElementById('connectBtn').addEventListener('click', () => {

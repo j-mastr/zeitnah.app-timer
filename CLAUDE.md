@@ -278,6 +278,13 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   field is required.
 - The active connection `{serverUrl, code}` is stored in
   `localStorage['zeitnah.connection']` and resumed after a reload.
+- **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): the
+  last `RECENT_MAX` = 3 races this browser connected to, newest first, as
+  `{serverUrl, code, name}`. Written on every connect and updated with the race name once it
+  is known (`rememberConnection()` / `rememberName()`). In local mode the settings list them
+  above "Create a new race" as **quick-connect buttons** labelled with the name, or the code
+  when the race has none; the row's second column shows the code (when the name is the label)
+  and the server host (only when it differs from the server this page would use anyway).
 - **URL fragment `#r=CODE`** connects automatically on load (and on `hashchange`); while
   connected the fragment always reflects the current code; it is removed on disconnect.
 - **Initialisation prompt:** when connecting fresh (by code, link or "new race") to a
@@ -362,8 +369,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   top and undoes the restore. The panel and the modal backdrop use
   `overscroll-behavior: contain`.
 - Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
-  Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
-  data" · server mode: status with transport, client count and pending count, code (read-only), direct
+  Connect, recent connections (quick connect), "Create a new race on the server", advanced
+  settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
   settings, Disconnect, Sync data (upload / copy to browser), Archive (or archived notice).
   A "Show keyboard shortcuts" link sits at the very bottom, below both backend sections.
