@@ -79,7 +79,6 @@
   body.pin-clock .clock-card{position:sticky; top:env(safe-area-inset-top,0px); z-index:5;}
   /* Its own row rather than an overlay: the clock is as wide as the card on small screens. */
   .clock-tools{display:flex; justify-content:flex-end; margin:-12px -8px -4px;}
-  .pin-btn.on{color:var(--accent); border-color:var(--accent);}
   .clock{font-family:'Space Mono',monospace; font-weight:700; font-variant-numeric:tabular-nums; font-size:clamp(38px,11vw,86px); letter-spacing:1px; line-height:1;}
   .clock .cs{font-size:0.45em; color:var(--muted);}
   .date{color:var(--muted); font-size:12px; margin-top:6px; font-family:'Space Mono',monospace;}
@@ -135,6 +134,8 @@
 
   @media (hover: hover){
     .link-btn:hover{color:var(--text);}
+    .icon-btn:hover{color:var(--text);}
+    .pin-btn:hover{opacity:.85;}
     .foot-link:hover{color:var(--accent);}
     .mini:hover{color:var(--text); border-color:var(--muted);}
     .search-results .res:hover{background:var(--panel2);}
@@ -165,8 +166,15 @@
   .cap-side{display:flex; flex-direction:column; gap:6px; align-items:end;}
   select.assign{width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
   .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right;}
-  .footer-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
-  .footer-actions input[type=file]{display:none;}
+  #importFile{display:none;}
+  /* Borderless icon buttons: panel headers and the clock's pin. */
+  .icon-btn{display:inline-flex; align-items:center; justify-content:center; background:none; border:none; border-radius:8px;
+    padding:4px 6px; color:var(--muted); font-size:19px; line-height:1; cursor:pointer; font-family:inherit;
+    touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
+  .icon-btn:active{color:var(--text);}
+  /* The pin keeps its colour only while it is active. */
+  .pin-btn{filter:grayscale(1); opacity:.55;}
+  .pin-btn.on{filter:none; opacity:1;}
 
   /* ---------- touch devices: roomier hit targets (~44 px, WCAG 2.5.5) ---------- */
   @media (hover: none) and (pointer: coarse){
@@ -176,6 +184,7 @@
     /* No modifier key to press here, so the footer link invites a tap instead. */
     #footShortcutsKey{display:none;}
     .footer-shortcuts .touch-only{display:inline;}
+    .icon-btn{padding:9px 11px; font-size:22px;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -275,7 +284,7 @@
 
   <div class="app">
     <div class="clock-card">
-      <div class="clock-tools"><button class="mini pin-btn" id="pinClockBtn">📌</button></div>
+      <div class="clock-tools"><button class="icon-btn pin-btn" id="pinClockBtn">📌</button></div>
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
       <div class="date" id="dateLine"></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical" data-i18n="clock.capture"></button>
@@ -303,6 +312,8 @@
     <div class="panel participants-panel">
       <div class="panel-head">
         <h2><span data-i18n="participants.title"></span> <span class="count" id="participantCount">0</span></h2>
+        <button class="icon-btn" id="importBtn" data-edit="normal" data-i18n-title="participants.import">↥</button>
+        <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
       </div>
       <div class="hint-line" data-i18n="participants.hint"></div>
       <div class="toolbar">
@@ -326,21 +337,15 @@
       </div>
       <ul id="participantList"></ul>
       <div class="empty" id="participantEmpty"></div>
-      <div class="footer-actions">
-        <button class="btn small" id="importBtn" data-edit="normal" data-i18n="participants.import"></button>
-        <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
-      </div>
     </div>
 
     <div class="panel captures-panel">
       <div class="panel-head">
         <h2><span data-i18n="captures.title"></span> <span class="count" id="capCount">0</span></h2>
+        <button class="icon-btn" id="exportBtn" data-i18n-title="captures.export">↧</button>
       </div>
       <ul id="capList" style="margin-top:12px;"></ul>
       <div class="empty" id="capEmpty" data-i18n="captures.empty"></div>
-      <div class="footer-actions">
-        <button class="btn small" id="exportBtn" data-i18n="captures.export"></button>
-      </div>
     </div>
   </div>
 

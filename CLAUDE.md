@@ -161,7 +161,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (including "(deleted participant)" if the participant was deleted) and a delete button.
 - Captures not yet confirmed by the server show a "⏳ not synced" marker.
 - Header count uses the same `.count` style as the other panels.
-- CSV export in ascending order; header and file name come from the texts
+- CSV export via the ↧ icon button in the panel header (`.icon-btn`: borderless, muted,
+  right-aligned, tooltip only), in ascending order; header and file name come from the texts
   (sailing: `Platz;Zeitstempel;Uhrzeit;Boot` / `Place;Timestamp;Time;Boat`). The
   *Zeitstempel/Timestamp* column is the full ISO 8601 timestamp with date and offset
   (`2026-09-25T14:33:12.45+02:00`), the *Uhrzeit/Time* column the same instant as a readable
@@ -171,7 +172,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Add by name (sailing UI: sail number or boat name; max 60 chars; whitespace
   normalised). Names are unique case-insensitively; duplicates are refused with a toast.
 - Rename inline (✎), delete (✕, confirmation; recorded times keep their participant id).
-- CSV import: one participant per line, first column (`;` or `,` separated, quotes stripped),
+- CSV import via the ↥ icon button in the panel header (same `.icon-btn` style):
+  one participant per line, first column (`;` or `,` separated, quotes stripped),
   an optional header line matching the text `import.headerPattern` is skipped (sailing:
   `name`, `boot`, `boat`, `segelnummer`, `sail`…), existing names are skipped.
 - Each row shows the latest recorded time of the participant, with `+x` if it has more.
@@ -222,8 +224,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   safe-area insets matter (iPad).
 
 ### Pinned clock
-- A 📌 button in the clock card's top row (its own flex row, so the clock keeps the full
-  width) makes the card sticky at the top while scrolling — at every window width, not just
+- A borderless 📌 `.icon-btn` in the clock card's top row (its own flex row, so the clock
+  keeps the full width) makes the card sticky at the top while scrolling; it is greyscale and
+  dimmed while inactive and shows its colours when the clock is pinned — at every window width, not just
   the narrow layout. `prefs.pinClock` (per-device, never synced, default on) toggles
   `body.pin-clock`; the button shows the state via `.on` and `aria-pressed`.
 
