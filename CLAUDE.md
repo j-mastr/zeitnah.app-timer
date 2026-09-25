@@ -112,6 +112,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   versions; those captures fall back to this device's zone.
   - If the ranking is non-empty, the capture is assigned to its **first** participant and that
     participant leaves the ranking. Otherwise the capture is stored unassigned.
+- A link-styled button under the big one ("Zeit ohne Zuordnung erfassen" / "Record a time
+  without assigning it", `.link-btn`) and the key **0** (top row or numpad) record a capture
+  that stays unassigned, whatever the ranking holds (`recordTime(null)`).
 - **Double-click / double-tap on a participant name** (in either list) records a time for that
   participant now; if the participant was in the ranking (at any position) it is removed from it.
 - **Keys 1–9** (top row or numpad) record a time for the participant at that position of the

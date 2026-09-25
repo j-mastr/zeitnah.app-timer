@@ -82,6 +82,8 @@
   .date{color:var(--muted); font-size:12px; margin-top:6px; font-family:'Space Mono',monospace;}
   .capture-btn{margin-top:16px; width:100%; max-width:420px; border:none; border-radius:12px; background:var(--accent); color:var(--accent-ink); font-family:'Space Mono',monospace; font-weight:700; font-size:18px; padding:16px; cursor:pointer; letter-spacing:.5px; transition:transform .08s ease;}
   .capture-btn:active{transform:scale(0.97);}
+  .link-btn{display:inline-block; margin-top:10px; background:none; border:none; padding:2px 6px; color:var(--muted); font-family:inherit; font-size:13px; text-decoration:underline; text-underline-offset:3px; cursor:pointer;}
+  .link-btn:active{color:var(--text);}
   .hint-line{color:var(--muted); font-size:11px; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
   .hint-pair{display:inline-flex; align-items:center; gap:4px; white-space:nowrap;}
 
@@ -127,6 +129,7 @@
   .search-empty{padding:9px 12px; font-size:12px; color:var(--muted);}
 
   @media (hover: hover){
+    .link-btn:hover{color:var(--text);}
     .mini:hover{color:var(--text); border-color:var(--muted);}
     .search-results .res:hover{background:var(--panel2);}
   }
@@ -161,6 +164,7 @@
 
   /* ---------- touch devices: roomier hit targets (~44 px, WCAG 2.5.5) ---------- */
   @media (hover: none) and (pointer: coarse){
+    .link-btn{padding:10px 12px; font-size:14px;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -255,9 +259,11 @@
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
       <div class="date" id="dateLine"></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical" data-i18n="clock.capture"></button>
+      <div><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
       <div class="hint-line">
         <span class="hint-pair"><span class="kbd">␣</span><span data-i18n="clock.hintNext"></span></span>
         <span class="hint-pair"><span class="kbd">1–9</span><span data-i18n="clock.hintDirect"></span></span>
+        <span class="hint-pair"><span class="kbd">0</span><span data-i18n="clock.hintFree"></span></span>
       </div>
     </div>
 
@@ -463,6 +469,8 @@ const TEXTS = {
       'status.archived': 'Archiviert',
       'clock.capture': 'ZEIT ERFASSEN',
       'clock.hintDirect': 'Position direkt erfassen',
+      'clock.captureFree': 'Zeit ohne Zuordnung erfassen',
+      'clock.hintFree': 'ohne Zuordnung erfassen',
       'sorted.title': 'Im Zieleinlauf',
       'sorted.pill': 'Zieleinlauf #{n}',
       'participants.exists': '„{name}“ ist bereits vorhanden.',
@@ -553,6 +561,8 @@ const TEXTS = {
       'status.archived': 'Archived',
       'clock.capture': 'RECORD TIME',
       'clock.hintDirect': 'record a position directly',
+      'clock.captureFree': 'Record a time without assigning it',
+      'clock.hintFree': 'record without assigning',
       'sorted.title': 'Approaching the finish',
       'sorted.pill': 'Approaching #{n}',
       'participants.exists': '“{name}” already exists.',
@@ -2325,6 +2335,8 @@ function recordTime(participantId){
   }
 }
 document.getElementById('captureBtn').addEventListener('click', () => recordTime());
+// Explicit null: record the time but leave it unassigned, whatever the ranking holds.
+document.getElementById('captureFreeBtn').addEventListener('click', () => recordTime(null));
 
 document.addEventListener('keydown', (e) => {
   if(!dialogEl.hidden || drawer.classList.contains('open')) return;
@@ -2334,6 +2346,11 @@ document.addEventListener('keydown', (e) => {
   if(e.code === 'Space' && !e.repeat){
     e.preventDefault();
     recordTime();
+    return;
+  }
+  if(/^(Digit|Numpad)0$/.test(e.code) && !e.repeat){
+    e.preventDefault();
+    recordTime(null);
     return;
   }
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
