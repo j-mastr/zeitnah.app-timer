@@ -9,8 +9,9 @@ namespace App\Race;
  *
  * State shape:
  *   name: ?string, archived: bool, sport: string,
- *   participants: list<{id, name}>, ranking: list<participantId>, captureKind: string,
- *   kinds: list<{id, name, role}>, captures: list<{id, ts, tzOffset: ?int, participantId: ?string, kind: string}>
+ *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
+ *   worksets: list<{id, number: int, name: ?string, ranking: list<participantId>, captureKind: string}>,
+ *   captures: list<{id, ts, tzOffset: ?int, participantId: ?string, kind: string, worksetId: ?string}>
  *
  * A capture timestamp is the pair `ts` (Unix milliseconds, the absolute instant including
  * the date) and `tzOffset` (minutes east of UTC on the recording device, null when the
@@ -21,8 +22,14 @@ namespace App\Race;
  * is finish) or the id of a custom kind in `kinds`. A custom kind has the role `split` (a
  * point the participants pass) or `marker` (an annotation such as a protest). A capture takes
  * its participant out of the ranking unless its kind is a marker; an unknown kind id (e.g. a
- * custom kind deleted concurrently) counts as a marker. `ranking` and `captureKind` (the kind
- * new captures get) together form the race's default workset.
+ * custom kind deleted concurrently) counts as a marker.
+ *
+ * A workset (a "station" in the UI) holds a ranking — the participants approaching, in their
+ * expected crossing order — and the kind its captures get. A race starts without worksets;
+ * the first one in the list is the default. Each workset has a `number` fixed when it is
+ * created (one more than the highest existing number), which names it until it is renamed.
+ * A capture records the workset it was taken on (`worksetId`, null without one) and only takes
+ * its participant out of that workset's ranking. Deleted worksets keep their id on captures.
  *
  * `sport` selects the UI text set (see TEXTS in frontend/index.html); the reducer only
  * validates it against SPORTS, it carries no other meaning server-side.
@@ -36,9 +43,10 @@ final class OperationReducer
     public const TYPES = [
         'race.rename', 'race.archive', 'race.setSport',
         'participants.add', 'participant.rename', 'participant.delete',
-        'ranking.add', 'ranking.remove', 'ranking.move',
         'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
-        'workset.setKind', 'kind.add', 'kind.update', 'kind.delete',
+        'kind.add', 'kind.update', 'kind.delete',
+        'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
+        'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
         'state.merge',
     ];
 
@@ -56,24 +64,28 @@ final class OperationReducer
     private const MAX_PARTICIPANT_NAME = 60;
     private const MAX_RACE_NAME = 80;
     private const MAX_KIND_NAME = 40;
+    private const MAX_WORKSET_NAME = 40;
+    private const MAX_WORKSET_NUMBER = 1_000_000;
 
     public static function emptyState(): array
     {
         return [
-            'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [], 'ranking' => [],
-            'captureKind' => self::DEFAULT_KIND, 'kinds' => [], 'captures' => [],
+            'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
+            'kinds' => [], 'worksets' => [], 'captures' => [],
         ];
     }
 
     /**
-     * Fills in the fields a state stored by an earlier version lacks (sport, captureKind,
-     * kinds, the kind of each capture), so the reducer can rely on them.
+     * Fills in the fields a state stored by an earlier version lacks (sport, kinds, worksets,
+     * the kind and workset of each capture), so the reducer can rely on them. The race-wide
+     * ranking and selected kind of earlier versions are dropped: a race starts without worksets.
      */
     public static function upgrade(array $state): array
     {
+        unset($state['ranking'], $state['captureKind']);
         $state += self::emptyState();
         foreach ($state['captures'] as $i => $capture) {
-            $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND];
+            $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND, 'worksetId' => null];
         }
 
         return $state;
@@ -101,7 +113,9 @@ final class OperationReducer
             case 'race.archive':
                 $state['archived'] = true;
                 // An archived race is read-only, so the expected crossing order is meaningless.
-                $state['ranking'] = [];
+                foreach ($state['worksets'] as $i => $workset) {
+                    $state['worksets'][$i]['ranking'] = [];
+                }
 
                 return $state;
 
@@ -143,38 +157,9 @@ final class OperationReducer
             case 'participant.delete':
                 $id = self::id($op['participantId'] ?? null, 'participant_id');
                 $state['participants'] = array_values(array_filter($state['participants'], static fn ($b) => $b['id'] !== $id));
-                $state['ranking'] = self::without($state['ranking'], $id);
-
-                return $state;
-
-            case 'ranking.add':
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
-                if (null !== self::findParticipant($state, $id) && !in_array($id, $state['ranking'], true)) {
-                    $state['ranking'][] = $id;
+                foreach ($state['worksets'] as $i => $workset) {
+                    $state['worksets'][$i]['ranking'] = self::without($workset['ranking'], $id);
                 }
-
-                return $state;
-
-            case 'ranking.remove':
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
-                $state['ranking'] = self::without($state['ranking'], $id);
-
-                return $state;
-
-            case 'ranking.move':
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
-                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
-                if (!in_array($id, $state['ranking'], true)) {
-                    return $state;
-                }
-                $ranking = self::without($state['ranking'], $id);
-                $position = (null === $before || $before === $id) ? false : array_search($before, $ranking, true);
-                if (false === $position) {
-                    $ranking[] = $id;
-                } else {
-                    array_splice($ranking, $position, 0, [$id]);
-                }
-                $state['ranking'] = $ranking;
 
                 return $state;
 
@@ -188,16 +173,21 @@ final class OperationReducer
                 $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
                 $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
                 $kind = self::captureKind($capture['kind'] ?? null);
+                $worksetId = self::optionalId($capture['worksetId'] ?? null, 'workset_id');
                 if (null !== self::findCapture($state, $id)) {
                     return $state;
                 }
                 if (null !== $participantId && null === self::findParticipant($state, $participantId)) {
                     $participantId = null;
                 }
-                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId, 'kind' => $kind];
+                $state['captures'][] = [
+                    'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId, 'kind' => $kind, 'worksetId' => $worksetId,
+                ];
                 // A marker (e.g. a protest) annotates a participant without it passing the point.
-                if (null !== $participantId && 'marker' !== self::kindRole($state, $kind)) {
-                    $state['ranking'] = self::without($state['ranking'], $participantId);
+                // Only the capturing workset's ranking is affected.
+                $index = null === $worksetId ? null : self::findWorkset($state, $worksetId);
+                if (null !== $participantId && null !== $index && 'marker' !== self::kindRole($state, $kind)) {
+                    $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $participantId);
                 }
 
                 return $state;
@@ -229,14 +219,6 @@ final class OperationReducer
 
                 return $state;
 
-            case 'workset.setKind':
-                $kind = self::captureKind($op['kind'] ?? null);
-                if (self::isKnownKind($state, $kind)) {
-                    $state['captureKind'] = $kind;
-                }
-
-                return $state;
-
             case 'kind.add':
                 $kind = self::customKind($op['kind'] ?? null);
                 if (null === self::findKind($state, $kind['id']) && null === self::findKindByName($state, $kind['name'])) {
@@ -260,9 +242,111 @@ final class OperationReducer
                 $id = self::id($op['kindId'] ?? null, 'kind_id');
                 // Captures keep the id, like they keep the id of a deleted participant.
                 $state['kinds'] = array_values(array_filter($state['kinds'], static fn ($k) => $k['id'] !== $id));
-                if ($state['captureKind'] === $id) {
-                    $state['captureKind'] = self::DEFAULT_KIND;
+                foreach ($state['worksets'] as $i => $workset) {
+                    if ($workset['captureKind'] === $id) {
+                        $state['worksets'][$i]['captureKind'] = self::DEFAULT_KIND;
+                    }
                 }
+
+                return $state;
+
+            case 'workset.add':
+                $workset = $op['workset'] ?? null;
+                if (!is_array($workset)) {
+                    throw new InvalidOperationException('invalid_workset');
+                }
+                $id = self::id($workset['id'] ?? null, 'workset_id');
+                $name = self::optionalName($workset['name'] ?? null, self::MAX_WORKSET_NAME, 'workset_name');
+                $number = self::worksetNumber($workset['number'] ?? null);
+                $ranking = self::rankingList($workset['ranking'] ?? null);
+                $kind = self::captureKind($workset['captureKind'] ?? null);
+                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                if (null !== self::findWorkset($state, $id) || (null !== $name && null !== self::findWorksetByName($state, $name))) {
+                    return $state;
+                }
+                // The optional fields restore a deleted workset exactly (undo).
+                $entry = [
+                    'id' => $id,
+                    'number' => $number ?? self::nextWorksetNumber($state),
+                    'name' => $name,
+                    'ranking' => array_values(array_filter(array_unique($ranking), fn ($p) => null !== self::findParticipant($state, $p))),
+                    'captureKind' => self::isKnownKind($state, $kind) ? $kind : self::DEFAULT_KIND,
+                ];
+                $position = null === $before ? null : self::findWorkset($state, $before);
+                array_splice($state['worksets'], $position ?? count($state['worksets']), 0, [$entry]);
+
+                return $state;
+
+            case 'workset.rename':
+                $id = self::id($op['worksetId'] ?? null, 'workset_id');
+                $name = self::optionalName($op['name'] ?? null, self::MAX_WORKSET_NAME, 'workset_name');
+                $index = self::findWorkset($state, $id);
+                if (null !== $index) {
+                    $state['worksets'][$index]['name'] = $name;
+                }
+
+                return $state;
+
+            case 'workset.delete':
+                $id = self::id($op['worksetId'] ?? null, 'workset_id');
+                // Captures keep the id; the next workset (if any) becomes the default.
+                $state['worksets'] = array_values(array_filter($state['worksets'], static fn ($w) => $w['id'] !== $id));
+
+                return $state;
+
+            case 'workset.makeDefault':
+                $id = self::id($op['worksetId'] ?? null, 'workset_id');
+                $index = self::findWorkset($state, $id);
+                if (null !== $index) {
+                    $workset = array_splice($state['worksets'], $index, 1)[0];
+                    array_unshift($state['worksets'], $workset);
+                }
+
+                return $state;
+
+            case 'workset.setKind':
+                $id = self::id($op['worksetId'] ?? null, 'workset_id');
+                $kind = self::captureKind($op['kind'] ?? null);
+                $index = self::findWorkset($state, $id);
+                if (null !== $index && self::isKnownKind($state, $kind)) {
+                    $state['worksets'][$index]['captureKind'] = $kind;
+                }
+
+                return $state;
+
+            case 'workset.ranking.add':
+                $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                if (null !== $index && null !== self::findParticipant($state, $id) && !in_array($id, $state['worksets'][$index]['ranking'], true)) {
+                    $state['worksets'][$index]['ranking'][] = $id;
+                }
+
+                return $state;
+
+            case 'workset.ranking.remove':
+                $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                if (null !== $index) {
+                    $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $id);
+                }
+
+                return $state;
+
+            case 'workset.ranking.move':
+                $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                if (null === $index || !in_array($id, $state['worksets'][$index]['ranking'], true)) {
+                    return $state;
+                }
+                $ranking = self::without($state['worksets'][$index]['ranking'], $id);
+                $position = (null === $before || $before === $id) ? false : array_search($before, $ranking, true);
+                if (false === $position) {
+                    $ranking[] = $id;
+                } else {
+                    array_splice($ranking, $position, 0, [$id]);
+                }
+                $state['worksets'][$index]['ranking'] = $ranking;
 
                 return $state;
 
@@ -276,8 +360,9 @@ final class OperationReducer
 
     /**
      * Merges another state into this one without ever removing anything: participants are
-     * matched by id or (case-insensitive) name, missing participants are appended to the
-     * ranking, captures are added unless their id already exists.
+     * matched by id or (case-insensitive) name, custom kinds and worksets likewise (worksets by
+     * name only when both are named), rankings are merged per workset, captures are added
+     * unless their id already exists.
      */
     private function merge(array $state, mixed $source): array
     {
@@ -285,11 +370,11 @@ final class OperationReducer
             throw new InvalidOperationException('invalid_state');
         }
         $participants = $source['participants'] ?? [];
-        $ranking = $source['ranking'] ?? [];
         $kinds = $source['kinds'] ?? [];
+        $worksets = $source['worksets'] ?? [];
         $captures = $source['captures'] ?? [];
-        if (!is_array($participants) || !is_array($ranking) || !is_array($kinds) || !is_array($captures)
-            || count($participants) > 5000 || count($ranking) > 5000 || count($kinds) > 500 || count($captures) > 20000) {
+        if (!is_array($participants) || !is_array($kinds) || !is_array($worksets) || !is_array($captures)
+            || count($participants) > 5000 || count($kinds) > 500 || count($worksets) > 500 || count($captures) > 20000) {
             throw new InvalidOperationException('invalid_state');
         }
 
@@ -306,14 +391,6 @@ final class OperationReducer
             }
         }
 
-        foreach ($ranking as $participantId) {
-            $participantId = self::id($participantId, 'participant_id');
-            $mapped = $idMap[$participantId] ?? null;
-            if (null !== $mapped && !in_array($mapped, $state['ranking'], true)) {
-                $state['ranking'][] = $mapped;
-            }
-        }
-
         // Custom kinds are matched by id or (case-insensitive) name, like participants.
         $kindMap = [];
         foreach ($kinds as $kind) {
@@ -327,6 +404,35 @@ final class OperationReducer
             }
         }
 
+        // Worksets: a new one keeps its kind and gets the next number; an existing one keeps
+        // its kind, and only its ranking is extended.
+        $worksetMap = [];
+        foreach ($worksets as $workset) {
+            if (!is_array($workset)) {
+                throw new InvalidOperationException('invalid_workset');
+            }
+            $id = self::id($workset['id'] ?? null, 'workset_id');
+            $name = self::optionalName($workset['name'] ?? null, self::MAX_WORKSET_NAME, 'workset_name');
+            $ranking = self::rankingList($workset['ranking'] ?? null);
+            $kind = self::captureKind($workset['captureKind'] ?? null);
+            $index = self::findWorkset($state, $id) ?? (null !== $name ? self::findWorksetByName($state, $name) : null);
+            if (null === $index) {
+                $kind = $kindMap[$kind] ?? $kind;
+                $state['worksets'][] = [
+                    'id' => $id, 'number' => self::nextWorksetNumber($state), 'name' => $name, 'ranking' => [],
+                    'captureKind' => self::isKnownKind($state, $kind) ? $kind : self::DEFAULT_KIND,
+                ];
+                $index = count($state['worksets']) - 1;
+            }
+            $worksetMap[$id] = $state['worksets'][$index]['id'];
+            foreach ($ranking as $participantId) {
+                $mapped = $idMap[$participantId] ?? null;
+                if (null !== $mapped && !in_array($mapped, $state['worksets'][$index]['ranking'], true)) {
+                    $state['worksets'][$index]['ranking'][] = $mapped;
+                }
+            }
+        }
+
         foreach ($captures as $capture) {
             if (!is_array($capture)) {
                 throw new InvalidOperationException('invalid_capture');
@@ -336,6 +442,7 @@ final class OperationReducer
             $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
             $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
             $kind = self::captureKind($capture['kind'] ?? null);
+            $worksetId = self::optionalId($capture['worksetId'] ?? null, 'workset_id');
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
@@ -343,6 +450,7 @@ final class OperationReducer
                 'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset,
                 'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null,
                 'kind' => $kindMap[$kind] ?? $kind,
+                'worksetId' => null !== $worksetId ? ($worksetMap[$worksetId] ?? $worksetId) : null,
             ];
         }
 
@@ -400,6 +508,38 @@ final class OperationReducer
         }
 
         return $clean;
+    }
+
+    /** An optional name: null or blank means none. */
+    private static function optionalName(mixed $value, int $max, string $field): ?string
+    {
+        return (null === $value || (is_string($value) && '' === self::clean($value))) ? null : self::name($value, $max, $field);
+    }
+
+    /** A workset's number when given explicitly (restoring a deleted workset); null = next free one. */
+    private static function worksetNumber(mixed $value): ?int
+    {
+        if (null === $value) {
+            return null;
+        }
+        if (!is_int($value) || $value < 1 || $value > self::MAX_WORKSET_NUMBER) {
+            throw new InvalidOperationException('invalid_workset_number');
+        }
+
+        return $value;
+    }
+
+    /** @return list<string> participant ids; null means an empty ranking */
+    private static function rankingList(mixed $value): array
+    {
+        if (null === $value) {
+            return [];
+        }
+        if (!is_array($value) || !array_is_list($value) || count($value) > 5000) {
+            throw new InvalidOperationException('invalid_ranking');
+        }
+
+        return array_map(static fn ($id) => self::id($id, 'participant_id'), $value);
     }
 
     private static function timestamp(mixed $value): int
@@ -499,6 +639,34 @@ final class OperationReducer
         }
 
         return null;
+    }
+
+    private static function findWorkset(array $state, string $id): ?int
+    {
+        foreach ($state['worksets'] as $i => $workset) {
+            if ($workset['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findWorksetByName(array $state, string $name): ?int
+    {
+        $key = self::key($name);
+        foreach ($state['worksets'] as $i => $workset) {
+            if (null !== $workset['name'] && self::key($workset['name']) === $key) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function nextWorksetNumber(array $state): int
+    {
+        return 1 + max([0, ...array_map(static fn ($w) => $w['number'], $state['worksets'])]);
     }
 
     private static function findParticipant(array $state, string $id): ?int

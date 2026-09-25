@@ -2,6 +2,10 @@
 
 namespace App\Race;
 
+use App\Access\Access;
+use App\Access\AccessCodeRepository;
+use App\Access\Permissions;
+
 /**
  * Persists races as a materialized state plus an append-only, gap-free event log.
  *
@@ -9,42 +13,55 @@ namespace App\Race;
  * track the last sequence number they have seen and fetch (or are pushed) the
  * events after it. Operation ids are unique per race, which makes resending
  * buffered operations after a reconnect idempotent.
+ *
+ * Clients reach a race through an access code (see AccessCodeRepository): its rules decide
+ * which operations are accepted and what of the state and the events the client gets to see.
  */
 class RaceRepository
 {
     public const MAX_OPS_PER_BATCH = 200;
-    private const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    private const CODE_LENGTH = 6;
     private const OP_ID_PATTERN = '/^[A-Za-z0-9_-]{1,64}$/';
+    /** Operations that can create worksets, which then get codes of their own. */
+    private const WORKSET_CREATING_OPS = ['workset.add', 'state.merge'];
 
     public function __construct(
         private readonly Database $db,
         private readonly OperationReducer $reducer,
+        private readonly AccessCodeRepository $codes,
     ) {
     }
 
     public static function normalizeCode(string $code): string
     {
-        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $code) ?? '');
+        return AccessCodeRepository::normalizeCode($code);
     }
 
-    /** @return array{code: string, seq: int, state: array} */
+    /**
+     * Creates a race together with its race code (full access).
+     *
+     * @return array{code: string, seq: int, state: array}
+     */
     public function create(): array
     {
         $state = OperationReducer::emptyState();
         $now = self::now();
+        $pdo = $this->db->pdo();
         for ($attempt = 0; $attempt < 20; ++$attempt) {
-            $code = '';
-            for ($i = 0; $i < self::CODE_LENGTH; ++$i) {
-                $code .= self::CODE_ALPHABET[random_int(0, strlen(self::CODE_ALPHABET) - 1)];
+            $code = AccessCodeRepository::generateCode();
+            if ($this->codes->exists($code)) {
+                continue;
             }
+            $this->db->begin();
             try {
-                $this->db->pdo()
-                    ->prepare('INSERT INTO race (code, seq, state, created_at, updated_at) VALUES (?, 0, ?, ?, ?)')
+                $pdo->prepare('INSERT INTO race (code, seq, state, created_at, updated_at) VALUES (?, 0, ?, ?, ?)')
                     ->execute([$code, self::encode($state), $now, $now]);
+                $raceId = (int) $pdo->lastInsertId('pgsql' === $this->db->driver() ? 'race_id_seq' : null);
+                $this->codes->insert($raceId, $code, Permissions::FULL, AccessCodeRepository::SOURCE_RACE, null, $now);
+                $this->db->commit();
 
                 return ['code' => $code, 'seq' => 0, 'state' => $state];
             } catch (\PDOException $e) {
+                $this->db->rollback();
                 if (!self::isUniqueViolation($e)) {
                     throw $e;
                 }
@@ -54,26 +71,93 @@ class RaceRepository
         throw new \RuntimeException('Could not generate a unique race code.');
     }
 
-    /** @return array{code: string, seq: int, state: array} */
-    public function snapshot(string $code): array
+    /** @throws RaceNotFoundException */
+    public function resolve(string $code): Access
     {
-        $row = $this->findRow($code);
-
-        return ['code' => $row['code'], 'seq' => (int) $row['seq'], 'state' => OperationReducer::upgrade(self::decode($row['state']))];
+        return $this->codes->resolve($code);
     }
 
     /**
-     * Events after $since, oldest first.
+     * The race as the code's clients see it.
+     *
+     * @return array{code: string, seq: int, state: array, access: array}
+     *
+     * @throws RaceNotFoundException|AccessRevokedException
+     */
+    public function snapshot(Access $access): array
+    {
+        [$seq, $state] = $this->load($access);
+
+        return $this->snapshotOf($access, $seq, $state);
+    }
+
+    /**
+     * Events after $since as the code's clients see them, or a fresh snapshot (`reset`)
+     * when the client is more than $maxGap events behind.
+     *
+     * @throws RaceNotFoundException|AccessRevokedException
+     */
+    public function poll(Access $access, int $since, int $maxGap): array
+    {
+        [$seq, $state] = $this->load($access);
+        if ($seq - $since > $maxGap || $since > $seq) {
+            return ['reset' => true] + $this->snapshotOf($access, $seq, $state);
+        }
+
+        return [
+            'seq' => $seq,
+            'events' => array_map($access->filterEvent(...), $this->eventsSince($access->raceId, $since, $maxGap)),
+            'access' => $this->accessInfo($access, $state),
+        ];
+    }
+
+    /**
+     * What a client learns about its access: the code to reconnect with, its rules and — when
+     * it may see them (`access.view`) — the race's codes, e.g. to share a workset's code.
+     *
+     * @return array{code: string, rules: list<string>, codes?: list<array>}
+     */
+    public function accessInfo(Access $access, array $state): array
+    {
+        $info = ['code' => $access->code, 'rules' => $access->rules];
+        if (!$access->allows([['access', null], ['view', null]])) {
+            return $info;
+        }
+        $codes = $this->codes->codesOf($access->raceId);
+        $known = array_column($codes, 'sourceRef');
+        foreach ($state['worksets'] as $workset) {
+            if (!in_array($workset['id'], $known, true)) {
+                // Worksets from before access codes existed get theirs now.
+                $this->ensureWorksetCodes($access->raceId);
+                $codes = $this->codes->codesOf($access->raceId);
+                break;
+            }
+        }
+
+        return $info + ['codes' => $codes];
+    }
+
+    /**
+     * Current state of a race (for re-checking the access of connected clients).
+     *
+     * @throws RaceNotFoundException
+     */
+    public function state(int $raceId): array
+    {
+        return OperationReducer::upgrade(self::decode($this->findRow($raceId)['state']));
+    }
+
+    /**
+     * Events after $since, oldest first, unfiltered.
      *
      * @return list<array{seq: int, op: array}>
      */
-    public function eventsSince(string $code, int $since, int $limit = 1000): array
+    public function eventsSince(int $raceId, int $since, int $limit = 1000): array
     {
-        $row = $this->findRow($code);
         $stmt = $this->db->pdo()->prepare(
             'SELECT seq, op FROM race_event WHERE race_id = ? AND seq > ? ORDER BY seq ASC LIMIT '.max(1, $limit)
         );
-        $stmt->execute([(int) $row['id'], $since]);
+        $stmt->execute([$raceId, $since]);
 
         return array_map(
             static fn (array $e) => ['seq' => (int) $e['seq'], 'op' => self::decode($e['op'])],
@@ -82,50 +166,50 @@ class RaceRepository
     }
 
     /**
-     * Current sequence numbers of the given races (missing codes are omitted).
+     * Current sequence numbers of the given races (missing races are omitted).
      *
-     * @param list<string> $codes
+     * @param list<int> $raceIds
      *
-     * @return array<string, int>
+     * @return array<int, int>
      */
-    public function currentSeqs(array $codes): array
+    public function currentSeqs(array $raceIds): array
     {
-        if (!$codes) {
+        if (!$raceIds) {
             return [];
         }
         $stmt = $this->db->pdo()->prepare(
-            'SELECT code, seq FROM race WHERE code IN ('.implode(',', array_fill(0, count($codes), '?')).')'
+            'SELECT id, seq FROM race WHERE id IN ('.implode(',', array_fill(0, count($raceIds), '?')).')'
         );
-        $stmt->execute(array_values($codes));
+        $stmt->execute(array_values($raceIds));
         $result = [];
         foreach ($stmt->fetchAll() as $row) {
-            $result[$row['code']] = (int) $row['seq'];
+            $result[(int) $row['id']] = (int) $row['seq'];
         }
 
         return $result;
     }
 
     /**
-     * Applies operations in order. Each result is one of
+     * Applies operations in order, as far as the access code allows them. Each result is one of
      *   ['opId' => ..., 'status' => 'applied', 'seq' => n]
      *   ['opId' => ..., 'status' => 'duplicate']            (already applied earlier)
-     *   ['opId' => ..., 'status' => 'rejected', 'error' => code]
+     *   ['opId' => ..., 'status' => 'rejected', 'error' => code]   (e.g. forbidden, access_revoked)
      *
      * @param list<mixed> $ops
      *
      * @return list<array<string, mixed>>
      */
-    public function applyOperations(string $code, array $ops): array
+    public function applyOperations(Access $access, array $ops): array
     {
         $results = [];
         foreach (array_slice($ops, 0, self::MAX_OPS_PER_BATCH) as $op) {
-            $results[] = $this->applyOperation($code, $op);
+            $results[] = $this->applyOperation($access, $op);
         }
 
         return $results;
     }
 
-    private function applyOperation(string $code, mixed $op): array
+    private function applyOperation(Access $access, mixed $op): array
     {
         $opId = is_array($op) ? ($op['opId'] ?? null) : null;
         if (!is_string($opId) || !preg_match(self::OP_ID_PATTERN, $opId)) {
@@ -139,12 +223,12 @@ class RaceRepository
         for ($attempt = 0; $attempt < 8; ++$attempt) {
             $this->db->begin();
             try {
-                $stmt = $pdo->prepare('SELECT id, seq, state FROM race WHERE code = ?'.$this->db->forUpdate());
-                $stmt->execute([self::normalizeCode($code)]);
+                $stmt = $pdo->prepare('SELECT id, seq, state FROM race WHERE id = ?'.$this->db->forUpdate());
+                $stmt->execute([$access->raceId]);
                 $row = $stmt->fetch();
                 if (!$row) {
                     $this->db->rollback();
-                    throw new RaceNotFoundException($code);
+                    throw new RaceNotFoundException($access->code);
                 }
                 $raceId = (int) $row['id'];
                 $seq = (int) $row['seq'];
@@ -158,10 +242,15 @@ class RaceRepository
                 }
 
                 $state = OperationReducer::upgrade(self::decode($row['state']));
-                if ($state['archived'] ?? false) {
+                $error = match (true) {
+                    $state['archived'] ?? false => 'archived',
+                    $access->isRevokedIn($state) => 'access_revoked',
+                    default => $access->checkOperation($state, $op),
+                };
+                if (null !== $error) {
                     $this->db->rollback();
 
-                    return ['opId' => $opId, 'status' => 'rejected', 'error' => 'archived'];
+                    return ['opId' => $opId, 'status' => 'rejected', 'error' => $error];
                 }
 
                 try {
@@ -179,6 +268,9 @@ class RaceRepository
                 $update->execute([$seq + 1, self::encode($state), $now, $raceId, $seq]);
                 if (1 !== $update->rowCount()) {
                     throw new ConcurrentModificationException();
+                }
+                if (in_array($op['type'], self::WORKSET_CREATING_OPS, true)) {
+                    $this->codes->ensureWorksetCodes($raceId, $state, $now);
                 }
                 $this->db->commit();
 
@@ -198,13 +290,55 @@ class RaceRepository
         return ['opId' => $opId, 'status' => 'rejected', 'error' => 'busy'];
     }
 
-    private function findRow(string $code): array
+    /**
+     * Sequence number and state of the code's race.
+     *
+     * @return array{0: int, 1: array}
+     *
+     * @throws RaceNotFoundException|AccessRevokedException
+     */
+    private function load(Access $access): array
     {
-        $stmt = $this->db->pdo()->prepare('SELECT id, code, seq, state FROM race WHERE code = ?');
-        $stmt->execute([self::normalizeCode($code)]);
+        $row = $this->findRow($access->raceId);
+        $state = OperationReducer::upgrade(self::decode($row['state']));
+        if ($access->isRevokedIn($state)) {
+            throw new AccessRevokedException($access->code);
+        }
+
+        return [(int) $row['seq'], $state];
+    }
+
+    private function snapshotOf(Access $access, int $seq, array $state): array
+    {
+        return ['code' => $access->code, 'seq' => $seq, 'state' => $access->project($state), 'access' => $this->accessInfo($access, $state)];
+    }
+
+    /** Creates the missing workset codes of a race, holding its row like a write does. */
+    private function ensureWorksetCodes(int $raceId): void
+    {
+        $pdo = $this->db->pdo();
+        $this->db->begin();
+        try {
+            $stmt = $pdo->prepare('SELECT state FROM race WHERE id = ?'.$this->db->forUpdate());
+            $stmt->execute([$raceId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $this->codes->ensureWorksetCodes($raceId, OperationReducer::upgrade(self::decode($row['state'])), self::now());
+            }
+            $this->db->commit();
+        } catch (\Throwable $e) {
+            $this->db->rollback();
+            throw $e;
+        }
+    }
+
+    private function findRow(int $raceId): array
+    {
+        $stmt = $this->db->pdo()->prepare('SELECT id, code, seq, state FROM race WHERE id = ?');
+        $stmt->execute([$raceId]);
         $row = $stmt->fetch();
         if (!$row) {
-            throw new RaceNotFoundException($code);
+            throw new RaceNotFoundException((string) $raceId);
         }
 
         return $row;

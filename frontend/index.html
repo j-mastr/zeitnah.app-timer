@@ -19,6 +19,8 @@
   :root{
     /* iOS standalone draws under the status bar (black-translucent). */
     --safe-top:env(safe-area-inset-top,0px);
+    /* Height of every control in the top bar (pills, undo/redo), the same on every device. */
+    --bar-h:32px;
     --bg:#0A1929; --panel:#112A45; --panel2:#14314F; --text:#EAF0F5; --muted:#7E94A8;
     --accent:#E0A63B; --accent-ink:#2A1C04; --danger:#E0625A; --ok:#3FB37F; --border:rgba(255,255,255,0.09);
     --shade:rgba(2,10,20,0.55);
@@ -41,6 +43,8 @@
   }
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
+  /* Controls the access code doesn't allow (data-perm, see applyPermissions). */
+  .perm-hidden{display:none !important;}
   /* Backstop against anything widening the page (iOS then zooms the whole app out).
      `clip`, unlike `hidden`, makes no scroll container, so the sticky clock keeps working. */
   html{scroll-padding-top:var(--safe-top); overflow-x:clip; -webkit-text-size-adjust:100%;}
@@ -57,16 +61,16 @@
   .title-input{font-size:17px; font-weight:600; max-width:320px;}
   .sub{color:var(--muted); font-size:13px; margin-top:2px;}
   .top-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .status-pill{display:inline-flex; align-items:center; gap:7px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:7px 12px; font-size:12px; cursor:pointer; font-family:inherit; max-width:100%;}
+  .status-pill{display:inline-flex; align-items:center; gap:7px; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:0 12px; font-size:12px; cursor:pointer; font-family:inherit; max-width:100%;}
   .status-pill span:last-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
   .dot.online{background:var(--ok);}
   .dot.connecting{background:var(--accent); animation:pulse 1.2s ease-in-out infinite;}
   .dot.offline{background:var(--danger);}
   @keyframes pulse{50%{opacity:.35;}}
-  .settings-btn{display:inline-flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:7px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
-  .history-btns{display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
-  .history-btn{background:none; border:0; color:var(--text); padding:5px 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
+  .settings-btn{display:inline-flex; align-items:center; gap:6px; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:0 12px; font-size:12px; cursor:pointer; font-family:inherit;}
+  .history-btns{display:inline-flex; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+  .history-btn{background:none; border:0; color:var(--text); height:100%; padding:0 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
   .history-btn + .history-btn{border-left:1px solid var(--border);}
   .history-btn:disabled{opacity:.35; cursor:default;}
   .history-btns[hidden], body.archived .history-btns{display:none;}
@@ -122,6 +126,10 @@
   .kind-dot.kind-marker{background:var(--kind-marker); border-color:var(--kind-marker);}
   .kind-note{color:var(--muted); font-size:12px; margin-top:8px;}
   .kind-note .link-btn{margin-top:0;}
+  /* Another device deleted this device's station: a dismissible note at the bottom of the clock card. */
+  .ws-notice{display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 8px; margin-top:12px;
+    border:1px solid var(--accent); border-radius:10px; padding:8px 10px; font-size:13px;}
+  .ws-notice .btn{padding:6px 10px; font-size:12px;}
   .kind-menu{position:absolute; top:34px; right:12px; z-index:30; min-width:220px; max-width:calc(100% - 24px); text-align:left;
     background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,.3);}
   .kind-opt{display:flex; align-items:center; gap:6px;}
@@ -248,7 +256,6 @@
        layout and pushes controls out of view. Nothing focusable may be below that here. */
     input, select, textarea, .input, .edit-input, select.assign{font-size:16px;}
     .title-input{font-size:17px;}   /* the rule above must not shrink it */
-    .history-btn{min-width:48px; min-height:42px; font-size:19px;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -270,6 +277,13 @@
 
   /* Actions that need a live server connection (normal) or are blocked in archived races (all). */
   body.lock-normal [data-edit="normal"], body.lock-all [data-edit]{opacity:.4; pointer-events:none;}
+
+  /* Without a station this device has no approaching list. */
+  body.no-workset .sorted-panel{display:none;}
+  body.no-workset .app{grid-template-areas:"clock" "participants" "captures";}
+  @media (min-width:700px){
+    body.no-workset .app{grid-template-areas:"clock clock" "participants captures"; grid-template-rows:auto 1fr;}
+  }
 
   /* An archived race records nothing any more: no clock, no sorted list. */
   body.archived .clock-card, body.archived .sorted-panel{display:none;}
@@ -300,7 +314,8 @@
   .field label{font-size:12px; color:var(--muted);}
   .code-input{font-family:'Space Mono',monospace; text-transform:uppercase; letter-spacing:1px;}
   #recentList{display:flex; flex-direction:column; gap:6px;}
-  .recent-item{display:flex; align-items:baseline; justify-content:space-between; gap:10px; width:100%; text-align:left;}
+  .recent-row{display:flex; align-items:center; gap:6px;}
+  .recent-item{display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex:1 1 auto; min-width:0; text-align:left;}
   .recent-item .nm{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .recent-item .meta{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; white-space:nowrap;}
   .row{display:flex; gap:8px; align-items:center;}
@@ -325,6 +340,16 @@
   .kind-add #kindNameInput{flex:1 1 100%;}
   .kind-add .kind-role{flex:1 1 auto;}
   .kind-suggest{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--muted);}
+  .ws-row{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+  .ws-sub{flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding-left:32px; font-size:11px; color:var(--muted);}
+  .ws-sub .ws-code{font-family:'Space Mono',monospace; color:var(--text); letter-spacing:.5px;}
+  .ws-sub .link-btn{margin:0; padding:0; font-size:11px;}
+  .station-picks{display:flex; flex-direction:column; gap:8px;}
+  /* A basis, not 100 %: the row wraps (for its second line), and the name must share the first. */
+  .ws-row .input{flex:1 1 120px; width:auto; min-width:0; padding:8px 10px;}
+  .ws-row .ws-none{flex:1 1 auto; font-size:13px; color:var(--muted);}
+  .ws-pick.on{color:var(--accent); border-color:var(--accent);}
+  #addWorksetBtn{margin-top:0;}
 
   /* ---------- dialog ---------- */
   .modal-backdrop{position:fixed; inset:0; background:var(--shade); z-index:80; display:flex; align-items:center; justify-content:center; padding:16px; overflow-y:auto; overscroll-behavior:contain;}
@@ -358,7 +383,7 @@
     <div>
       <div class="title-row">
         <h1 id="raceTitle"></h1>
-        <button class="mini" id="renameRaceBtn" data-edit="normal" data-i18n-title="header.rename">✎</button>
+        <button class="mini" id="renameRaceBtn" data-edit="normal" data-perm="race.rename" data-i18n-title="header.rename">✎</button>
       </div>
       <div class="sub" data-i18n="header.subtitle"></div>
     </div>
@@ -368,6 +393,7 @@
         <button class="history-btn" id="redoBtn" type="button" data-edit="critical" disabled>↷</button>
       </div>
       <button class="status-pill" id="statusPill" type="button"><span class="dot" id="statusDot"></span><span id="statusText"></span></button>
+      <button class="status-pill" id="stationPill" type="button" data-i18n-title="worksets.pillTitle" hidden><span id="stationText"></span></button>
       <button class="settings-btn" id="settingsBtn" type="button">⚙ <span data-i18n="settings.title"></span></button>
     </div>
   </header>
@@ -385,12 +411,21 @@
       <div class="date" id="dateLine"></div>
       <div><div class="seg kind-seg" id="kindSeg" role="radiogroup" data-edit="critical" data-i18n-title="kinds.segHint" hidden></div></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical"></button>
+      <div class="ws-notice" id="recordBlocked" hidden>
+        <span data-i18n="worksets.chooseToRecord"></span>
+        <span id="recordBlockedPicks"></span>
+      </div>
       <div class="kind-note" id="kindOnceNote" hidden><span id="kindOnceText"></span> <button class="link-btn" id="kindOnceCancel" data-i18n="kinds.onceCancel"></button></div>
       <div id="captureFreeRow"><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
       <div class="hint-line" id="clockHints">
         <span class="hint-pair"><span class="kbd">␣</span><span id="hintSpace"></span></span>
         <span class="hint-pair" id="hintDirect"><span class="kbd">1–9</span><span data-i18n="clock.hintDirect"></span></span>
         <span class="hint-pair" id="hintFree"><span class="kbd">0</span><span data-i18n="clock.hintFree"></span></span>
+      </div>
+      <div class="ws-notice" id="worksetNotice" role="status" hidden>
+        <span id="worksetNoticeText"></span>
+        <span id="worksetNoticePicks"></span>
+        <button class="mini" id="worksetNoticeClose" type="button" data-i18n-title="dialog.close">✕</button>
       </div>
     </div>
 
@@ -410,7 +445,7 @@
     <div class="panel participants-panel">
       <div class="panel-head">
         <h2><span data-i18n="participants.title"></span> <span class="count" id="participantCount">0</span></h2>
-        <button class="icon-btn" id="importBtn" data-edit="normal" data-i18n-title="participants.import">↥</button>
+        <button class="icon-btn" id="importBtn" data-edit="normal" data-perm="participant.add" data-i18n-title="participants.import">↥</button>
         <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
       </div>
       <div class="hint-line" data-i18n="participants.hint"></div>
@@ -430,7 +465,7 @@
         </div>
         <button class="mini wide" id="sortDirBtn" data-i18n-title="sort.dir">↑</button>
       </div>
-      <div class="add-row" data-edit="normal">
+      <div class="add-row" data-edit="normal" data-perm="participant.add">
         <input class="input" id="participantInput" type="text" data-i18n-placeholder="participants.placeholder" maxlength="60">
         <button class="btn" id="addParticipantBtn" data-i18n="participants.add"></button>
       </div>
@@ -477,7 +512,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-perm="race.setSport">
     <h3 data-i18n="settings.sport"></h3>
     <select class="input" id="sportSelect" data-edit="normal"></select>
   </section>
@@ -486,13 +521,20 @@
     <h3 data-i18n="kinds.title"></h3>
     <p class="help" id="kindsHelp" style="margin:0 0 10px;"></p>
     <ul class="kind-list" id="kindList"></ul>
-    <div class="add-row kind-add" data-edit="normal">
+    <div class="add-row kind-add" data-edit="normal" data-perm="kind.add">
       <input class="input" id="kindNameInput" type="text" maxlength="40" autocomplete="off" data-i18n-placeholder="kinds.placeholder">
       <select class="input kind-role" id="kindRoleSelect" data-i18n-title="kinds.role"></select>
       <button class="btn" id="addKindBtn" data-i18n="kinds.add"></button>
     </div>
-    <div class="kind-suggest" id="kindSuggest" data-edit="normal"></div>
+    <div class="kind-suggest" id="kindSuggest" data-edit="normal" data-perm="kind.add"></div>
     <p class="help" data-i18n="kinds.roleHelp"></p>
+  </section>
+
+  <section id="worksetsSection" hidden>
+    <h3 data-i18n="worksets.title"></h3>
+    <p class="help" id="worksetsHelp" data-i18n="worksets.help" style="margin:0 0 10px;"></p>
+    <ul class="kind-list" id="worksetList"></ul>
+    <button class="link-btn" id="addWorksetBtn" type="button" data-edit="critical" data-perm="workset.add" data-i18n="worksets.add"></button>
   </section>
 
 
@@ -560,7 +602,7 @@
     </section>
     <section>
       <h3 data-i18n="settings.sync"></h3>
-      <div class="action">
+      <div class="action" data-perm="race.merge">
         <button class="btn block" id="mergeBtn" data-i18n="settings.merge"></button>
         <p class="help" id="mergeHelp"></p>
       </div>
@@ -569,7 +611,7 @@
         <p class="help" data-i18n="settings.pullHint"></p>
       </div>
     </section>
-    <section>
+    <section data-perm="race.archive">
       <div id="archiveAction">
         <button class="btn danger block" id="archiveBtn" data-i18n="settings.archive"></button>
         <p class="help" data-i18n="settings.archiveHint"></p>
@@ -606,6 +648,15 @@
       <li><span class="keys" id="shortcutsRedoKeys"></span><span data-i18n="shortcuts.redo"></span></li>
       <li><span class="keys"><span class="kbd" id="shortcutsModKey">Ctrl</span></span><span data-i18n="shortcuts.hold"></span></li>
     </ul>
+  </div>
+</div>
+
+<!-- ---------- station chooser (this device's station was deleted) ---------- -->
+<div class="modal-backdrop" id="stationDialog" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="stationDialogTitle" aria-describedby="stationDialogText">
+    <h3 id="stationDialogTitle" data-i18n="worksets.chooseTitle"></h3>
+    <p id="stationDialogText"></p>
+    <div class="station-picks" id="stationDialogPicks"></div>
   </div>
 </div>
 
@@ -647,9 +698,12 @@ const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
  * Capture kinds. Built-in kinds are sport-neutral ids that are their own role; the sport text
  * sets name them (kind.start …). Custom kinds live in state.kinds as {id, name, role} with the
  * role 'split' (a point the participants pass) or 'marker' (an annotation, e.g. a protest).
- * A capture takes its participant out of the ranking unless its kind is a marker; unknown kind
- * ids (a custom kind deleted concurrently) count as markers. `ranking` and `captureKind` form
- * the race's default workset. Mirrors OperationReducer::BUILTIN_KINDS / CUSTOM_KIND_ROLES.
+ * A capture takes its participant out of its workset's ranking unless its kind is a marker;
+ * unknown kind ids (a custom kind deleted concurrently) count as markers.
+ * Mirrors OperationReducer::BUILTIN_KINDS / CUSTOM_KIND_ROLES.
+ *
+ * Worksets ("stations" in the UI) each hold a ranking and the kind their captures get; the
+ * first one is the race's default. A race starts without any. See OperationReducer.
  */
 const BUILTIN_KINDS = ['start', 'split', 'finish'];
 const DEFAULT_KIND = 'finish';
@@ -720,6 +774,7 @@ const TEXTS = {
       'settings.transportWs': 'Echtzeit-Synchronisation per WebSocket',
       'settings.transportPoll': 'Synchronisation per HTTP-Abfrage',
       'settings.recent': 'Zuletzt verbunden',
+      'settings.recentForget': 'Aus der Liste entfernen',
       'settings.clientsOne': '1 Gerät verbunden',
       'settings.clientsMany': '{n} Geräte verbunden',
       'settings.pendingDetail': '{n} Änderung(en) warten auf Übertragung.',
@@ -816,6 +871,45 @@ const TEXTS = {
       'history.kindDelete': 'Zeitart löschen',
       'shortcuts.kind': 'Zeitart wechseln',
       'shortcuts.kindOnce': 'Zeitart nur für die nächste Zeit (Esc: abbrechen)',
+      'export.col.place': 'Platz',
+      'export.col.timestamp': 'Zeitstempel',
+      'export.col.time': 'Uhrzeit',
+      'export.col.kind': 'Zeitart',
+      'export.col.elapsed': 'Laufzeit',
+      'export.col.station': 'Station',
+      'worksets.title': 'Stationen',
+      'worksets.help': 'Jede Station hat ihren eigenen Zieleinlauf und ihre eigene Zeitart; alle Geräte an einer Station teilen beide. Neue Geräte starten an der ersten, der Standard-Station.',
+      'worksets.empty': 'Noch keine Stationen. Die erste entsteht, sobald jemand einen Teilnehmer in den Zieleinlauf nimmt oder eine Zeitart wählt.',
+      'worksets.defaultName': 'Station {n}',
+      'worksets.deleted': '(gelöschte Station)',
+      'worksets.none': 'Keine Station',
+      'worksets.add': '+ Station hinzufügen',
+      'worksets.use': 'Auf diesem Gerät verwenden',
+      'worksets.default': 'Standard',
+      'worksets.makeDefault': 'Zur Standard-Station machen',
+      'worksets.exists': '„{name}“ gibt es schon.',
+      'worksets.deleteTitle': 'Station löschen?',
+      'worksets.deleteText': '„{name}“ wird mit ihrem Zieleinlauf gelöscht. Bereits erfasste Zeiten bleiben erhalten. Geräte an dieser Station arbeiten ohne Station weiter.',
+      'worksets.deletedNotice': '„{name}“ wurde gelöscht – dieses Gerät hat jetzt keine Station.',
+      'worksets.devices': '{n} Gerät(e)',
+      'history.worksetAdd': 'Station hinzufügen',
+      'history.worksetRename': 'Station umbenennen',
+      'history.worksetDelete': 'Station löschen',
+      'history.worksetDefault': 'Standard-Station ändern',
+      'lock.forbidden': 'Das erlaubt dieser Code nicht.',
+      'err.revoked': 'Der Zugang mit diesem Code besteht nicht mehr.',
+      'revoked.title': 'Zugang entzogen',
+      'revoked.text': 'Die Station dieses Codes wurde gelöscht. {n} Zeit(en) wurden noch nicht übertragen und gehen verloren. Vorher als CSV exportieren?',
+      'revoked.export': 'Exportieren',
+      'revoked.discard': 'Verwerfen',
+      'worksets.other': '(andere Station)',
+      'worksets.chooseTitle': 'Station wählen',
+      'worksets.chooseText': '„{name}“ wurde gelöscht. An welcher Station arbeitet dieses Gerät weiter?',
+      'worksets.switched': '„{name}“ wurde gelöscht – dieses Gerät arbeitet jetzt an „{next}“.',
+      'worksets.chooseToRecord': 'Ohne Station kann dieses Gerät keine Zeiten erfassen. Station wählen:',
+      'worksets.code': 'Code {code}',
+      'worksets.copyLink': 'Link kopieren',
+      'worksets.pillTitle': 'Station dieses Geräts – wechseln in den Einstellungen',
     },
     en: {
       'app.title': 'zeitnah',
@@ -881,6 +975,7 @@ const TEXTS = {
       'settings.transportWs': 'Real-time sync via WebSocket',
       'settings.transportPoll': 'Sync via HTTP polling',
       'settings.recent': 'Recently connected',
+      'settings.recentForget': 'Remove from the list',
       'settings.clientsOne': '1 device connected',
       'settings.clientsMany': '{n} devices connected',
       'settings.pendingDetail': '{n} change(s) waiting to be sent.',
@@ -977,6 +1072,45 @@ const TEXTS = {
       'history.kindDelete': 'Delete event type',
       'shortcuts.kind': 'switch the event type',
       'shortcuts.kindOnce': 'event type for the next time only (Esc: cancel)',
+      'export.col.place': 'Place',
+      'export.col.timestamp': 'Timestamp',
+      'export.col.time': 'Time',
+      'export.col.kind': 'Event type',
+      'export.col.elapsed': 'Elapsed',
+      'export.col.station': 'Station',
+      'worksets.title': 'Stations',
+      'worksets.help': 'Each station has its own approaching list and event type, shared by every device on it. New devices start on the first one, the default station.',
+      'worksets.empty': 'No stations yet. The first one is created as soon as somebody adds a participant to the approaching list or chooses an event type.',
+      'worksets.defaultName': 'Station {n}',
+      'worksets.deleted': '(deleted station)',
+      'worksets.none': 'No station',
+      'worksets.add': '+ Add station',
+      'worksets.use': 'Use on this device',
+      'worksets.default': 'default',
+      'worksets.makeDefault': 'Make it the default station',
+      'worksets.exists': '“{name}” already exists.',
+      'worksets.deleteTitle': 'Delete station?',
+      'worksets.deleteText': '“{name}” will be deleted, including its approaching list. Times already recorded are kept. Devices on this station carry on without one.',
+      'worksets.deletedNotice': '“{name}” was deleted – this device has no station now.',
+      'worksets.devices': '{n} device(s)',
+      'history.worksetAdd': 'Add station',
+      'history.worksetRename': 'Rename station',
+      'history.worksetDelete': 'Delete station',
+      'history.worksetDefault': 'Change the default station',
+      'lock.forbidden': 'This code doesn’t allow that.',
+      'err.revoked': 'Access with this code has ended.',
+      'revoked.title': 'Access revoked',
+      'revoked.text': 'The station of this code was deleted. {n} time(s) haven’t been sent and will be lost. Export them as CSV first?',
+      'revoked.export': 'Export',
+      'revoked.discard': 'Discard',
+      'worksets.other': '(other station)',
+      'worksets.chooseTitle': 'Choose a station',
+      'worksets.chooseText': '“{name}” was deleted. Which station does this device carry on with?',
+      'worksets.switched': '“{name}” was deleted – this device now works on “{next}”.',
+      'worksets.chooseToRecord': 'Without a station this device can’t record times. Choose a station:',
+      'worksets.code': 'Code {code}',
+      'worksets.copyLink': 'Copy link',
+      'worksets.pillTitle': 'This device’s station – change it in the settings',
     },
   },
 
@@ -1005,7 +1139,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Teilnehmer wählen —',
       'captures.deletedParticipant': '(gelöschter Teilnehmer)',
-      'export.header': 'Platz;Zeitstempel;Uhrzeit;Teilnehmer',
+      'export.col.participant': 'Teilnehmer',
       'lock.archived': 'Das Rennen ist archiviert.',
       'history.participantsAdd': 'Teilnehmer hinzufügen',
       'history.participantRename': 'Teilnehmer umbenennen',
@@ -1035,7 +1169,6 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Notiz:marker, Aufgabe:marker',
-      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Teilnehmer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏁 Finish Times',
@@ -1060,7 +1193,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Select participant —',
       'captures.deletedParticipant': '(deleted participant)',
-      'export.header': 'Place;Timestamp;Time;Participant',
+      'export.col.participant': 'Participant',
       'lock.archived': 'This race is archived.',
       'history.participantsAdd': 'Add participant(s)',
       'history.participantRename': 'Rename participant',
@@ -1089,7 +1222,6 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Note:marker, Retired:marker',
-      'export.headerKinds': 'Place;Timestamp;Time;Participant;Event type;Elapsed',
     },
   },
 
@@ -1119,7 +1251,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Boot wählen —',
       'captures.deletedParticipant': '(gelöschtes Boot)',
-      'export.header': 'Platz;Zeitstempel;Uhrzeit;Boot',
+      'export.col.participant': 'Boot',
       'lock.archived': 'Die Regatta ist archiviert.',
       'history.participantsAdd': 'Boot(e) hinzufügen',
       'history.participantRename': 'Boot umbenennen',
@@ -1148,7 +1280,6 @@ const TEXTS = {
       'kind.split': 'Tonnenrundung',
       'kind.finish': 'Zieldurchlauf',
       'kinds.suggestions': 'Protest:marker, Aufgabe:marker',
-      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Boot;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '⛵ Finish Times',
@@ -1173,7 +1304,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Select boat —',
       'captures.deletedParticipant': '(deleted boat)',
-      'export.header': 'Place;Timestamp;Time;Boat',
+      'export.col.participant': 'Boat',
       'lock.archived': 'This regatta is archived.',
       'history.participantsAdd': 'Add boat(s)',
       'history.participantRename': 'Rename boat',
@@ -1202,7 +1333,6 @@ const TEXTS = {
       'kind.split': 'Mark rounding',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Protest:marker, Retired:marker',
-      'export.headerKinds': 'Place;Timestamp;Time;Boat;Event type;Elapsed',
     },
   },
 
@@ -1231,7 +1361,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Läufer wählen —',
       'captures.deletedParticipant': '(gelöschter Läufer)',
-      'export.header': 'Platz;Zeitstempel;Uhrzeit;Läufer',
+      'export.col.participant': 'Läufer',
       'lock.archived': 'Der Lauf ist archiviert.',
       'history.participantsAdd': 'Läufer hinzufügen',
       'history.participantRename': 'Läufer umbenennen',
@@ -1260,7 +1390,6 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Aufgabe:marker, Verpflegung:split',
-      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Läufer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏃 Finish Times',
@@ -1285,7 +1414,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Select runner —',
       'captures.deletedParticipant': '(deleted runner)',
-      'export.header': 'Place;Timestamp;Time;Runner',
+      'export.col.participant': 'Runner',
       'lock.archived': 'This race is archived.',
       'history.participantsAdd': 'Add runner(s)',
       'history.participantRename': 'Rename runner',
@@ -1314,7 +1443,6 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Retired:marker, Aid station:split',
-      'export.headerKinds': 'Place;Timestamp;Time;Runner;Event type;Elapsed',
     },
   },
 
@@ -1343,7 +1471,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Schwimmer wählen —',
       'captures.deletedParticipant': '(gelöschter Schwimmer)',
-      'export.header': 'Platz;Zeitstempel;Uhrzeit;Schwimmer',
+      'export.col.participant': 'Schwimmer',
       'lock.archived': 'Der Wettkampf ist archiviert.',
       'history.participantsAdd': 'Schwimmer hinzufügen',
       'history.participantRename': 'Schwimmer umbenennen',
@@ -1372,7 +1500,6 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Anschlag',
       'kinds.suggestions': 'Wende:split, Disqualifikation:marker',
-      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Schwimmer;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏊 Finish Times',
@@ -1397,7 +1524,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Select swimmer —',
       'captures.deletedParticipant': '(deleted swimmer)',
-      'export.header': 'Place;Timestamp;Time;Swimmer',
+      'export.col.participant': 'Swimmer',
       'lock.archived': 'This meet is archived.',
       'history.participantsAdd': 'Add swimmer(s)',
       'history.participantRename': 'Rename swimmer',
@@ -1426,7 +1553,6 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Turn:split, Disqualification:marker',
-      'export.headerKinds': 'Place;Timestamp;Time;Swimmer;Event type;Elapsed',
     },
   },
 
@@ -1455,7 +1581,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Fahrzeug wählen —',
       'captures.deletedParticipant': '(gelöschtes Fahrzeug)',
-      'export.header': 'Platz;Zeitstempel;Uhrzeit;Fahrzeug',
+      'export.col.participant': 'Fahrzeug',
       'lock.archived': 'Das Rennen ist archiviert.',
       'history.participantsAdd': 'Fahrzeug(e) hinzufügen',
       'history.participantRename': 'Fahrzeug umbenennen',
@@ -1484,7 +1610,6 @@ const TEXTS = {
       'kind.split': 'Runde',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Boxeneinfahrt:split, Boxenausfahrt:split, Strafe:marker',
-      'export.headerKinds': 'Platz;Zeitstempel;Uhrzeit;Fahrzeug;Zeitart;Laufzeit',
     },
     en: {
       'header.defaultName': '🏎️ Finish Times',
@@ -1509,7 +1634,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Select vehicle —',
       'captures.deletedParticipant': '(deleted vehicle)',
-      'export.header': 'Place;Timestamp;Time;Vehicle',
+      'export.col.participant': 'Vehicle',
       'lock.archived': 'This race is archived.',
       'history.participantsAdd': 'Add vehicle(s)',
       'history.participantRename': 'Rename vehicle',
@@ -1538,7 +1663,6 @@ const TEXTS = {
       'kind.split': 'Lap',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Pit in:split, Pit out:split, Penalty:marker',
-      'export.headerKinds': 'Place;Timestamp;Time;Vehicle;Event type;Elapsed',
     },
   },
 };
@@ -1552,6 +1676,7 @@ const KEYS = {
   connection: 'zeitnah.connection',
   recent: 'zeitnah.recent',
   cachePrefix: 'zeitnah.cache:',
+  worksetPrefix: 'zeitnah.workset:',
 };
 // Keys used by earlier versions; their data is migrated on load (see migrateLegacyStorage).
 const LEGACY_SINGLE_KEY = 'segel-zielzeit-v1';
@@ -1642,10 +1767,13 @@ function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function emptyState(){
-  return {name:null, archived:false, sport:DEFAULT_SPORT, participants:[], ranking:[], captureKind:DEFAULT_KIND, kinds:[], captures:[]};
+  return {name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], worksets:[], captures:[]};
 }
 
-/** Sanitises a stored state. Also accepts the field names of earlier versions (boats, boatId). */
+/**
+ * Sanitises a stored state. Also accepts the field names of earlier versions (boats, boatId);
+ * their race-wide ranking and selected kind are dropped (a race starts without worksets).
+ */
 function normalizeState(s){
   if(!s || typeof s !== 'object') return emptyState();
   const rawParticipants = Array.isArray(s.participants) ? s.participants : (Array.isArray(s.boats) ? s.boats : []);
@@ -1653,21 +1781,32 @@ function normalizeState(s){
     .filter(p => p && typeof p.id === 'string' && typeof p.name === 'string')
     .map(p => ({id:p.id, name:p.name}));
   const participantIds = new Set(participants.map(p => p.id));
-  const ranking = Array.isArray(s.ranking) ? [...new Set(s.ranking.filter(id => participantIds.has(id)))] : [];
   const captures = Array.isArray(s.captures)
     ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts)).map(c => {
         const pid = c.participantId !== undefined ? c.participantId : c.boatId;
         const kind = typeof c.kind === 'string' && ID_RE.test(c.kind) ? c.kind : DEFAULT_KIND;
-        return {id:c.id, ts:Math.round(c.ts), tzOffset:normTzOffset(c.tzOffset), participantId: typeof pid === 'string' ? pid : null, kind};
+        const worksetId = typeof c.worksetId === 'string' && ID_RE.test(c.worksetId) ? c.worksetId : null;
+        return {id:c.id, ts:Math.round(c.ts), tzOffset:normTzOffset(c.tzOffset), participantId: typeof pid === 'string' ? pid : null, kind, worksetId};
       })
     : [];
   const kinds = Array.isArray(s.kinds)
     ? s.kinds.filter(k => k && typeof k.id === 'string' && ID_RE.test(k.id) && !BUILTIN_KINDS.includes(k.id)
         && typeof k.name === 'string' && k.name && CUSTOM_KIND_ROLES.includes(k.role)).map(k => ({id:k.id, name:k.name, role:k.role}))
     : [];
-  const captureKind = BUILTIN_KINDS.includes(s.captureKind) || kinds.some(k => k.id === s.captureKind) ? s.captureKind : DEFAULT_KIND;
+  const knownKind = (k) => BUILTIN_KINDS.includes(k) || kinds.some(x => x.id === k);
+  const worksets = [];
+  for(const w of Array.isArray(s.worksets) ? s.worksets : []){
+    if(!w || typeof w.id !== 'string' || !ID_RE.test(w.id) || worksets.some(x => x.id === w.id)) continue;
+    worksets.push({
+      id: w.id,
+      number: Number.isInteger(w.number) && w.number > 0 ? w.number : 1 + Math.max(0, ...worksets.map(x => x.number)),
+      name: typeof w.name === 'string' && w.name ? w.name : null,
+      ranking: Array.isArray(w.ranking) ? [...new Set(w.ranking.filter(id => participantIds.has(id)))] : [],
+      captureKind: knownKind(w.captureKind) ? w.captureKind : DEFAULT_KIND,
+    });
+  }
   const sport = SPORTS.includes(s.sport) ? s.sport : 'generic';
-  return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, ranking, captureKind, kinds, captures};
+  return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, worksets, captures};
 }
 function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.captures.length > 0; }
 
@@ -1702,6 +1841,25 @@ const findParticipantByName = (s, name) => s.participants.find(b => nameKey(b.na
 const findCapture = (s, id) => s.captures.find(c => c.id === id);
 const findKind = (s, id) => s.kinds.find(k => k.id === id);
 const findKindByName = (s, name) => s.kinds.find(k => nameKey(k.name) === nameKey(name));
+const findWorkset = (s, id) => s.worksets.find(w => w.id === id);
+const findWorksetByName = (s, name) => s.worksets.find(w => w.name !== null && nameKey(w.name) === nameKey(name));
+const nextWorksetNumber = (s) => 1 + Math.max(0, ...s.worksets.map(w => w.number));
+/** An optional name: null or blank means none. */
+function optName(v, max, field){
+  return (v === null || v === undefined || (typeof v === 'string' && cleanText(v) === '')) ? null : reqName(v, max, field);
+}
+/** A workset's number when given explicitly (restoring a deleted workset); null = next free one. */
+function optWorksetNumber(v){
+  if(v === null || v === undefined) return null;
+  if(!Number.isInteger(v) || v < 1 || v > 1000000) throw new OpError('invalid_workset_number');
+  return v;
+}
+/** A list of participant ids; null means an empty ranking. */
+function reqRankingList(v){
+  if(v === null || v === undefined) return [];
+  if(!Array.isArray(v) || v.length > 5000) throw new OpError('invalid_ranking');
+  return v.map(id => reqId(id, 'participant_id'));
+}
 /** The kind of a capture: a built-in or custom kind id; null (older clients) means finish. */
 function reqCaptureKind(v){
   if(v === null || v === undefined) return DEFAULT_KIND;
@@ -1735,7 +1893,7 @@ function applyOp(s, op){
     case 'race.archive':
       s.archived = true;
       // An archived race is read-only, so the expected crossing order is meaningless.
-      s.ranking = [];
+      for(const w of s.worksets) w.ranking = [];
       return s;
     case 'race.setSport': {
       const sport = op.sport;
@@ -1763,27 +1921,7 @@ function applyOp(s, op){
     case 'participant.delete': {
       const id = reqId(op.participantId, 'participant_id');
       s.participants = s.participants.filter(b => b.id !== id);
-      s.ranking = s.ranking.filter(x => x !== id);
-      return s;
-    }
-    case 'ranking.add': {
-      const id = reqId(op.participantId, 'participant_id');
-      if(findParticipant(s, id) && !s.ranking.includes(id)) s.ranking.push(id);
-      return s;
-    }
-    case 'ranking.remove': {
-      const id = reqId(op.participantId, 'participant_id');
-      s.ranking = s.ranking.filter(x => x !== id);
-      return s;
-    }
-    case 'ranking.move': {
-      const id = reqId(op.participantId, 'participant_id');
-      const before = optId(op.beforeId, 'before_id');
-      if(!s.ranking.includes(id)) return s;
-      const ranking = s.ranking.filter(x => x !== id);
-      const pos = (before === null || before === id) ? -1 : ranking.indexOf(before);
-      if(pos < 0) ranking.push(id); else ranking.splice(pos, 0, id);
-      s.ranking = ranking;
+      for(const w of s.worksets) w.ranking = w.ranking.filter(x => x !== id);
       return s;
     }
     case 'capture.add': {
@@ -1794,11 +1932,14 @@ function applyOp(s, op){
       const tzOffset = optTzOffset(c.tzOffset);
       let participantId = optId(c.participantId, 'participant_id');
       const kind = reqCaptureKind(c.kind);
+      const worksetId = optId(c.worksetId, 'workset_id');
       if(findCapture(s, id)) return s;
       if(participantId !== null && !findParticipant(s, participantId)) participantId = null;
-      s.captures.push({id, ts, tzOffset, participantId, kind});
+      s.captures.push({id, ts, tzOffset, participantId, kind, worksetId});
       // A marker (e.g. a protest) annotates a participant without it passing the point.
-      if(participantId !== null && kindRole(s, kind) !== 'marker') s.ranking = s.ranking.filter(x => x !== participantId);
+      // Only the capturing workset's ranking is affected.
+      const w = worksetId === null ? null : findWorkset(s, worksetId);
+      if(participantId !== null && w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => x !== participantId);
       return s;
     }
     case 'capture.assign': {
@@ -1821,11 +1962,6 @@ function applyOp(s, op){
       if(c) c.kind = kind;
       return s;
     }
-    case 'workset.setKind': {
-      const kind = reqCaptureKind(op.kind);
-      if(isKnownKind(s, kind)) s.captureKind = kind;
-      return s;
-    }
     case 'kind.add': {
       const k = reqCustomKind(op.kind);
       if(!findKind(s, k.id) && !findKindByName(s, k.name)) s.kinds.push(k);
@@ -1843,15 +1979,81 @@ function applyOp(s, op){
       const id = reqId(op.kindId, 'kind_id');
       // Captures keep the id, like they keep the id of a deleted participant.
       s.kinds = s.kinds.filter(k => k.id !== id);
-      if(s.captureKind === id) s.captureKind = DEFAULT_KIND;
+      for(const w of s.worksets) if(w.captureKind === id) w.captureKind = DEFAULT_KIND;
+      return s;
+    }
+    case 'workset.add': {
+      const w = op.workset;
+      if(!w || typeof w !== 'object') throw new OpError('invalid_workset');
+      const id = reqId(w.id, 'workset_id');
+      const name = optName(w.name, 40, 'workset_name');
+      const number = optWorksetNumber(w.number);
+      const ranking = reqRankingList(w.ranking);
+      const kind = reqCaptureKind(w.captureKind);
+      const before = optId(op.beforeId, 'before_id');
+      if(findWorkset(s, id) || (name !== null && findWorksetByName(s, name))) return s;
+      // The optional fields restore a deleted workset exactly (undo).
+      const entry = {id, number: number !== null ? number : nextWorksetNumber(s), name,
+        ranking: [...new Set(ranking)].filter(p => findParticipant(s, p)), captureKind: isKnownKind(s, kind) ? kind : DEFAULT_KIND};
+      const pos = before === null ? -1 : s.worksets.findIndex(x => x.id === before);
+      s.worksets.splice(pos < 0 ? s.worksets.length : pos, 0, entry);
+      return s;
+    }
+    case 'workset.rename': {
+      const id = reqId(op.worksetId, 'workset_id');
+      const name = optName(op.name, 40, 'workset_name');
+      const w = findWorkset(s, id);
+      if(w) w.name = name;
+      return s;
+    }
+    case 'workset.delete': {
+      const id = reqId(op.worksetId, 'workset_id');
+      // Captures keep the id; the next workset (if any) becomes the default.
+      s.worksets = s.worksets.filter(w => w.id !== id);
+      return s;
+    }
+    case 'workset.makeDefault': {
+      const id = reqId(op.worksetId, 'workset_id');
+      const i = s.worksets.findIndex(w => w.id === id);
+      if(i >= 0) s.worksets.unshift(...s.worksets.splice(i, 1));
+      return s;
+    }
+    case 'workset.setKind': {
+      const id = reqId(op.worksetId, 'workset_id');
+      const kind = reqCaptureKind(op.kind);
+      const w = findWorkset(s, id);
+      if(w && isKnownKind(s, kind)) w.captureKind = kind;
+      return s;
+    }
+    case 'workset.ranking.add': {
+      const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
+      const id = reqId(op.participantId, 'participant_id');
+      if(w && findParticipant(s, id) && !w.ranking.includes(id)) w.ranking.push(id);
+      return s;
+    }
+    case 'workset.ranking.remove': {
+      const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
+      const id = reqId(op.participantId, 'participant_id');
+      if(w) w.ranking = w.ranking.filter(x => x !== id);
+      return s;
+    }
+    case 'workset.ranking.move': {
+      const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
+      const id = reqId(op.participantId, 'participant_id');
+      const before = optId(op.beforeId, 'before_id');
+      if(!w || !w.ranking.includes(id)) return s;
+      const ranking = w.ranking.filter(x => x !== id);
+      const pos = (before === null || before === id) ? -1 : ranking.indexOf(before);
+      if(pos < 0) ranking.push(id); else ranking.splice(pos, 0, id);
+      w.ranking = ranking;
       return s;
     }
     case 'state.merge': {
       const src = op.state;
       if(!src || typeof src !== 'object') throw new OpError('invalid_state');
-      const participants = src.participants || [], ranking = src.ranking || [], kinds = src.kinds || [], captures = src.captures || [];
-      if(!Array.isArray(participants) || !Array.isArray(ranking) || !Array.isArray(kinds) || !Array.isArray(captures)
-        || participants.length > 5000 || ranking.length > 5000 || kinds.length > 500 || captures.length > 20000) throw new OpError('invalid_state');
+      const participants = src.participants || [], kinds = src.kinds || [], worksets = src.worksets || [], captures = src.captures || [];
+      if(!Array.isArray(participants) || !Array.isArray(kinds) || !Array.isArray(worksets) || !Array.isArray(captures)
+        || participants.length > 5000 || kinds.length > 500 || worksets.length > 500 || captures.length > 20000) throw new OpError('invalid_state');
       const idMap = new Map();
       for(const b of participants){
         const id = reqId(b && b.id, 'participant_id');
@@ -1859,10 +2061,6 @@ function applyOp(s, op){
         let target = findParticipant(s, id) || findParticipantByName(s, name);
         if(!target){ target = {id, name}; s.participants.push(target); }
         idMap.set(id, target.id);
-      }
-      for(const rid of ranking){
-        const mapped = idMap.get(reqId(rid, 'participant_id'));
-        if(mapped !== undefined && !s.ranking.includes(mapped)) s.ranking.push(mapped);
       }
       // Custom kinds are matched by id or (case-insensitive) name, like participants.
       const kindMap = new Map();
@@ -1872,6 +2070,27 @@ function applyOp(s, op){
         if(!target){ target = k; s.kinds.push(k); }
         kindMap.set(k.id, target.id);
       }
+      // Worksets: a new one keeps its kind and gets the next number; an existing one keeps
+      // its kind, and only its ranking is extended.
+      const worksetMap = new Map();
+      for(const raw of worksets){
+        if(!raw || typeof raw !== 'object') throw new OpError('invalid_workset');
+        const id = reqId(raw.id, 'workset_id');
+        const name = optName(raw.name, 40, 'workset_name');
+        const ranking = reqRankingList(raw.ranking);
+        let kind = reqCaptureKind(raw.captureKind);
+        let target = findWorkset(s, id) || (name !== null ? findWorksetByName(s, name) : undefined);
+        if(!target){
+          if(kindMap.has(kind)) kind = kindMap.get(kind);
+          target = {id, number: nextWorksetNumber(s), name, ranking: [], captureKind: isKnownKind(s, kind) ? kind : DEFAULT_KIND};
+          s.worksets.push(target);
+        }
+        worksetMap.set(id, target.id);
+        for(const pid of ranking){
+          const mapped = idMap.get(pid);
+          if(mapped !== undefined && !target.ranking.includes(mapped)) target.ranking.push(mapped);
+        }
+      }
       for(const c of captures){
         if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
         const id = reqId(c.id, 'capture_id');
@@ -1879,9 +2098,11 @@ function applyOp(s, op){
         const tzOffset = optTzOffset(c.tzOffset);
         const bid = optId(c.participantId, 'participant_id');
         const kind = reqCaptureKind(c.kind);
+        const wid = optId(c.worksetId, 'workset_id');
         if(findCapture(s, id)) continue;
         s.captures.push({id, ts, tzOffset, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null,
-          kind: kindMap.has(kind) ? kindMap.get(kind) : kind});
+          kind: kindMap.has(kind) ? kindMap.get(kind) : kind,
+          worksetId: wid !== null && worksetMap.has(wid) ? worksetMap.get(wid) : wid});
       }
       if(s.name === null && typeof src.name === 'string' && cleanText(src.name) !== '') s.name = reqName(src.name, 80, 'name');
       if(src.sport !== undefined && src.sport !== null){
@@ -1897,8 +2118,102 @@ function applyOp(s, op){
 }
 
 // Operations that stay possible without a server connection: they are buffered and sent later.
-const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'workset.setKind',
-  'ranking.add', 'ranking.remove', 'ranking.move']);
+const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+  'workset.add', 'workset.setKind', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move']);
+
+// =====================================================================
+// Access rules
+// =====================================================================
+/*
+ * Mirror of App\Access\Permissions (PHP), line by line; tests/access-parity.mjs keeps both
+ * identical. A permission is a path of [name, id|null] segments (`workset[w1].ranking.add`);
+ * a rule grants a path pattern, `revoke:` in front takes it away (a revoke always wins).
+ * A segment without an id matches every id, `*` one segment or, last, everything after it.
+ * The server enforces the rules; the client only hides and blocks what would be refused.
+ */
+const FULL_ACCESS = ['*'];
+const RULE_SEGMENT_RE = /^([A-Za-z]+)(?:\[([A-Za-z0-9_-]{1,40})\])?$/;
+const parsedRules = new Map();
+function parseRule(path){
+  if(parsedRules.has(path)) return parsedRules.get(path);
+  let segments = [];
+  for(const segment of path.split('.')){
+    const m = RULE_SEGMENT_RE.exec(segment);
+    if(segment === '*') segments.push(['*', null]);
+    else if(m) segments.push([m[1], m[2] !== undefined ? m[2] : null]);
+    else{ segments = null; break; }
+  }
+  parsedRules.set(path, segments);
+  return segments;
+}
+function ruleMatches(rule, path){
+  const last = rule.length - 1;
+  for(let i = 0; i < rule.length; i++){
+    const [name, id] = rule[i];
+    if(path[i] === undefined) return false;
+    if(name === '*'){
+      if(i === last) return true;
+      continue;
+    }
+    if(path[i][0] !== name || (id !== null && path[i][1] !== id)) return false;
+  }
+  return rule.length === path.length;
+}
+function rulesAllow(rules, path){
+  let granted = false;
+  for(const rule of rules){
+    if(typeof rule !== 'string') continue;
+    const revoke = rule.startsWith('revoke:');
+    const parsed = parseRule(revoke ? rule.slice(7) : rule);
+    if(parsed === null || !ruleMatches(parsed, path)) continue;
+    if(revoke) return false;
+    granted = true;
+  }
+  return granted;
+}
+/** Whether the rules only reach particular worksets (see Permissions::restrictedToWorksets). */
+function restrictedToWorksets(rules){
+  if(rulesAllow(rules, [['workset', ''], ['view', null]])) return false;
+  return rules.some(rule => {
+    if(typeof rule !== 'string' || rule.startsWith('revoke:')) return false;
+    const parsed = parseRule(rule);
+    return parsed !== null && parsed[0][0] === 'workset' && parsed[0][1] !== null;
+  });
+}
+const worksetSegment = (id) => ['workset', typeof id === 'string' ? id : ''];
+/** Path prefix of a capture: `workset[w1].capture`, or `capture` without a workset. */
+function captureScope(worksetId){
+  return worksetId === null || worksetId === undefined ? [['capture', null]] : [worksetSegment(worksetId), ['capture', null]];
+}
+/** The permission an operation needs, or null when it needs none (see Permissions::operationPath). */
+function operationPath(s, op){
+  const type = typeof op.type === 'string' ? op.type : '';
+  const parts = type.split('.');
+  switch(type){
+    case 'race.rename': case 'race.setSport': case 'race.archive':
+    case 'participant.rename': case 'participant.delete':
+    case 'kind.add': case 'kind.update': case 'kind.delete':
+    case 'workset.add':
+      return [[parts[0], null], [parts[1], null]];
+    case 'participants.add':
+      return [['participant', null], ['add', null]];
+    case 'state.merge':
+      return [['race', null], ['merge', null]];
+    case 'workset.rename': case 'workset.delete': case 'workset.makeDefault': case 'workset.setKind':
+    case 'workset.ranking.add': case 'workset.ranking.remove': case 'workset.ranking.move':
+      return [worksetSegment(op.worksetId), ...parts.slice(1).map(p => [p, null])];
+    case 'capture.add': {
+      const c = op.capture && typeof op.capture === 'object' && !Array.isArray(op.capture) ? op.capture : {};
+      return [...captureScope(c.worksetId === undefined ? null : c.worksetId), ['add', null]];
+    }
+    case 'capture.assign': case 'capture.delete': case 'capture.setKind': {
+      const c = (s.captures || []).find(x => x.id === op.captureId);
+      return c ? [...captureScope(c.worksetId === undefined ? null : c.worksetId), [parts[1], null]] : null;
+    }
+    default:
+      return null;
+  }
+}
 
 // =====================================================================
 // Undo / redo (per device, in memory)
@@ -1915,29 +2230,47 @@ const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 
 // Operations that can't be undone; they clear the history instead.
 const HISTORY_BARRIER_OPS = new Set(['race.archive', 'state.merge']);
 
-function rankedNext(s, id){
-  const i = s.ranking.indexOf(id);
-  return i < 0 ? null : (s.ranking[i + 1] || null);
+function rankedNext(w, id){
+  const i = w.ranking.indexOf(id);
+  return i < 0 ? null : (w.ranking[i + 1] || null);
 }
+/*
+ * Parts are [kind, id, worksetId]. Ranking parts ('ranked', 'next') and 'captureKind' belong to
+ * one workset; 'workset' is the whole workset (for adding and deleting it), 'worksetName' only
+ * its name and 'worksetOrder' the order of all worksets (which one is the default).
+ */
 function footprint(s, parts){
-  return JSON.stringify(parts.map(([kind, id]) => {
+  return JSON.stringify(parts.map(([kind, id, ws]) => {
+    const w = ws === undefined ? null : findWorkset(s, ws);
     switch(kind){
       case 'name': return s.name;
       case 'sport': return s.sport;
       case 'participant': { const p = findParticipant(s, id); return p ? p.name : null; }
-      case 'ranked': return s.ranking.includes(id);
-      case 'next': return s.ranking.includes(id) ? (rankedNext(s, id) || '$end') : null;
-      case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.participantId, c.kind] : null; }
-      case 'captureKind': return s.captureKind;
+      case 'ranked': return w ? w.ranking.includes(id) : null;
+      case 'next': return w && w.ranking.includes(id) ? (rankedNext(w, id) || '$end') : null;
+      case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.participantId, c.kind, c.worksetId] : null; }
+      case 'captureKind': return w ? w.captureKind : null;
       case 'kind': { const k = findKind(s, id); return k ? [k.name, k.role] : null; }
+      case 'workset': {
+        const i = s.worksets.findIndex(x => x.id === id);
+        if(i < 0) return null;
+        const x = s.worksets[i];
+        return [x.number, x.name, x.ranking, x.captureKind, s.worksets[i + 1] ? s.worksets[i + 1].id : null];
+      }
+      case 'worksetName': { const x = findWorkset(s, id); return x ? x.name : '$none'; }
+      case 'worksetOrder': return s.worksets.map(x => x.id);
     }
   }));
 }
-/** Operations that put a participant back into the ranking at the position it has in `s`. */
-function rerankOps(s, id){
-  if(!id || !s.ranking.includes(id)) return [];
-  return [{type:'ranking.add', participantId:id}, {type:'ranking.move', participantId:id, beforeId:rankedNext(s, id)}];
+/** Operations that put a participant back into a workset's ranking at the position it has in `s`. */
+function rerankOps(s, id, worksetId){
+  const w = worksetId ? findWorkset(s, worksetId) : null;
+  if(!id || !w || !w.ranking.includes(id)) return [];
+  return [{type:'workset.ranking.add', worksetId, participantId:id},
+    {type:'workset.ranking.move', worksetId, participantId:id, beforeId:rankedNext(w, id)}];
 }
+/** The parts for a participant's place in every workset's ranking. */
+const rankedParts = (s, id) => s.worksets.map(w => ['ranked', id, w.id]);
 /**
  * The history entry for `op` applied to state `s`: {type, parts, undo:[ops], redo:[ops]},
  * or null when the operation has nothing to undo (unknown references, invalid input).
@@ -1956,7 +2289,7 @@ function historyEntry(s, op){
       if(!added.length) return null;
       return {
         type:op.type,
-        parts: added.flatMap(p => [['participant', p.id], ['ranked', p.id]]),
+        parts: added.flatMap(p => [['participant', p.id], ...rankedParts(s, p.id)]),
         undo: added.map(p => ({type:'participant.delete', participantId:p.id})),
         // Only what was really added: the rest were duplicates the first time too.
         redo: [{type:'participants.add', participants: added.map(p => ({id:p.id, name:p.name}))}],
@@ -1969,36 +2302,39 @@ function historyEntry(s, op){
     case 'participant.delete': {
       const p = findParticipant(s, op.participantId);
       if(!p) return null;
-      return entry([['participant', p.id], ['ranked', p.id]],
-        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...rerankOps(s, p.id)]);
+      return entry([['participant', p.id], ...rankedParts(s, p.id)],
+        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, p.id, w.id))]);
     }
-    case 'ranking.add':
-      return entry([['ranked', op.participantId]], [{type:'ranking.remove', participantId:op.participantId}]);
-    case 'ranking.remove':
-      return entry([['ranked', op.participantId]], rerankOps(s, op.participantId));
-    case 'ranking.move':
-      return entry([['next', op.participantId]],
-        [{type:'ranking.move', participantId:op.participantId, beforeId:rankedNext(s, op.participantId)}]);
+    case 'workset.ranking.add':
+      return entry([['ranked', op.participantId, op.worksetId]],
+        [{type:'workset.ranking.remove', worksetId:op.worksetId, participantId:op.participantId}]);
+    case 'workset.ranking.remove':
+      return entry([['ranked', op.participantId, op.worksetId]], rerankOps(s, op.participantId, op.worksetId));
+    case 'workset.ranking.move': {
+      const w = findWorkset(s, op.worksetId);
+      if(!w) return null;
+      return entry([['next', op.participantId, w.id]],
+        [{type:'workset.ranking.move', worksetId:w.id, participantId:op.participantId, beforeId:rankedNext(w, op.participantId)}]);
+    }
     case 'capture.add': {
       const c = op.capture;
       if(!c || typeof c.id !== 'string' || findCapture(s, c.id)) return null;
       const pid = typeof c.participantId === 'string' ? c.participantId : null;
+      const ws = typeof c.worksetId === 'string' ? c.worksetId : null;
       // Recording a time for a ranked participant takes it out of the ranking: undo puts it back.
-      return entry([['capture', c.id], ...(pid ? [['ranked', pid]] : [])],
-        [{type:'capture.delete', captureId:c.id}, ...rerankOps(s, pid)]);
+      return entry([['capture', c.id], ...(pid && ws ? [['ranked', pid, ws]] : [])],
+        [{type:'capture.delete', captureId:c.id}, ...rerankOps(s, pid, ws)]);
     }
     case 'capture.setKind': {
       const c = findCapture(s, op.captureId);
       return c ? entry([['capture', c.id]], [{type:'capture.setKind', captureId:c.id, kind:c.kind}]) : null;
     }
-    case 'workset.setKind':
-      return entry([['captureKind']], [{type:'workset.setKind', kind:s.captureKind}]);
     case 'kind.add': {
       let k;
       try{ k = reqCustomKind(op.kind); }catch(e){ return null; }
       if(findKind(s, k.id) || findKindByName(s, k.name)) return null;
-      // Deleting the kind again resets the selected kind if it was picked meanwhile.
-      return entry([['kind', k.id], ['captureKind']], [{type:'kind.delete', kindId:k.id}]);
+      // Deleting the kind again resets the selected kind of worksets that picked it meanwhile.
+      return entry([['kind', k.id], ...s.worksets.map(w => ['captureKind', null, w.id])], [{type:'kind.delete', kindId:k.id}]);
     }
     case 'kind.update': {
       const k = findKind(s, op.kindId);
@@ -2007,8 +2343,8 @@ function historyEntry(s, op){
     case 'kind.delete': {
       const k = findKind(s, op.kindId);
       if(!k) return null;
-      return entry([['kind', k.id], ['captureKind']],
-        [{type:'kind.add', kind:{...k}}, ...(s.captureKind === k.id ? [{type:'workset.setKind', kind:k.id}] : [])]);
+      return entry([['kind', k.id], ...s.worksets.map(w => ['captureKind', null, w.id])],
+        [{type:'kind.add', kind:{...k}}, ...s.worksets.filter(w => w.captureKind === k.id).map(w => ({type:'workset.setKind', worksetId:w.id, kind:k.id}))]);
     }
     case 'capture.assign': {
       const c = findCapture(s, op.captureId);
@@ -2017,10 +2353,36 @@ function historyEntry(s, op){
     case 'capture.delete': {
       const c = findCapture(s, op.captureId);
       if(!c) return null;
-      const pid = c.participantId;
+      const pid = c.participantId, ws = c.worksetId;
       // Adding the capture back would take its participant out of the ranking: keep it there.
-      return entry([['capture', c.id], ...(pid ? [['ranked', pid]] : [])],
-        [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, participantId:pid, kind:c.kind}}, ...rerankOps(s, pid)]);
+      return entry([['capture', c.id], ...(pid && ws ? [['ranked', pid, ws]] : [])],
+        [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, participantId:pid, kind:c.kind, worksetId:ws}}, ...rerankOps(s, pid, ws)]);
+    }
+    case 'workset.add': {
+      const w = op.workset;
+      if(!w || typeof w.id !== 'string' || findWorkset(s, w.id)) return null;
+      return entry([['workset', w.id]], [{type:'workset.delete', worksetId:w.id}]);
+    }
+    case 'workset.rename': {
+      const w = findWorkset(s, op.worksetId);
+      return w ? entry([['worksetName', w.id]], [{type:'workset.rename', worksetId:w.id, name:w.name}]) : null;
+    }
+    case 'workset.delete': {
+      const i = s.worksets.findIndex(w => w.id === op.worksetId);
+      if(i < 0) return null;
+      const w = s.worksets[i];
+      // Restored in place, with its number, name, ranking and kind.
+      return entry([['workset', w.id]], [{type:'workset.add', workset:clone(w), beforeId: s.worksets[i + 1] ? s.worksets[i + 1].id : null}]);
+    }
+    case 'workset.makeDefault': {
+      const i = s.worksets.findIndex(w => w.id === op.worksetId);
+      if(i < 0) return null;
+      // Moving each workset that preceded it back to the front, last one first, restores the order.
+      return entry([['worksetOrder']], s.worksets.slice(0, i).reverse().map(w => ({type:'workset.makeDefault', worksetId:w.id})));
+    }
+    case 'workset.setKind': {
+      const w = findWorkset(s, op.worksetId);
+      return w ? entry([['captureKind', null, w.id]], [{type:'workset.setKind', worksetId:w.id, kind:w.captureKind}]) : null;
     }
     default:
       return null;
@@ -2053,8 +2415,13 @@ class LocalBackend {
   getStatus(){ return 'local'; }
   pendingCount(){ return 0; }
   clientCount(){ return null; }
+  worksetClientCount(){ return null; }
   pendingCaptureIds(){ return new Set(); }
   blockReason(){ return null; }
+  isReady(){ return true; }
+  announceWorkset(){}
+  /** Local data is this device's own: everything is allowed. */
+  accessInfo(){ return {rules: FULL_ACCESS}; }
   dispatch(op){
     try{ applyOp(this.state, op); }catch(e){ console.warn('operation rejected locally', op, e); return null; }
     localStore.save(this.state);
@@ -2105,10 +2472,14 @@ class ServerBackend {
     this.confirmed = normalizeState(cache && cache.state);
     this.seq = cache && Number.isInteger(cache.seq) ? cache.seq : 0;
     this.pending = cache && Array.isArray(cache.pending) ? cache.pending : [];
+    // What this code may do and see: {code, rules, codes?} from the server.
+    this.access = cache && cache.access && Array.isArray(cache.access.rules) ? cache.access : null;
     this.hasSnapshot = !!cache;
     this.status = 'connecting';
     this.transport = null;       // 'ws' | 'poll' | null
     this.clients = null;         // clients on this race, only known over WebSocket
+    this.worksetClients = {};    // clients per workset, likewise
+    this.worksetId = null;       // this device's workset, announced for the presence counts
     this.wsUrl = undefined;      // undefined = not fetched yet, null = disabled
     this.ws = null;
     this.wsFailures = 0;
@@ -2127,13 +2498,37 @@ class ServerBackend {
   pendingCount(){ return this.pending.length; }
   /** Number of clients on this race, or null while polling (the HTTP API can't tell). */
   clientCount(){ return this.transport === 'ws' ? this.clients : null; }
+  /** Number of clients on a workset, or null while polling. */
+  worksetClientCount(worksetId){ return this.transport === 'ws' ? (this.worksetClients[worksetId] || 0) : null; }
+  /** The state is known (from the cache or the server), not just the empty placeholder. */
+  isReady(){ return this.hasSnapshot; }
+  /** Tells the server which workset this device is on (it counts the devices per workset). */
+  announceWorkset(worksetId){
+    this.worksetId = worksetId;
+    this.send({type:'workset', worksetId});
+  }
   pendingCaptureIds(){
     return new Set(this.pending.filter(o => o.type === 'capture.add' && o.capture).map(o => o.capture.id));
   }
   blockReason(op){
     if(this.view.archived) return 'lock.archived';
+    const path = operationPath(this.view, op);
+    if(path && !rulesAllow(this.accessInfo().rules, path)) return 'lock.forbidden';
     if(OFFLINE_OPS.has(op.type)) return null;
     return this.status === 'online' ? null : 'lock.offline';
+  }
+  /** Until the server said otherwise (no snapshot yet), nothing is hidden; it enforces anyway. */
+  accessInfo(){ return this.access || {code: this.code, rules: FULL_ACCESS}; }
+  /** Starts from a snapshot fetched while connecting, if nothing is cached yet. */
+  seed(snapshot){
+    if(!this.hasSnapshot && snapshot && Number.isInteger(snapshot.seq)) this.applySnapshot(snapshot.seq, snapshot.state, snapshot.access);
+  }
+  setAccess(access){
+    if(!access || !Array.isArray(access.rules)) return;
+    if(JSON.stringify(access) === JSON.stringify(this.access)) return;
+    this.access = access;
+    this.persist();
+    this.handlers.onAccess();
   }
   dispatch(op){
     op.opId = op.opId || uid();
@@ -2153,7 +2548,7 @@ class ServerBackend {
   }
 
   // ----- state bookkeeping -----
-  persist(){ writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending}); }
+  persist(){ writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending, access:this.access}); }
   recompute(notify = true){
     const view = clone(this.confirmed);
     for(const op of this.pending){ try{ applyOp(view, op); }catch(e){} }
@@ -2172,7 +2567,8 @@ class ServerBackend {
     if(!ok && op) this.handlers.onRejected(op, error);
     return !!op;
   }
-  applySnapshot(seq, state){
+  applySnapshot(seq, state, access){
+    if(access && Array.isArray(access.rules)) this.access = access;
     this.confirmed = normalizeState(state);
     this.seq = seq;
     this.hasSnapshot = true;
@@ -2185,10 +2581,16 @@ class ServerBackend {
     for(const e of [...events].sort((a, b) => a.seq - b.seq)){
       if(e.seq <= this.seq) continue;
       if(e.seq !== this.seq + 1){ this.resync(); break; }
-      try{ applyOp(this.confirmed, e.op); }catch(err){ console.warn('could not apply server event', e, err); }
+      // A merge this code may only see in parts: fetch the state afresh.
+      if(e.resync){ this.resync(); break; }
+      // Redacted: about something this code doesn't see. Only the sequence number moves on.
+      if(!e.redacted){
+        try{ applyOp(this.confirmed, e.op); }catch(err){ console.warn('could not apply server event', e, err); }
+      }
       this.seq = e.seq;
       changed = true;
-      if(e.op && e.op.opId) this.settle(e.op.opId, true);
+      const opId = e.redacted ? e.opId : e.op && e.op.opId;
+      if(opId) this.settle(opId, true);
     }
     if(changed){ this.persist(); this.recompute(); }
   }
@@ -2248,17 +2650,21 @@ class ServerBackend {
         this.wsFailures = 0;
         this.stopPolling();
         this.sent.clear();
-        this.applySnapshot(msg.seq, msg.state);
+        this.applySnapshot(msg.seq, msg.state, msg.access);
+        this.send({type:'workset', worksetId:this.worksetId});
         this.setStatus('online');
         this.flush();
         break;
       case 'events': this.applyEvents(msg.events || []); break;
       case 'presence':
-        if(Number.isInteger(msg.clients) && msg.clients !== this.clients){ this.clients = msg.clients; this.handlers.onStatus(); }
+        if(Number.isInteger(msg.clients)) this.clients = msg.clients;
+        this.worksetClients = msg.worksets && typeof msg.worksets === 'object' ? msg.worksets : {};
+        this.handlers.onStatus();
         break;
+      case 'access': this.setAccess({code:msg.code, rules:msg.rules, ...(msg.codes ? {codes:msg.codes} : {})}); break;
       case 'ack': this.settle(msg.opId, true); this.persist(); this.recompute(); break;
       case 'rejected': this.settle(msg.opId, false, msg.error); this.persist(); this.recompute(); break;
-      case 'error': if(msg.error === 'not_found') this.fatal('not_found'); break;
+      case 'error': if(msg.error === 'not_found' || msg.error === 'access_revoked') this.fatal(msg.error); break;
     }
   }
   onWsDown(){
@@ -2266,6 +2672,7 @@ class ServerBackend {
     if(this.destroyed) return;
     this.transport = null;
     this.clients = null;
+    this.worksetClients = {};
     this.sent.clear();
     this.wsFailures++;
     // The status text carries the transport and the client count, and neither is known now.
@@ -2307,15 +2714,15 @@ class ServerBackend {
       await this.flushHttp();
       if(this.needSnapshot){
         const snap = await api(this.serverUrl, '/api/races/' + this.code);
-        this.applySnapshot(snap.seq, snap.state);
+        this.applySnapshot(snap.seq, snap.state, snap.access);
       }else{
         const res = await api(this.serverUrl, '/api/races/' + this.code + '/events?since=' + this.seq);
-        if(res.reset) this.applySnapshot(res.seq, res.state);
-        else this.applyEvents(res.events || []);
+        if(res.reset) this.applySnapshot(res.seq, res.state, res.access);
+        else{ this.applyEvents(res.events || []); this.setAccess(res.access); }
       }
       ok = true;
     }catch(e){
-      if(e.code === 'not_found'){ this.fatal('not_found'); return; }
+      if(e.code === 'not_found' || e.code === 'access_revoked'){ this.fatal(e.code); return; }
       this.sent.clear();
     }
     if(!this.polling || this.destroyed) return;
@@ -2369,15 +2776,46 @@ const backendHandlers = {
   // The local data was replaced (reset, another tab): the history no longer applies.
   onReload(){ clearHistory(); renderAll(); },
   onStatus(){ renderStatus(); renderSettings(); },
+  // What this code may do or see changed (worksets added or deleted, codes created).
+  onAccess(){ renderAll(); },
   onRejected(op, error){
     // The server state differs from what the history was recorded against.
     clearHistory();
-    toast(t('err.rejected', {error: error || '?'}));
+    if(error === 'access_revoked'){ onAccessRevoked(); return; }
+    toast(error === 'forbidden' ? t('lock.forbidden') : t('err.rejected', {error: error || '?'}));
   },
   onFatal(error){
     if(error === 'not_found'){ useLocal(); toast(t('err.gone')); }
+    else if(error === 'access_revoked') onAccessRevoked();
   },
 };
+
+/*
+ * The code no longer grants access (its stations were all deleted). Times not sent yet would
+ * be lost with the cache: offer them as CSV first. Then the connection's cache and station go,
+ * the device carries on locally; the race stays in the recent list (undoing the deletion
+ * elsewhere brings the access back).
+ */
+let revoking = false;
+async function onAccessRevoked(){
+  if(revoking || backend.kind !== 'server') return;
+  revoking = true;
+  const server = backend;
+  server.destroy();
+  try{
+    const unsent = server.pendingCaptureIds().size;
+    if(unsent){
+      const ok = await askConfirm({title:t('revoked.title'), text:t('revoked.text', {n: unsent}), ok:t('revoked.export'), cancel:t('revoked.discard')});
+      if(ok) await exportCsv();
+    }
+    removeKey(server.cacheKey);
+    removeKey(KEYS.worksetPrefix + server.serverUrl + '|' + server.code);
+    useLocal();
+    toast(t('err.revoked'));
+  }finally{
+    revoking = false;
+  }
+}
 
 function normalizeCode(code){ return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function normalizeServerUrl(value){
@@ -2397,7 +2835,8 @@ function setFragment(code){
   try{ history.replaceState(null, '', location.pathname + location.search + (code ? '#r=' + code : '')); }catch(e){}
 }
 
-// The races this browser connected to last, newest first — a per-device shortcut list.
+// The races this browser connected to, newest first — a per-device shortcut list. All of them
+// are kept; the settings show the latest RECENT_MAX, so removing one brings the next one up.
 const RECENT_MAX = 3;
 function recentConnections(){
   const list = readJson(KEYS.recent);
@@ -2408,11 +2847,26 @@ function recentConnections(){
  * connecting) — the stored one survives; without it the name given is the authoritative one,
  * so clearing a race's name clears it here too.
  */
-function rememberConnection(serverUrl, code, name, keepKnown = false){
+function rememberConnection(serverUrl, code, name, keepKnown = false, worksetName = null){
   const list = recentConnections();
   const known = list.find(e => e.serverUrl === serverUrl && e.code === code);
   const next = name || (keepKnown && known ? known.name : null) || null;
-  writeJson(KEYS.recent, [{serverUrl, code, name: next}, ...list.filter(e => e !== known)].slice(0, RECENT_MAX));
+  // A code bound to a station names it, so several codes of one race can be told apart.
+  const station = worksetName || (keepKnown && known ? known.worksetName : null) || null;
+  writeJson(KEYS.recent, [{serverUrl, code, name: next, worksetName: station}, ...list.filter(e => e !== known)]);
+}
+/**
+ * Removes a race from the list. Its cached data and station go too, unless changes are still
+ * waiting to be sent: then the cache stays, so connecting again later still delivers them.
+ */
+function forgetConnection(serverUrl, code){
+  writeJson(KEYS.recent, recentConnections().filter(e => !(e.serverUrl === serverUrl && e.code === code)));
+  const cacheKey = KEYS.cachePrefix + serverUrl + '|' + code;
+  const cache = readJson(cacheKey);
+  if(!(cache && Array.isArray(cache.pending) && cache.pending.length)){
+    removeKey(cacheKey);
+    removeKey(KEYS.worksetPrefix + serverUrl + '|' + code);
+  }
 }
 
 function setBackend(next){
@@ -2420,6 +2874,7 @@ function setBackend(next){
   backend = next;
   undoStack = [];
   redoStack = [];
+  loadDeviceWorkset();
   renderAll();
   renderStatus();
   renderSettings();
@@ -2429,12 +2884,13 @@ function useLocal(){
   setFragment(null);
   setBackend(new LocalBackend(backendHandlers));
 }
-function useServer(serverUrl, code){
+function useServer(serverUrl, code, snapshot = null){
   writeJson(KEYS.connection, {serverUrl, code});
   rememberConnection(serverUrl, code, null, true);
   rememberedName = null;   // the name of this race is asserted again on the next render
   setFragment(code);
   const next = new ServerBackend(serverUrl, code, backendHandlers);
+  next.seed(snapshot);
   setBackend(next);
   next.start();
   return next;
@@ -2452,16 +2908,19 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
   }catch(e){
     if(e.code === 'not_found' || interactive) throw e;
   }
+  // The server names the code to keep (the same one, for now).
+  if(snapshot && snapshot.access && typeof snapshot.access.code === 'string') code = snapshot.access.code;
   const local = localStore.load();
+  const mayMerge = !snapshot || !snapshot.access || rulesAllow(snapshot.access.rules, [['race', null], ['merge', null]]);
   let upload = false;
-  if(snapshot && snapshot.seq === 0 && hasData(local)){
+  if(snapshot && snapshot.seq === 0 && hasData(local) && mayMerge){
     upload = await askConfirm({
       title: t('init.title'),
       text: t('init.text', {code, participants: local.participants.length, captures: local.captures.length}),
       ok: t('init.yes'), cancel: t('init.no'),
     });
   }
-  const server = useServer(serverUrl, code);
+  const server = useServer(serverUrl, code, snapshot);
   toast(t('conn.connected', {code}));
   if(upload){
     const opId = server.dispatch({type:'state.merge', state:mergePayload(local)});
@@ -2471,24 +2930,33 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, ranking:s.ranking, kinds:s.kinds, captures:s.captures}; }
+function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds, worksets:s.worksets, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
+  if(e && e.code === 'access_revoked') return t('err.revoked');
   if(e && e.code === 'network') return t('err.network');
   return t('err.generic', {msg: (e && (e.code || e.message)) || '?'});
 }
 
-/** Runs an operation through the active backend unless it is blocked (offline / archived). */
-function perform(op){
-  const reason = backend.blockReason(op);
+/**
+ * Runs operations through the active backend unless one of them is blocked (offline /
+ * archived). Several operations (an array) are one step in the history, e.g. creating a
+ * workset together with the ranking that needed it.
+ */
+function perform(opOrOps){
+  const ops = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
+  const reason = ops.map(op => backend.blockReason(op)).find(Boolean);
   if(reason){ toast(t(reason)); return null; }
-  if(HISTORY_BARRIER_OPS.has(op.type)){
+  if(ops.some(op => HISTORY_BARRIER_OPS.has(op.type))){
     clearHistory();
-    return backend.dispatch(op) || true;
+    let result = true;
+    for(const op of ops) result = dispatchOp(op) || true;
+    return result;
   }
-  const entry = historyEntry(S(), op);
+  const entry = combinedEntry(S(), ops);
   const before = entry && footprint(S(), entry.parts);
-  const result = backend.dispatch(op) || true;
+  let result = true;
+  for(const op of ops) result = dispatchOp(op) || true;
   const after = entry && footprint(S(), entry.parts);
   // Operations that changed nothing (duplicates, unknown references) aren't recorded.
   if(entry && after !== before){
@@ -2498,6 +2966,25 @@ function perform(op){
     renderHistory();
   }
   return result;
+}
+
+/** Sends one operation; remembers the worksets this device deletes itself (see syncDeviceWorkset). */
+function dispatchOp(op){
+  if(op.type === 'workset.delete') removedLocally.add(op.worksetId);
+  return backend.dispatch(op);
+}
+/** One history entry for several operations: undone in reverse order, redone in order. */
+function combinedEntry(s, ops){
+  if(ops.length === 1) return historyEntry(s, ops[0]);
+  const probe = clone(s), entries = [];
+  for(const op of ops){
+    const e = historyEntry(probe, op);
+    if(e) entries.push(e);
+    try{ applyOp(probe, clone(op)); }catch(err){}
+  }
+  if(!entries.length) return null;
+  return {type: entries[entries.length - 1].type, parts: entries.flatMap(e => e.parts),
+    undo: [...entries].reverse().flatMap(e => e.undo), redo: entries.flatMap(e => e.redo)};
 }
 
 // ---------- undo / redo ----------
@@ -2515,9 +3002,13 @@ const HISTORY_LABELS = {
   'participants.add': () => t('history.participantsAdd'),
   'participant.rename': () => t('history.participantRename'),
   'participant.delete': () => t('history.participantDelete'),
-  'ranking.add': () => t('action.sort'),
-  'ranking.remove': () => t('action.unsort'),
-  'ranking.move': () => t('history.rankingMove'),
+  'workset.ranking.add': () => t('action.sort'),
+  'workset.ranking.remove': () => t('action.unsort'),
+  'workset.ranking.move': () => t('history.rankingMove'),
+  'workset.add': () => t('history.worksetAdd'),
+  'workset.rename': () => t('history.worksetRename'),
+  'workset.delete': () => t('history.worksetDelete'),
+  'workset.makeDefault': () => t('history.worksetDefault'),
   'capture.add': () => t('history.captureAdd'),
   'capture.assign': () => t('history.captureAssign'),
   'capture.delete': () => t('history.captureDelete'),
@@ -2557,7 +3048,7 @@ function stepHistory(redo){
   for(const op of ops){
     const copy = clone(op);
     delete copy.opId;
-    backend.dispatch(copy);
+    dispatchOp(copy);
   }
   renderHistory();
   const action = historyLabel(entry);
@@ -2739,7 +3230,7 @@ function cancelShortcutsHold(){ clearTimeout(shortcutsHoldTimer); shortcutsHoldT
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && !shortcutsEl.hidden){ e.preventDefault(); closeShortcuts(); return; }
   if(e.key !== 'Control' && e.key !== 'Meta'){ cancelShortcutsHold(); return; }
-  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden) return;
+  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden || !document.getElementById('stationDialog').hidden) return;
   // Not while typing: there Ctrl/Cmd starts an editing shortcut, not a lookup.
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
@@ -2789,6 +3280,148 @@ function timeSortKey(participantId, dir, elapsed = false){
   return elapsed ? captureFacts().get(c.id).elapsed : c.ts;
 }
 
+// ---------- access (what this device's code allows) ----------
+const accessRules = () => backend.accessInfo().rules;
+/** Whether the code allows a permission path (a rule-like string or segments). */
+function can(path){
+  return rulesAllow(accessRules(), typeof path === 'string' ? (parseRule(path) || []) : path);
+}
+/** A code bound to particular stations (it can't see or manage the others). */
+const restrictedAccess = () => restrictedToWorksets(accessRules());
+/** Recording needs `capture.add` on this device's station, or a plain one without a station. */
+function canRecord(){
+  const w = currentWorkset();
+  return can([...captureScope(w ? w.id : null), ['add', null]]);
+}
+/** Hides what the code doesn't allow (elements marked data-perm="<path>"). */
+function applyPermissions(){
+  document.querySelectorAll('[data-perm]').forEach(el => el.classList.toggle('perm-hidden', !can(el.dataset.perm)));
+}
+
+// ---------- this device's station (workset) ----------
+/*
+ * A device works on one workset at a time. It is stored per connection (never synced) as
+ * {id}: a workset id, or null for "no station" (an explicit choice). Nothing stored means the
+ * device never joined one, which only lasts while the race has no worksets: as soon as one
+ * exists the device joins the default, explicitly (syncDeviceWorkset). From then on only the
+ * stored id counts; nothing falls back to the default implicitly.
+ */
+let deviceWorkset;               // string | null | undefined, see above
+let deviceWorksetLabel = '';     // the current station's label, for the notice once it is gone
+let worksetNotice = null;        // {name} after another device deleted this device's station
+const removedLocally = new Set();   // worksets this device deleted itself: no notice for those
+function worksetStorageKey(){
+  return KEYS.worksetPrefix + (backend.kind === 'server' ? backend.serverUrl + '|' + backend.code : 'local');
+}
+function loadDeviceWorkset(){
+  const v = readJson(worksetStorageKey());
+  deviceWorkset = v && (v.id === null || (typeof v.id === 'string' && ID_RE.test(v.id))) ? v.id : undefined;
+  worksetNotice = null;
+  backend.announceWorkset(deviceWorkset || null);
+}
+function storeDeviceWorkset(id){
+  deviceWorkset = id;
+  if(id === undefined) removeKey(worksetStorageKey()); else writeJson(worksetStorageKey(), {id});
+  if(id) worksetNotice = null;
+  backend.announceWorkset(id || null);
+}
+function currentWorkset(s = S()){ return deviceWorkset ? findWorkset(s, deviceWorkset) || null : null; }
+const currentRanking = () => { const w = currentWorkset(); return w ? w.ranking : []; };
+/** The kind this device's captures get: its workset's, finish without one. */
+const stickyKind = () => { const w = currentWorkset(); return w ? w.captureKind : DEFAULT_KIND; };
+const worksetLabel = (w) => w.name || t('worksets.defaultName', {n: w.number});
+function worksetLabelById(id, s = S()){
+  const w = findWorkset(s, id);
+  // A code bound to stations doesn't see the others: an unknown one may just be out of sight.
+  return w ? worksetLabel(w) : t(restrictedAccess() ? 'worksets.other' : 'worksets.deleted');
+}
+/** Keeps the device's station explicit (see above). Runs before every render. */
+function syncDeviceWorkset(){
+  if(!backend.isReady()) return;
+  const s = S();
+  if(deviceWorkset === undefined){
+    if(!s.worksets.length) return;
+    storeDeviceWorkset(s.worksets[0].id);
+  }
+  if(deviceWorkset === null){
+    // No workset left at all: as if there never had been one.
+    if(!s.worksets.length) storeDeviceWorkset(undefined);
+    return;
+  }
+  const w = findWorkset(s, deviceWorkset);
+  if(w){
+    deviceWorksetLabel = worksetLabel(w);
+    removedLocally.delete(w.id);
+    return;
+  }
+  // The station is gone.
+  const own = removedLocally.delete(deviceWorkset);
+  if(!s.worksets.length){ storeDeviceWorkset(undefined); return; }
+  // A device that may record without a station carries on without one and says so.
+  if(own || can([['capture', null], ['add', null]])){
+    storeDeviceWorkset(null);
+    if(!own) worksetNotice = {name: deviceWorksetLabel};
+    return;
+  }
+  // Otherwise it needs another one right away: the only one left, or the one the user picks.
+  if(s.worksets.length === 1){
+    storeDeviceWorkset(s.worksets[0].id);
+    toast(t('worksets.switched', {name: deviceWorksetLabel, next: worksetLabel(s.worksets[0])}));
+    return;
+  }
+  storeDeviceWorkset(null);
+  chooseStation(deviceWorksetLabel);
+}
+/** Asks which station to continue on; it can't be dismissed without choosing. */
+const stationDialog = document.getElementById('stationDialog');
+function chooseStation(name){
+  document.getElementById('stationDialogText').textContent = t('worksets.chooseText', {name});
+  const picks = S().worksets.map(w => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn block';
+    b.textContent = worksetLabel(w);
+    b.addEventListener('click', () => {
+      stationDialog.hidden = true;
+      lockScroll(false);
+      setDeviceWorkset(w.id);
+    });
+    return b;
+  });
+  document.getElementById('stationDialogPicks').replaceChildren(...picks);
+  if(stationDialog.hidden){ lockScroll(true); stationDialog.hidden = false; }
+  if(picks[0]) picks[0].focus({preventScroll: true});
+}
+/** The user picks a station for this device (null: no station). */
+function setDeviceWorkset(id){
+  storeDeviceWorkset(id);
+  renderAll();
+}
+/**
+ * The station for an action that needs one (ranking, choosing the kind): the current one,
+ * else the default (joined explicitly), else a new one — returned with the operation creating
+ * it, to go into the same history step as the action.
+ */
+function ensureWorkset(){
+  const s = S();
+  const w = currentWorkset(s);
+  if(w) return {worksetId: w.id, ops: []};
+  if(s.worksets.length){
+    storeDeviceWorkset(s.worksets[0].id);
+    return {worksetId: s.worksets[0].id, ops: []};
+  }
+  const id = uid();
+  return {worksetId: id, ops: [{type:'workset.add', workset:{id, name:null}}]};
+}
+/** Performs `build(worksetId)` on this device's station, joining or creating one first if needed. */
+function performOnWorkset(build){
+  const joining = !currentWorkset();
+  const {worksetId, ops} = ensureWorkset();
+  const result = perform([...ops, ...(build ? [build(worksetId)] : [])]);
+  if(result && joining){ storeDeviceWorkset(worksetId); renderAll(); }
+  return result;
+}
+
 // ---------- capture kinds ----------
 function kindLabel(kind, s = S()){
   if(BUILTIN_KINDS.includes(kind)) return t(`kind.${kind}`);
@@ -2800,27 +3433,26 @@ const roleClass = (kind, s = S()) => 'kind-' + kindRole(s, kind);
 // The kind for the next capture only (this device, in memory); afterwards the workset's kind applies again.
 let nextKind = null;
 function effectiveKind(){
-  const s = S();
-  return nextKind && isKnownKind(s, nextKind) ? nextKind : s.captureKind;
+  return nextKind && isKnownKind(S(), nextKind) ? nextKind : stickyKind();
 }
 /** Kinds stay out of sight until somebody uses them: a kind picked, a custom kind, a typed capture. */
 function kindsUnlocked(){
   const s = S();
-  return !!nextKind || s.captureKind !== DEFAULT_KIND || s.kinds.length > 0 || s.captures.some(c => c.kind !== DEFAULT_KIND);
+  return !!nextKind || s.worksets.some(w => w.captureKind !== DEFAULT_KIND) || s.kinds.length > 0 || s.captures.some(c => c.kind !== DEFAULT_KIND);
 }
-/** Sticky choice: synced to every device on the race (the default workset). */
+/** Sticky choice: synced to every device on this device's station (created if there is none). */
 function setStickyKind(kind){
   nextKind = null;
-  if(kind !== S().captureKind) perform({type:'workset.setKind', kind});
+  if(kind !== stickyKind()) performOnWorkset(worksetId => ({type:'workset.setKind', worksetId, kind}));
   renderAll();
 }
 function armNextKind(kind){
-  nextKind = kind && kind !== S().captureKind ? kind : null;
+  nextKind = kind && kind !== stickyKind() ? kind : null;
   renderAll();
 }
 function cycleKind(once){
   const kinds = allKinds();
-  const current = once ? effectiveKind() : S().captureKind;
+  const current = once ? effectiveKind() : stickyKind();
   const next = kinds[(kinds.indexOf(current) + 1) % kinds.length];
   if(once) armNextKind(next); else setStickyKind(next);
 }
@@ -2909,6 +3541,7 @@ const kindSeg = document.getElementById('kindSeg');
 function renderClockCard(){
   const s = S();
   const kind = effectiveKind();
+  const sticky = stickyKind();
   captureBtn.textContent = kind === DEFAULT_KIND ? t('clock.capture') : t('clock.captureKind', {kind: kindLabel(kind).toLocaleUpperCase(locale())});
   captureBtn.className = 'capture-btn' + (kind !== DEFAULT_KIND ? ' ' + roleClass(kind) : '') + (nextKind ? ' once' : '');
   kindSeg.hidden = !kindsUnlocked();
@@ -2917,25 +3550,62 @@ function renderClockCard(){
     b.type = 'button';
     b.dataset.kind = k;
     b.setAttribute('role', 'radio');
-    b.setAttribute('aria-checked', k === s.captureKind ? 'true' : 'false');
-    b.className = (k === s.captureKind ? 'active' : '') + (k === nextKind ? ' once' : '');
+    b.setAttribute('aria-checked', k === sticky ? 'true' : 'false');
+    b.className = (k === sticky ? 'active' : '') + (k === nextKind ? ' once' : '');
     const dot = document.createElement('span');
     dot.className = 'kind-dot ' + roleClass(k);
     b.append(dot, kindLabel(k));
     return b;
   }));
   document.getElementById('kindOnceNote').hidden = !nextKind;
-  if(nextKind) document.getElementById('kindOnceText').textContent = t('kinds.onceNote', {kind: kindLabel(nextKind), sticky: kindLabel(s.captureKind)});
+  if(nextKind) document.getElementById('kindOnceText').textContent = t('kinds.onceNote', {kind: kindLabel(nextKind), sticky: kindLabel(sticky)});
   if(!kindMenu.hidden) renderKindMenu();
+  renderWorksetNotice();
 
-  const ranked = s.ranking.length > 0;
-  document.getElementById('captureFreeRow').hidden = !ranked;
+  // Without the permission to record here (a station code on "No station"): pick a station.
+  const recordable = canRecord();
+  captureBtn.hidden = !recordable;
+  document.getElementById('clockHints').hidden = !recordable;
+  const blocked = document.getElementById('recordBlocked');
+  blocked.hidden = recordable;
+  if(!recordable){
+    document.getElementById('recordBlockedPicks').replaceChildren(...s.worksets.map(w => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn small';
+      b.textContent = worksetLabel(w);
+      b.addEventListener('click', () => setDeviceWorkset(w.id));
+      return b;
+    }));
+  }
+
+  const ranked = currentRanking().length > 0;
+  document.getElementById('captureFreeRow').hidden = !ranked || !recordable;
   document.getElementById('hintDirect').hidden = !ranked;
   document.getElementById('hintFree').hidden = !ranked;
   // Space assigns the next participant only while somebody is approaching; with an empty
   // ranking it plainly records a time. (Set here on every render, so no data-i18n.)
   document.getElementById('hintSpace').textContent = ranked ? t('clock.hintNext') : t('clock.hintRecord');
 }
+
+// Another device deleted this device's station: say so, offer the others, until dismissed.
+function renderWorksetNotice(){
+  const el = document.getElementById('worksetNotice');
+  const s = S();
+  el.hidden = !worksetNotice || !!currentWorkset(s);
+  if(el.hidden) return;
+  document.getElementById('worksetNoticeText').textContent = t('worksets.deletedNotice', {name: worksetNotice.name});
+  document.getElementById('worksetNoticePicks').replaceChildren(...s.worksets.map(w => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small';
+    b.textContent = worksetLabel(w);
+    b.title = t('worksets.use');
+    b.addEventListener('click', () => setDeviceWorkset(w.id));
+    return b;
+  }));
+}
+document.getElementById('worksetNoticeClose').addEventListener('click', () => { worksetNotice = null; renderAll(); });
 
 const pinClockBtn = document.getElementById('pinClockBtn');
 function renderPinClock(){
@@ -2964,10 +3634,16 @@ window.addEventListener('resize', () => { measureSafeTop(); updateClockStuck(); 
 let editingTitle = false;
 let rememberedName = null;   // avoids rewriting the recent list on every render
 function rememberName(name){
-  const key = backend.code + '|' + (name || '');
+  // A code bound to stations is listed with its station's name.
+  const restricted = restrictedAccess();
+  const w = restricted ? (currentWorkset() || S().worksets[0]) : null;
+  // Its stations just vanished (the code is being revoked): keep the name the list knows.
+  if(restricted && !w) return;
+  const station = w ? worksetLabel(w) : null;
+  const key = backend.code + '|' + (name || '') + '|' + (station || '');
   if(key === rememberedName) return;
   rememberedName = key;
-  rememberConnection(backend.serverUrl, backend.code, name);
+  rememberConnection(backend.serverUrl, backend.code, name, false, station);
 }
 function renderHeader(){
   const s = S();
@@ -2993,7 +3669,26 @@ function statusInfo(){
   if(S().archived) text = t('status.archived') + ' · ' + text;
   return {status, text};
 }
+/*
+ * The station pill: this device's station, once it matters — the device explicitly works
+ * without one, the race has more than one station (that this device sees), or the code binds
+ * the device to its station (so operators can tell their devices apart). A tap opens the
+ * settings at the stations.
+ */
+function renderStationPill(){
+  const s = S();
+  const pill = document.getElementById('stationPill');
+  const w = currentWorkset(s);
+  pill.hidden = s.archived || !s.worksets.length || !(deviceWorkset === null || s.worksets.length > 1 || restrictedAccess());
+  if(!pill.hidden) document.getElementById('stationText').textContent = w ? worksetLabel(w) : t('worksets.none');
+}
+document.getElementById('stationPill').addEventListener('click', () => {
+  openSettings();
+  document.getElementById('worksetsSection').scrollIntoView({block: 'nearest'});
+});
+
 function renderStatus(){
+  renderStationPill();
   const {status, text} = statusInfo();
   document.getElementById('statusDot').className = 'dot ' + status;
   document.getElementById('statusText').textContent = text;
@@ -3058,10 +3753,10 @@ function buildParticipantRow(participant, opts){
       m.textContent = meta;
       main.appendChild(m);
     }
-    if(!opts.sorted && S().ranking.includes(participant.id)){
+    if(!opts.sorted && currentRanking().includes(participant.id)){
       const pill = document.createElement('div');
       pill.className = 'rank-pill';
-      pill.textContent = t('sorted.pill', {n: S().ranking.indexOf(participant.id) + 1});
+      pill.textContent = t('sorted.pill', {n: currentRanking().indexOf(participant.id) + 1});
       main.appendChild(pill);
     }
   }
@@ -3082,14 +3777,14 @@ function buildParticipantRow(participant, opts){
   if(opts.sorted){
     button('▲', 'action.up', 'critical', () => moveInRanking(participant.id, -1));
     button('▼', 'action.down', 'critical', () => moveInRanking(participant.id, 1));
-    button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', participantId:participant.id}));
+    button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
   }else{
-    button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
-    if(S().ranking.includes(participant.id)){
-      button('↩', 'action.unsort', 'critical', () => perform({type:'ranking.remove', participantId:participant.id}));
+    if(can('participant.rename')) button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
+    if(currentRanking().includes(participant.id)){
+      button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
     }else{
-      button('→', 'action.sort', 'critical', () => perform({type:'ranking.add', participantId:participant.id}));
-      button('✕', 'action.delete', 'normal', async () => {
+      button('→', 'action.sort', 'critical', () => rank(participant.id));
+      if(can('participant.delete')) button('✕', 'action.delete', 'normal', async () => {
         const ok = await askConfirm({title:t('participants.deleteTitle'), text:t('participants.deleteText', {name:participant.name}), ok:t('action.delete'), danger:true});
         if(ok) perform({type:'participant.delete', participantId:participant.id});
       });
@@ -3100,29 +3795,42 @@ function buildParticipantRow(participant, opts){
 }
 
 // ---------- sorted list ----------
+/** Adds a participant to this device's station's ranking (joining or creating a station first). */
+function rank(participantId){
+  return performOnWorkset(worksetId => ({type:'workset.ranking.add', worksetId, participantId}));
+}
+function unrank(participantId){
+  const w = currentWorkset();
+  if(w) perform({type:'workset.ranking.remove', worksetId:w.id, participantId});
+}
 const sortedList = document.getElementById('sortedList');
 function renderSorted(){
   const s = S();
+  const w = currentWorkset(s);
+  document.body.classList.toggle('no-workset', !w);
+  if(!w) return;
   // The list is the queue towards the point this workset records.
-  const role = kindRole(s, s.captureKind);
+  const role = kindRole(s, w.captureKind);
   document.getElementById('sortedTitle').textContent = role === 'start' ? t('sorted.titleStart')
-    : role === 'split' ? t('sorted.titleSplit', {kind: kindLabel(s.captureKind)}) : t('sorted.title');
+    : role === 'split' ? t('sorted.titleSplit', {kind: kindLabel(w.captureKind)}) : t('sorted.title');
   sortedList.innerHTML = '';
-  document.getElementById('sortedCount').textContent = s.ranking.length;
-  document.getElementById('sortedEmpty').hidden = s.ranking.length > 0;
-  s.ranking.forEach((id, i) => {
+  document.getElementById('sortedCount').textContent = w.ranking.length;
+  document.getElementById('sortedEmpty').hidden = w.ranking.length > 0;
+  w.ranking.forEach((id, i) => {
     const participant = participantById(id);
     if(participant) sortedList.appendChild(buildParticipantRow(participant, {sorted:true, rankIndex:i}));
   });
 }
 function moveInRanking(id, dir){
-  const ranking = S().ranking;
+  const w = currentWorkset();
+  if(!w) return;
+  const ranking = w.ranking;
   const i = ranking.indexOf(id);
   const j = i + dir;
   if(i < 0 || j < 0 || j >= ranking.length) return;
   // Moving up: insert before the previous participant. Moving down: insert before the participant after next.
   const beforeId = dir < 0 ? ranking[j] : (ranking[j + 1] !== undefined ? ranking[j + 1] : null);
-  perform({type:'ranking.move', participantId:id, beforeId});
+  perform({type:'workset.ranking.move', worksetId:w.id, participantId:id, beforeId});
 }
 
 // Drag & drop with pointer events (mouse + touch). The listeners live on the document
@@ -3148,7 +3856,8 @@ function endDrag(){
   document.removeEventListener('pointercancel', endDrag);
   const next = row.nextElementSibling;
   const beforeId = next ? next.dataset.id : null;
-  if(beforeId !== originalNext) perform({type:'ranking.move', participantId:row.dataset.id, beforeId});
+  const w = currentWorkset();
+  if(w && beforeId !== originalNext) perform({type:'workset.ranking.move', worksetId:w.id, participantId:row.dataset.id, beforeId});
   renderSorted();
 }
 function initSortedDrag(handle){
@@ -3173,9 +3882,9 @@ function renderSearchResults(){
   const q = rankSearch.value.trim();
   rankSearchResults.innerHTML = '';
   if(!q){ rankSearchResults.hidden = true; currentMatches = []; selectedMatchId = null; rankSearch.removeAttribute('aria-activedescendant'); return; }
-  const s = S();
-  currentMatches = s.participants
-    .filter(b => !s.ranking.includes(b.id))
+  const ranking = currentRanking();
+  currentMatches = S().participants
+    .filter(b => !ranking.includes(b.id))
     .map(b => ({b, score:fuzzyScore(q, b.name)}))
     .filter(x => x.score >= 0)
     .sort((a, b) => b.score - a.score)
@@ -3214,7 +3923,7 @@ function moveSearchSelection(step){
   renderSearchResults();
 }
 function addFromSearch(participantId){
-  perform({type:'ranking.add', participantId});
+  rank(participantId);
   rankSearch.value = '';
   renderSearchResults();
 }
@@ -3285,7 +3994,8 @@ function renderParticipants(){
   document.getElementById('sortDirBtn').textContent = prefs.sortDir === 'desc' ? '↓' : '↑';
 
   let list = s.participants.map((b, i) => ({b, i}));
-  if(prefs.filterHideSorted) list = list.filter(x => !s.ranking.includes(x.b.id));
+  const ranking = currentRanking();
+  if(prefs.filterHideSorted) list = list.filter(x => !ranking.includes(x.b.id));
   if(prefs.filterOpen) list = list.filter(x => !participantCaptureInfo(x.b.id));
   const dir = prefs.sortDir === 'desc' ? -1 : 1;
   if(field === 'alpha'){
@@ -3357,7 +4067,7 @@ let shortcutHold = null;   // {ids: [participantId], timer} while the mapping is
 
 /** Participant ids for the keys 1–9: the frozen mapping if one is held, else the ranking. */
 function shortcutIds(){
-  return shortcutHold ? shortcutHold.ids : S().ranking.slice(0, 9);
+  return shortcutHold ? shortcutHold.ids : currentRanking().slice(0, 9);
 }
 /** Freezes the current mapping (or extends the freeze) for SHORTCUT_HOLD_MS. */
 function holdShortcuts(){
@@ -3367,11 +4077,11 @@ function holdShortcuts(){
 }
 
 function recordTime(participantId){
-  const s = S();
+  const w = currentWorkset();
   // Without an explicit participant the capture goes to the first sorted participant (if any).
-  const target = participantId !== undefined ? participantId : (s.ranking[0] || null);
+  const target = participantId !== undefined ? participantId : ((w && w.ranking[0]) || null);
   const kind = effectiveKind();
-  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target, kind};
+  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target, kind, worksetId: w ? w.id : null};
   if(perform({type:'capture.add', capture})){
     // A one-shot kind applies to this capture only.
     if(nextKind){ nextKind = null; renderAll(); }
@@ -3387,14 +4097,15 @@ const kindMenu = document.getElementById('kindMenu');
 const kindMenuBtn = document.getElementById('kindMenuBtn');
 function renderKindMenu(){
   const s = S();
+  const sticky = stickyKind();
   const rows = allKinds(s).map(k => {
     const row = document.createElement('div');
     row.className = 'kind-opt';
     const pick = document.createElement('button');
     pick.type = 'button';
-    pick.className = 'kind-pick' + (k === s.captureKind ? ' active' : '');
+    pick.className = 'kind-pick' + (k === sticky ? ' active' : '');
     pick.setAttribute('role', 'menuitemradio');
-    pick.setAttribute('aria-checked', k === s.captureKind ? 'true' : 'false');
+    pick.setAttribute('aria-checked', k === sticky ? 'true' : 'false');
     const dot = document.createElement('span');
     dot.className = 'kind-dot ' + roleClass(k);
     pick.append(dot, kindLabel(k));
@@ -3414,6 +4125,7 @@ function renderKindMenu(){
   add.className = 'link-btn kind-new';
   add.setAttribute('role', 'menuitem');
   add.dataset.edit = 'normal';
+  add.hidden = !can('kind.add');
   add.textContent = t('kinds.new');
   add.addEventListener('click', () => {
     closeKindMenu();
@@ -3473,7 +4185,12 @@ document.getElementById('captureFreeBtn').addEventListener('click', () => record
 // Letters for the two input fields and the participant list's filters and sorting.
 // They are listed in the shortcuts dialog and stay the same in every language.
 const LIST_SHORTCUTS = {
-  f: () => { rankSearch.focus(); rankSearch.select(); },
+  // The search lives in the ranking panel, shown only on a station: join or create one first.
+  f: () => {
+    if(!currentWorkset() && !performOnWorkset(null)) return;
+    rankSearch.focus();
+    rankSearch.select();
+  },
   n: () => { participantInput.focus(); participantInput.select(); },
   a: () => setFilter('all'),
   o: () => setFilter('open'),
@@ -3482,7 +4199,7 @@ const LIST_SHORTCUTS = {
   d: () => toggleSortDir(),
 };
 document.addEventListener('keydown', (e) => {
-  if(!dialogEl.hidden || !shortcutsEl.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
+  if(!dialogEl.hidden || !shortcutsEl.hidden || !stationDialog.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
@@ -3518,7 +4235,7 @@ document.addEventListener('keydown', (e) => {
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
   if(m && !e.repeat){
     const participantId = shortcutIds()[parseInt(m[2], 10) - 1];
-    if(participantId && S().ranking.includes(participantId)){
+    if(participantId && currentRanking().includes(participantId)){
       e.preventDefault();
       holdShortcuts();
       recordTime(participantId);
@@ -3532,9 +4249,14 @@ function capturedKinds(s){
   const present = new Set(s.captures.map(c => c.kind));
   return allKinds(s).filter(k => present.has(k));
 }
+/** Captures name their station only once they come from more than one. */
+function stationsShown(s){
+  return new Set(s.captures.map(c => c.worksetId).filter(Boolean)).size > 1;
+}
 function renderCaptures(){
   const s = S();
   const facts = captureFacts();
+  const stations = stationsShown(s);
   const unlocked = kindsUnlocked();
   const kinds = capturedKinds(s);
   const typed = s.captures.some(c => c.kind !== DEFAULT_KIND);
@@ -3578,7 +4300,7 @@ function renderCaptures(){
     const time = document.createElement('div');
     time.className = 'cap-time';
     time.textContent = fmtTime(c.ts, c.tzOffset);
-    time.title = fmtIso(c.ts, c.tzOffset);
+    time.title = fmtIso(c.ts, c.tzOffset) + (stations && c.worksetId ? ' · ' + worksetLabelById(c.worksetId, s) : '');
     // The date is part of every capture; it is only spelled out when it isn't today's.
     if(!isToday(c.ts, c.tzOffset)){
       const day = document.createElement('span');
@@ -3601,6 +4323,8 @@ function renderCaptures(){
 
     const side = document.createElement('span');
     side.className = 'cap-side';
+    // Captures of other stations may be listed without being editable (station codes).
+    const editable = (action) => can([...captureScope(c.worksetId), [action, null]]);
     if(unlocked){
       const kindSel = document.createElement('select');
       kindSel.className = 'assign kind-select ' + roleClass(c.kind);
@@ -3615,6 +4339,7 @@ function renderCaptures(){
         o.selected = k === c.kind;
         kindSel.appendChild(o);
       });
+      kindSel.disabled = !editable('setKind');
       kindSel.addEventListener('change', () => {
         if(!perform({type:'capture.setKind', captureId:c.id, kind:kindSel.value})) renderCaptures();
       });
@@ -3641,6 +4366,7 @@ function renderCaptures(){
       o.selected = true;
       sel.appendChild(o);
     }
+    sel.disabled = !editable('assign');
     sel.addEventListener('change', () => {
       if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
     });
@@ -3651,6 +4377,7 @@ function renderCaptures(){
     del.setAttribute('aria-label', del.title);
     del.dataset.edit = 'critical';
     del.addEventListener('click', () => perform({type:'capture.delete', captureId:c.id}));
+    del.hidden = !editable('delete');
     side.append(sel, del);
 
     li.append(rank, mid, side);
@@ -3666,22 +4393,30 @@ document.getElementById('capFilterSeg').addEventListener('click', (e) => {
 });
 
 // ---------- CSV export ----------
-document.getElementById('exportBtn').addEventListener('click', async () => {
+document.getElementById('exportBtn').addEventListener('click', () => exportCsv());
+/** Saves the captures of the current state as CSV (also offered before a revoked code's cache goes). */
+async function exportCsv(){
   const s = S();
   if(!s.captures.length){ toast(t('export.none')); return; }
   const asc = sortedCaptures(s);
   const cell = (v) => String(v).replace(/;/g, ',');
-  // Only finishes: the familiar four columns. With other kinds: places per kind, plus kind and elapsed time.
+  // Only finishes: the familiar four columns. With other kinds: places per kind, plus kind and
+  // elapsed time; with captures from several stations, the station.
   const typed = s.captures.some(c => c.kind !== DEFAULT_KIND);
+  const stations = stationsShown(s);
   const facts = captureFacts();
-  let csv = t(typed ? 'export.headerKinds' : 'export.header') + '\n';
+  const columns = [
+    ['place', (c, f, i) => typed ? (f.role === 'marker' ? '' : f.place) : i + 1],
+    ['timestamp', (c) => fmtIso(c.ts, c.tzOffset)],
+    ['time', (c) => fmtTime(c.ts, c.tzOffset)],
+    ['participant', (c) => { const p = participantById(c.participantId); return p ? cell(p.name) : ''; }],
+    ...(typed ? [['kind', (c) => cell(captureKindText(c))], ['elapsed', (c, f) => f.elapsed !== null ? fmtDelta(f.elapsed) : '']] : []),
+    ...(stations ? [['station', (c) => c.worksetId ? cell(worksetLabelById(c.worksetId, s)) : '']] : []),
+  ];
+  let csv = columns.map(([key]) => t(`export.col.${key}`)).join(';') + '\n';
   asc.forEach((c, i) => {
-    const participant = participantById(c.participantId);
     const f = facts.get(c.id);
-    const row = [typed ? (f.role === 'marker' ? '' : f.place) : i + 1, fmtIso(c.ts, c.tzOffset), fmtTime(c.ts, c.tzOffset),
-      participant ? cell(participant.name) : ''];
-    if(typed) row.push(cell(captureKindText(c)), f.elapsed !== null ? fmtDelta(f.elapsed) : '');
-    csv += row.join(';') + '\n';
+    csv += columns.map(([, value]) => value(c, f, i)).join(';') + '\n';
   });
   const filename = t('export.filename') + '.csv';
   // Inside claude.ai the page must ask the host to save files; elsewhere a plain download works.
@@ -3704,7 +4439,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   }catch(e){
     toast(t('export.failed'));
   }
-});
+}
 
 // ---------- race name ----------
 document.getElementById('renameRaceBtn').addEventListener('click', () => {
@@ -3735,7 +4470,9 @@ document.getElementById('renameRaceBtn').addEventListener('click', () => {
 
 function renderAll(){
   factsCache = null;
+  syncDeviceWorkset();
   applyI18n();
+  applyPermissions();
   renderPinClock();
   renderClockCard();
   renderHeader();
@@ -3824,6 +4561,10 @@ function kindSuggestions(){
 }
 function renderKinds(){
   const s = S();
+  // Nothing to manage here without any kind permission (e.g. a station code).
+  const section = document.getElementById('kindsSection');
+  section.hidden = !['kind.add', 'kind.update', 'kind.delete'].some(can);
+  if(section.hidden) return;
   document.getElementById('kindsHelp').textContent = t('kinds.help', {start: kindLabel('start'), split: kindLabel('split'), finish: kindLabel('finish')});
   if(!kindRoleSelect.options.length || kindRoleSelect.options[0].textContent !== t('kinds.role.split')){
     fillRoleSelect(kindRoleSelect, kindRoleSelect.value || 'marker');
@@ -3841,6 +4582,7 @@ function renderKinds(){
       name.type = 'text';
       name.maxLength = 40;
       name.value = k.name;
+      name.readOnly = !can('kind.update');
       name.setAttribute('aria-label', t('kinds.title'));
       const commit = () => {
         const value = cleanText(name.value);
@@ -3861,6 +4603,7 @@ function renderKinds(){
       role.title = t('kinds.role');
       role.setAttribute('aria-label', role.title);
       fillRoleSelect(role, k.role);
+      role.disabled = !can('kind.update');
       role.addEventListener('change', () => {
         const current = findKind(S(), k.id);
         if(current) perform({type:'kind.update', kindId:k.id, name:current.name, role:role.value});
@@ -3878,6 +4621,7 @@ function renderKinds(){
         document.getElementById('addKindBtn').focus({preventScroll: true});
         perform({type:'kind.delete', kindId:k.id});
       });
+      del.hidden = !can('kind.delete');
       li.append(name, role, del);
       return li;
     }));
@@ -3910,6 +4654,130 @@ kindNameInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); addKindFromInput(); }
 });
 
+// ---------- stations (worksets) ----------
+const worksetList = document.getElementById('worksetList');
+/** A station name must differ from the other stations' names and labels. */
+function worksetNameTaken(name, exceptId){
+  return S().worksets.some(w => w.id !== exceptId && nameKey(worksetLabel(w)) === nameKey(name));
+}
+/*
+ * Stations belong to working with several devices: in server mode the section is always there;
+ * a local race only shows it once it has more than one (e.g. copied from a server).
+ */
+function renderWorksets(){
+  const s = S();
+  const shown = backend.kind === 'server' || s.worksets.length > 1;
+  document.getElementById('worksetsSection').hidden = !shown;
+  if(!shown) return;
+  // Leave the list alone while a name in it is being edited (see renderKinds).
+  if(worksetList.contains(document.activeElement) && document.activeElement.matches('input')) return;
+  const current = currentWorkset(s);
+  const pickButton = (on, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mini ws-pick' + (on ? ' on' : '');
+    b.textContent = on ? '●' : '○';
+    b.title = t('worksets.use');
+    b.setAttribute('aria-label', b.title);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const restricted = restrictedAccess();
+  const codes = backend.accessInfo().codes || [];
+  // Defaults and new devices are none of a station code's business.
+  document.getElementById('worksetsHelp').hidden = restricted;
+  const miniButton = (label, title, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mini';
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.dataset.edit = 'normal';
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const rows = s.worksets.map((w, i) => {
+    const li = document.createElement('li');
+    li.className = 'ws-row';
+    const name = document.createElement('input');
+    name.className = 'input';
+    name.type = 'text';
+    name.maxLength = 40;
+    name.value = w.name || '';
+    name.placeholder = t('worksets.defaultName', {n: w.number});
+    name.dataset.edit = 'normal';
+    name.readOnly = !can([['workset', w.id], ['rename', null]]);
+    name.setAttribute('aria-label', t('worksets.title'));
+    name.addEventListener('change', () => {
+      const current = findWorkset(S(), w.id);
+      if(!current) return;
+      const value = cleanText(name.value) || null;
+      if(value === current.name) return;
+      if(value && worksetNameTaken(value, w.id)){ toast(t('worksets.exists', {name:value})); name.value = current.name || ''; return; }
+      if(!perform({type:'workset.rename', worksetId:w.id, name:value})) name.value = current.name || '';
+    });
+    name.addEventListener('keydown', (e) => {
+      if(e.key === 'Enter'){ e.preventDefault(); name.blur(); }
+      else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); name.value = w.name || ''; name.blur(); }
+    });
+    name.addEventListener('blur', () => renderWorksets());
+    li.append(pickButton(current === w, () => setDeviceWorkset(w.id)), name);
+    // Which station is the race's default only matters to those who see all of them.
+    if(i > 0 && !restricted && can([['workset', w.id], ['makeDefault', null]])){
+      li.append(miniButton('★', t('worksets.makeDefault'), () => perform({type:'workset.makeDefault', worksetId:w.id})));
+    }
+    if(can([['workset', w.id], ['delete', null]])) li.append(miniButton('✕', t('action.delete'), async () => {
+      const ok = await askConfirm({title:t('worksets.deleteTitle'), text:t('worksets.deleteText', {name:worksetLabel(w)}), ok:t('action.delete'), danger:true});
+      if(!ok) return;
+      // The row goes away with the focused ✕; keep the focus in the drawer (Escape needs it).
+      document.getElementById('addWorksetBtn').focus({preventScroll: true});
+      perform({type:'workset.delete', worksetId:w.id});
+    }));
+    // Second line: default, devices on it, and the station's own code to hand out.
+    const sub = document.createElement('div');
+    sub.className = 'ws-sub';
+    const devices = backend.worksetClientCount(w.id);
+    const meta = [i === 0 && !restricted ? t('worksets.default') : '', devices ? t('worksets.devices', {n: devices}) : ''].filter(Boolean);
+    if(meta.length) sub.append(meta.join(' · '));
+    const own = codes.find(c => c.source === 'workset' && c.sourceRef === w.id);
+    if(own){
+      const code = document.createElement('span');
+      code.className = 'ws-code';
+      code.textContent = t('worksets.code', {code: own.code});
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'link-btn';
+      copy.textContent = t('worksets.copyLink');
+      copy.addEventListener('click', () => copyText(raceLink(backend.serverUrl, own.code)));
+      sub.append(code, copy);
+    }
+    if(sub.childNodes.length) li.append(sub);
+    return li;
+  });
+  if(s.worksets.length){
+    const none = document.createElement('li');
+    none.className = 'ws-row';
+    const label = document.createElement('span');
+    label.className = 'ws-none';
+    label.textContent = t('worksets.none');
+    none.append(pickButton(!current, () => setDeviceWorkset(null)), label);
+    rows.push(none);
+  }else{
+    const empty = document.createElement('li');
+    empty.className = 'help';
+    empty.style.margin = '0';
+    empty.textContent = t('worksets.empty');
+    rows.push(empty);
+  }
+  worksetList.replaceChildren(...rows);
+}
+document.getElementById('addWorksetBtn').addEventListener('click', () => {
+  // A device that never joined a station joins the first one (syncDeviceWorkset); others stay.
+  perform({type:'workset.add', workset:{id:uid(), name:null}});
+});
+
 function showConnectError(message){
   const el = document.getElementById('connectError');
   el.textContent = message || '';
@@ -3928,6 +4796,7 @@ function renderSettings(){
     sportSelect.appendChild(o);
   });
   renderKinds();
+  renderWorksets();
 
   const isServer = backend.kind === 'server';
   document.getElementById('localSection').hidden = isServer;
@@ -4003,20 +4872,22 @@ function requireServerUrl(){
 
 /** Quick-connect entries for the races this browser used last. */
 function renderRecent(){
-  const list = recentConnections();
+  const list = recentConnections().slice(0, RECENT_MAX);
   const wrap = document.getElementById('recentList');
   document.getElementById('recentField').hidden = list.length === 0;
   wrap.innerHTML = '';
   list.forEach(entry => {
+    const row = document.createElement('div');
+    row.className = 'recent-row';
     const b = document.createElement('button');
-    b.className = 'btn block recent-item';
+    b.className = 'btn recent-item';
     const nm = document.createElement('span');
     nm.className = 'nm';
-    nm.textContent = entry.name || entry.code;
+    nm.textContent = (entry.name || entry.code) + (entry.worksetName ? ` (${entry.worksetName})` : '');
     const meta = document.createElement('span');
     meta.className = 'meta';
     // The code is redundant when it is the label; the host matters with several servers.
-    meta.textContent = [entry.name ? entry.code : '', hostOf(entry.serverUrl)].filter(Boolean).join(' · ');
+    meta.textContent = [entry.name || entry.worksetName ? entry.code : '', hostOf(entry.serverUrl)].filter(Boolean).join(' · ');
     b.append(nm, meta);
     b.addEventListener('click', () => {
       showConnectError('');
@@ -4025,7 +4896,20 @@ function renderRecent(){
         catch(e){ showConnectError(errorMessage(e, entry.code)); }
       });
     });
-    wrap.appendChild(b);
+    const forget = document.createElement('button');
+    forget.className = 'mini';
+    forget.type = 'button';
+    forget.textContent = '✕';
+    forget.title = t('settings.recentForget');
+    forget.setAttribute('aria-label', forget.title);
+    forget.addEventListener('click', () => {
+      // The row goes away with the focused ✕; keep the focus in the drawer (Escape needs it).
+      document.getElementById('codeInput').focus({preventScroll: true});
+      forgetConnection(entry.serverUrl, entry.code);
+      renderRecent();
+    });
+    row.append(b, forget);
+    wrap.appendChild(row);
   });
 }
 /** Host of a server URL, left out when it is the one this page would use anyway. */
@@ -4069,7 +4953,8 @@ document.getElementById('resetLocalBtn').addEventListener('click', async () => {
   const ok = await askConfirm({title:t('reset.title'), text:t('reset.text'), ok:t('reset.ok'), danger:true});
   if(!ok) return;
   localStore.reset();
-  if(backend.kind === 'local') backend.reload();
+  removeKey(KEYS.worksetPrefix + 'local');
+  if(backend.kind === 'local'){ loadDeviceWorkset(); backend.reload(); }
   toast(t('reset.done'));
 });
 
@@ -4079,14 +4964,17 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
 });
 
 document.getElementById('copyLinkBtn').addEventListener('click', async () => {
-  const link = document.getElementById('srvLink').href;
-  try{ await navigator.clipboard.writeText(link); toast(t('settings.copied')); }
-  catch(e){
+  if(!await copyText(document.getElementById('srvLink').href)){
     const range = document.createRange();
     range.selectNodeContents(document.getElementById('srvLink'));
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
   }
 });
+/** Copies a link to the clipboard; false where the browser doesn't allow it. */
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); toast(t('settings.copied')); return true; }
+  catch(e){ toast(text); return false; }
+}
 
 document.getElementById('mergeBtn').addEventListener('click', async () => {
   const local = localStore.load();
@@ -4109,6 +4997,8 @@ document.getElementById('pullBtn').addEventListener('click', async () => {
   const copy = clone(S());
   copy.archived = false;
   localStore.save(copy);
+  // The local data starts over: its device joins the default station again.
+  removeKey(KEYS.worksetPrefix + 'local');
   toast(t('pull.done'));
   renderSettings();
 });
