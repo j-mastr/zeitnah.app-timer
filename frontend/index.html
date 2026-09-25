@@ -204,14 +204,17 @@
   .empty{color:var(--muted); font-size:13px; padding:8px 2px;}
 
   .cap-row{display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
-  .cap-mid{flex:1 1 auto; min-width:0;}
-  .cap-time{font-family:'Space Mono',monospace; font-weight:700; font-size:16px; white-space:nowrap;}
+  /* Fixed flex bases (not `auto`): the width of the time column and the selects must not depend on
+     the text of a row ("First", the elapsed time, a date), or the selects jump from row to row. */
+  .cap-mid{flex:1 1 180px; min-width:0;}
+  .cap-time{font-family:'Space Mono',monospace; font-weight:700; font-size:16px;}
   .cap-delta{color:var(--muted); font-size:11px; font-family:'Space Mono',monospace;}
-  .cap-date{color:var(--muted); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
-  .pending-mark{color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
-  .cap-side{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 160px; min-width:0;}
-  select.assign{flex:1 1 auto; min-width:0; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
-  select.assign.kind-select{flex:0 1 auto; max-width:45%; border-left-width:4px;}
+  .cap-delta:empty::before{content:'\00a0';}   /* a marker has no delta but keeps the row height */
+  .cap-date{display:inline-block; white-space:nowrap; color:var(--muted); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
+  .pending-mark{display:inline-block; white-space:nowrap; color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
+  .cap-side{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 240px; min-width:0;}
+  select.assign{flex:1 1 0; min-width:0; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
+  select.assign.kind-select{flex:0 0 40%; border-left-width:4px;}
   select.kind-select.kind-start{border-left-color:var(--kind-start);}
   select.kind-select.kind-split{border-left-color:var(--kind-split);}
   select.kind-select.kind-marker{border-left-color:var(--kind-marker);}
