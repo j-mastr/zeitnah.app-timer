@@ -3828,8 +3828,10 @@ function renderKinds(){
   if(!kindRoleSelect.options.length || kindRoleSelect.options[0].textContent !== t('kinds.role.split')){
     fillRoleSelect(kindRoleSelect, kindRoleSelect.value || 'marker');
   }
-  // Re-rendered on every change while the drawer is open: leave a row alone while it is being edited.
-  if(!kindList.contains(document.activeElement)){
+  // Re-rendered on every change while the drawer is open: leave the list alone while a name in it
+  // is being edited (only then — a focused ✕ or role select must not keep a deleted row alive).
+  const editing = kindList.contains(document.activeElement) && document.activeElement.matches('input');
+  if(!editing){
     kindList.replaceChildren(...s.kinds.map(k => {
       const li = document.createElement('li');
       li.className = 'kind-row';
@@ -3871,7 +3873,10 @@ function renderKinds(){
       del.setAttribute('aria-label', del.title);
       del.addEventListener('click', async () => {
         const ok = await askConfirm({title:t('kinds.deleteTitle'), text:t('kinds.deleteText', {name:k.name}), ok:t('action.delete'), danger:true});
-        if(ok) perform({type:'kind.delete', kindId:k.id});
+        if(!ok) return;
+        // The row goes away with the focused ✕; keep the focus in the drawer (Escape needs it).
+        document.getElementById('addKindBtn').focus({preventScroll: true});
+        perform({type:'kind.delete', kindId:k.id});
       });
       li.append(name, role, del);
       return li;
