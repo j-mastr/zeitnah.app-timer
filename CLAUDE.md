@@ -96,6 +96,7 @@ tests/access-scope.php             What a restricted code sees and may do; revoc
 tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
 tests/undo-history.mjs             Undo/redo: random sequences undone and redone restore the states
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
+tests/e2e/schema-version.mjs       Playwright: outdated client, older server, newer local data
 tests/e2e/offline-start.mjs        PWA test: starts/stops its own PHP server, checks offline start
 tools/generate-icons.mjs           Renders public/icons/*.png from the SVG definition inside it
 docs/groups.md                     Design + progress: groups, capture targets, fields, schema versioning
@@ -142,6 +143,10 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
    `react/socket` directly.
 8. Never use `window.confirm/alert/prompt`; use `askConfirm()` (they are blocked in some
    embedded contexts and block the event loop).
+9. **Raise `SCHEMA_VERSION`** (PHP and JS, see Schema versioning) whenever a client of the
+   previous version could no longer apply the events correctly: a new state shape, a new
+   operation type, changed semantics. Add a migration step on both sides; never stop
+   accepting an older operation shape.
 
 ## Functional requirements
 
@@ -583,8 +588,8 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   delete stations or change the default, merge, archive) is
   disabled until the connection is back: elements marked `data-edit="normal"` are dimmed
   via `body.lock-normal`, and `perform()` refuses with a toast.
-- Status (local / connecting / connected / connection lost, plus pending count and
-  "Archived") is shown in a pill next to the settings button; clicking it opens settings.
+- Status (local / connecting / connected / connection lost / update required, plus pending
+  count and "Archived") is shown in a pill next to the settings button; clicking it opens settings.
 - Over a WebSocket the pill also shows how many clients are on this race, after the code:
   "Server verbunden · ABC123 (5)". The count comes from the server's `presence` message
   (`backend.clientCount()`); while the HTTP fallback is in use it is unknown and omitted,
@@ -679,7 +684,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
 | `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
 | `kind.delete` | `kindId` | captures keep the id; resets every workset's `captureKind` that was this kind to `finish` |
-| `state.merge` | `state: {name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
+| `state.merge` | `state: {schema, name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `schema` (missing/null = 1; otherwise an integer 1…`SCHEMA_VERSION`, else `invalid_schema`) — an older state is migrated first; `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
 
 Every `workset.*` operation except `workset.add` requires `worksetId` (`invalid_workset_id`);
 there is no implicit default workset in operations.
@@ -687,13 +692,38 @@ there is no implicit default workset in operations.
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,participantId,kind,worksetId}]}`.
+`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,participantId,kind,worksetId}]}`.
 States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
 and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
 former and drops the latter when the repository loads a race (a race starts without worksets),
 `normalizeState()` does the same on the client.
+`schema` is the state's version (see Schema versioning); states stored before versioning lack
+it and count as 1.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
+
+### Schema versioning
+`SCHEMA_VERSION` (`OperationReducer::SCHEMA_VERSION`, mirrored in the frontend; the parity test
+checks they are equal) versions the state shape and the operation semantics. Background and
+rollout: `docs/groups.md`, "Schema versioning".
+- Every state carries `schema`: the server's race state, `zeitnah.local`, the caches.
+  `OperationReducer::upgrade()` (on every load) and `normalizeState()` bring a state up to date
+  through the migration steps (`MIGRATIONS` / `SCHEMA_MIGRATIONS`, version → step); a state
+  without `schema` is version 1 (stored before versioning), `state.merge` migrates its source.
+- Clients send their version: `schema` in `hello`, `?schema=N` on every `/api/races…` request
+  (added by `api()`); snapshots and `/api/config` carry the server's.
+- **Client older than the server:** `client_outdated` (WebSocket error, HTTP 409), no snapshot,
+  no subscription, no operations. The client (`ServerBackend.outdated()`) stops connecting,
+  status "Update required", a banner (`#outdatedBanner`) with a reload button; what works
+  offline (`OFFLINE_OPS`, so recording) is still buffered in the cache, everything else is
+  refused with `lock.outdated`. After the reload the current page sends the buffered ops.
+- **Server older than the client** (`isOlderServer()`, a snapshot without `schema` is 1): the
+  client goes back to local mode with a toast (`err.serverOutdated`); the cache stays.
+- **Browser data of a newer version** (`isNewerSchema()`): shown as well as possible, never
+  written (`localStore.tooNew`, `ServerBackend.cacheTooNew`), every operation, reset, upload and
+  "copy to this browser" refused, the banner asks for a reload. `outdatedReason()` on both
+  backends (`'client'` / `'storage'` / null) drives the banner.
+- Reducers accept older operation shapes forever, so ops buffered by an old page replay.
 
 ### Server storage
 - Table `race` (`code`, `seq`, `state` JSON = materialised state) and append-only
@@ -716,14 +746,15 @@ Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defa
 ### HTTP API (`ApiController`, CORS enabled)
 `GET /api/config`, `POST /api/races`, `GET /api/races/{code}`,
 `GET /api/races/{code}/events?since=N` (returns `{reset, seq, state}` when more than 500
-events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README. `{code}` is any access
+events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README. Race requests carry
+`?schema=N`; an older client gets 409 `client_outdated`. `{code}` is any access
 code; snapshots and events are projected/filtered for it and carry
 `access: {code, rules, codes?}`; unknown codes are 404 `not_found`, revoked ones 403
 `access_revoked`.
 
 ### WebSocket protocol (`SyncServer`)
 ```
-client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state","access"}
+client → {"type":"hello","code":"ABC123","schema"} server → {"type":"snapshot","code","schema","seq","state","access"}
 client → {"type":"workset","worksetId"}             (the device's station, null = none; only for presence)
 client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers, filtered per code)
                                                     server → {"type":"access","code","rules","codes"?} (after worksets were added/deleted)
@@ -731,7 +762,7 @@ client → {"type":"ops","ops":[...]}                 server → {"type":"events
                                                     server → {"type":"ack","opId"}  (duplicate, already applied)
                                                     server → {"type":"rejected","opId","error"}
 client → {"type":"ping"}                            server → {"type":"pong"}
-                                                    server → {"type":"error","error":"not_found"|"access_revoked"|...}
+                                                    server → {"type":"error","error":"not_found"|"access_revoked"|"client_outdated"|...}
 ```
 Subscribers are grouped by race (any of its codes). After a `workset.add`, `workset.delete` or
 `state.merge` event every subscriber's access is checked again: a revoked code gets
@@ -750,7 +781,7 @@ and drops connections idle for 75 s.
 - `LocalBackend` / `ServerBackend` share one interface: `getState()`, `getStatus()`,
   `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`,
   `clientCount()`, `worksetClientCount(id)`, `isReady()`, `announceWorkset(id)`,
-  `accessInfo()` (`{code, rules, codes?}`; local: everything), `destroy()`. `ServerBackend`
+  `accessInfo()` (`{code, rules, codes?}`; local: everything), `outdatedReason()`, `destroy()`. `ServerBackend`
   also caches its access and takes the snapshot fetched while connecting (`seed()`).
 - All UI mutations go through `perform(op | [ops])`, which checks `blockReason` first.
 - `ServerBackend`: `confirmed` + `seq` + `pending` → `view`. Server events are applied in
@@ -771,6 +802,7 @@ node tests/text-keys.mjs
 node tests/undo-history.mjs
 node tests/e2e/offline-start.mjs   # starts its own PHP server on port 8123
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install first
+BASE_URL=http://127.0.0.1:8000/ node tests/e2e/schema-version.mjs
 ```
 
 `.env` defaults to `APP_ENV=prod`; use `.env.local` with `APP_ENV=dev`/`APP_DEBUG=1` for
@@ -779,7 +811,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 ### Checklist for adding an operation
 0. Check the feature against the product premises (local + synced, core untouched,
    discreet until used).
-1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`.
+1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`. A new type (or a
+   changed state shape) raises `SCHEMA_VERSION` on both sides — see Schema versioning.
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
 4. Mark its UI controls with `data-edit="normal"` or `"critical"`, and with `data-perm`.

@@ -8,7 +8,7 @@ namespace App\Race;
  * (applyOp in frontend/index.html) used for optimistic updates. Keep both in sync.
  *
  * State shape:
- *   name: ?string, archived: bool, sport: string,
+ *   schema: int (SCHEMA_VERSION), name: ?string, archived: bool, sport: string,
  *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
  *   worksets: list<{id, number: int, name: ?string, ranking: list<participantId>, captureKind: string}>,
  *   captures: list<{id, ts, tzOffset: ?int, participantId: ?string, kind: string, worksetId: ?string}>
@@ -50,6 +50,18 @@ final class OperationReducer
         'state.merge',
     ];
 
+    /**
+     * Version of the state shape and the operation semantics. Raise it (and add a migration
+     * step to MIGRATIONS and to the frontend's mirror) whenever a client of the previous version
+     * could no longer apply the events correctly: a new state shape, a new operation type,
+     * changed semantics. Clients of an older version are refused (`client_outdated`).
+     * Mirrors SCHEMA_VERSION in frontend/index.html.
+     */
+    public const SCHEMA_VERSION = 1;
+
+    /** Migration steps: version => method turning a state of that version into the next one. */
+    private const MIGRATIONS = [];
+
     // Mirrors SPORTS in frontend/index.html.
     public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
 
@@ -70,23 +82,55 @@ final class OperationReducer
     public static function emptyState(): array
     {
         return [
-            'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
+            'schema' => self::SCHEMA_VERSION, 'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
             'kinds' => [], 'worksets' => [], 'captures' => [],
         ];
     }
 
     /**
-     * Fills in the fields a state stored by an earlier version lacks (sport, kinds, worksets,
-     * the kind and workset of each capture), so the reducer can rely on them. The race-wide
-     * ranking and selected kind of earlier versions are dropped: a race starts without worksets.
+     * Whether a client announcing this schema version (`hello` / the `schema` request
+     * parameter; missing = 1, i.e. a client from before versioning) is too old for this server.
+     */
+    public static function isClientOutdated(mixed $schema): bool
+    {
+        $version = is_int($schema) || (is_string($schema) && ctype_digit($schema)) ? (int) $schema : 1;
+
+        return $version < self::SCHEMA_VERSION;
+    }
+
+    /**
+     * Brings a stored state up to SCHEMA_VERSION. A state without `schema` was stored before
+     * versioning (version 1): the fields it may lack (sport, kinds, worksets, the kind and
+     * workset of each capture) are filled in, and the race-wide ranking and selected kind of
+     * earlier versions are dropped (a race starts without worksets). Then the migration steps run.
      */
     public static function upgrade(array $state): array
     {
-        unset($state['ranking'], $state['captureKind']);
-        $state += self::emptyState();
-        foreach ($state['captures'] as $i => $capture) {
-            $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND, 'worksetId' => null];
+        if (!isset($state['schema'])) {
+            // Stored before versioning: version 1, possibly still lacking fields added before it.
+            unset($state['ranking'], $state['captureKind']);
+            $state = ['schema' => 1] + $state + self::emptyState();
+            foreach ($state['captures'] as $i => $capture) {
+                $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND, 'worksetId' => null];
+            }
         }
+
+        return self::migrate($state);
+    }
+
+    /**
+     * Runs the migration steps from the state's schema version up to SCHEMA_VERSION.
+     *
+     * @throws \UnexpectedValueException for a state of a newer version than this code knows
+     */
+    public static function migrate(array $state): array
+    {
+        $version = $state['schema'] ?? 1;
+        if (!is_int($version) || $version < 1 || $version > self::SCHEMA_VERSION) {
+            throw new \UnexpectedValueException('Unsupported state schema version: '.json_encode($version));
+        }
+        $state = self::runMigrations($state, $version);
+        $state['schema'] = self::SCHEMA_VERSION;
 
         return $state;
     }
@@ -358,6 +402,17 @@ final class OperationReducer
         }
     }
 
+    /** Applies the migration steps from $version up to SCHEMA_VERSION (see MIGRATIONS). */
+    private static function runMigrations(array $state, int $version): array
+    {
+        for (; $version < self::SCHEMA_VERSION; ++$version) {
+            $step = self::MIGRATIONS[$version];
+            $state = self::$step($state);
+        }
+
+        return $state;
+    }
+
     /**
      * Merges another state into this one without ever removing anything: participants are
      * matched by id or (case-insensitive) name, custom kinds and worksets likewise (worksets by
@@ -369,6 +424,12 @@ final class OperationReducer
         if (!is_array($source)) {
             throw new InvalidOperationException('invalid_state');
         }
+        // A state of an earlier schema version is migrated first (no version = 1).
+        $version = $source['schema'] ?? 1;
+        if (!is_int($version) || $version < 1 || $version > self::SCHEMA_VERSION) {
+            throw new InvalidOperationException('invalid_schema');
+        }
+        $source = self::runMigrations($source, $version);
         $participants = $source['participants'] ?? [];
         $kinds = $source['kinds'] ?? [];
         $worksets = $source['worksets'] ?? [];

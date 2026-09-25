@@ -310,7 +310,10 @@ class RaceRepository
 
     private function snapshotOf(Access $access, int $seq, array $state): array
     {
-        return ['code' => $access->code, 'seq' => $seq, 'state' => $access->project($state), 'access' => $this->accessInfo($access, $state)];
+        return [
+            'code' => $access->code, 'schema' => OperationReducer::SCHEMA_VERSION, 'seq' => $seq,
+            'state' => $access->project($state), 'access' => $this->accessInfo($access, $state),
+        ];
     }
 
     /** Creates the missing workset codes of a race, holding its row like a write does. */

@@ -18,9 +18,9 @@ const end = script.indexOf('// Browser storage');
 const {TEXTS} = new Function(script.slice(start, script.lastIndexOf('\n', end)) + '\n; return {TEXTS};')();
 
 const DYNAMIC_KEYS = [
-  'status.local', 'status.connecting', 'status.online', 'status.offline',
+  'status.local', 'status.connecting', 'status.online', 'status.offline', 'status.outdated',
   'action.drag', 'action.up', 'action.down', 'action.unsort', 'action.sort', 'action.rename', 'action.delete',
-  'lock.offline', 'lock.archived', 'settings.transportWs', 'settings.transportPoll',
+  'lock.offline', 'lock.archived', 'lock.outdated', 'settings.transportWs', 'settings.transportPoll',
   'sport.generic', 'sport.sailing', 'sport.running', 'sport.swimming', 'sport.motor',
   'kind.start', 'kind.split', 'kind.finish', 'kinds.role.split', 'kinds.role.marker', 'worksets.deleted', 'worksets.other',
   ...['place', 'timestamp', 'time', 'participant', 'kind', 'elapsed', 'station'].map((col) => `export.col.${col}`),

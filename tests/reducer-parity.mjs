@@ -21,7 +21,8 @@ const constStart = script.indexOf('const SPORTS');
 const constEnd = script.indexOf('const TEXTS');
 if (constStart < 0 || constEnd < 0) throw new Error('Could not locate the constants in frontend/index.html');
 const preamble = script.slice(constStart, constEnd);
-const {applyOp, emptyState} = new Function(preamble + script.slice(start, end) + '; return {applyOp, emptyState};')();
+const {applyOp, emptyState, normalizeState, SCHEMA_VERSION} = new Function(
+  preamble + script.slice(start, end) + '; return {applyOp, emptyState, normalizeState, SCHEMA_VERSION};')();
 
 let seed = 42;
 const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -75,6 +76,7 @@ function randomOp(i) {
     case 'kind.delete': op.kindId = pick(kindIds); break;
     case 'state.merge':
       op.state = {
+        schema: pick([undefined, undefined, null, 1, SCHEMA_VERSION, SCHEMA_VERSION + 1, 0, '1', 1.5]),
         name: pick(['Local', null]),
         sport: pick(['sailing', 'running', 'generic', undefined, null, 'bogus', 7]),
         participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
@@ -90,6 +92,10 @@ function randomOp(i) {
   }
   return op;
 }
+
+// States stored before versioning (no `schema`) come out at the current version on both sides.
+const legacy = normalizeState({boats: [{id: 'b1', name: 'GER 1'}], ranking: ['b1'], captures: [{id: 'c1', ts: 5, boatId: 'b1'}]});
+if (legacy.schema !== SCHEMA_VERSION) throw new Error('normalizeState() does not set the current schema version');
 
 const count = parseInt(process.argv[2] || '200', 10);
 const cases = [];
@@ -107,7 +113,7 @@ for (let n = 0; n < count; n++) {
 const casesFile = path.join(os.tmpdir(), `reducer-parity-${process.pid}.json`);
 fs.writeFileSync(casesFile, JSON.stringify(cases));
 try {
-  const out = execFileSync('php', [path.join(root, 'tests/reducer-parity.php'), casesFile], {encoding: 'utf8'});
+  const out = execFileSync('php', [path.join(root, 'tests/reducer-parity.php'), casesFile, String(SCHEMA_VERSION)], {encoding: 'utf8'});
   process.stdout.write(out);
 } catch (e) {
   process.stdout.write(e.stdout || '');

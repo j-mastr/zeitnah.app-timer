@@ -130,6 +130,7 @@ node tests/text-keys.mjs             # all UI texts exist in every language and 
 node tests/undo-history.mjs          # undo/redo restores the states it claims to
 npm install && npx playwright install chromium
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # needs running servers
+BASE_URL=http://127.0.0.1:8000/ node tests/e2e/schema-version.mjs   # version mismatches, likewise
 node tests/e2e/offline-start.mjs     # PWA offline start; starts its own server on port 8123
 ```
 
@@ -137,15 +138,19 @@ node tests/e2e/offline-start.mjs     # PWA offline start; starts its own server 
 
 | Method & path | Description |
 | --- | --- |
-| `GET /api/config` | `{serverUrl, wsUrl, serverTime}` |
-| `POST /api/races` | Creates a race with a random 6-character code → `{code, seq, state}` |
-| `GET /api/races/{code}` | Snapshot `{code, seq, state, access}` (codes are case-insensitive) |
-| `GET /api/races/{code}/events?since=N` | `{seq, events: [{seq, op}], access}`, or `{reset: true, seq, state, access}` if far behind |
+| `GET /api/config` | `{serverUrl, wsUrl, schema, serverTime}` |
+| `POST /api/races` | Creates a race with a random 6-character code → `{code, seq, state, schema}` |
+| `GET /api/races/{code}` | Snapshot `{code, schema, seq, state, access}` (codes are case-insensitive) |
+| `GET /api/races/{code}/events?since=N` | `{seq, events: [{seq, op}], access}`, or `{reset: true, schema, seq, state, access}` if far behind |
 | `POST /api/races/{code}/ops` | Body `{ops: [...]}` → `{results: [{opId, status: applied\|duplicate\|rejected, error?}]}` |
 
 `{code}` is any access code of a race: the race code (everything allowed) or a station's
 code. Snapshots and events only contain what the code may see, operations it doesn't allow
 are rejected with `forbidden`, and a revoked code gets `403 {"error": "access_revoked"}`.
+
+Every race request carries the client's schema version as `?schema=N` (missing = 1). A client
+older than the server gets `409 {"error": "client_outdated", "schema": N}` and neither the state
+nor its operations are accepted; the app then asks for a reload.
 
 After updating an existing installation, run `php bin/console app:install` (creates the
 access code table and registers the existing race codes) and `php bin/console cache:clear`.

@@ -12,6 +12,17 @@ $cases = json_decode(file_get_contents($argv[1]), true, 512, JSON_THROW_ON_ERROR
 $reducer = new OperationReducer();
 $failures = 0;
 
+// Both sides agree on the schema version, and a state stored before versioning is upgraded to it.
+if ((int) ($argv[2] ?? 0) !== OperationReducer::SCHEMA_VERSION) {
+    printf("SCHEMA_VERSION differs: PHP %d, JS %s\n", OperationReducer::SCHEMA_VERSION, $argv[2] ?? '?');
+    exit(1);
+}
+$legacy = OperationReducer::upgrade(['name' => null, 'participants' => [], 'ranking' => [], 'captures' => [['id' => 'c1', 'ts' => 5, 'participantId' => null]]]);
+if (OperationReducer::SCHEMA_VERSION !== $legacy['schema'] || isset($legacy['ranking'])) {
+    echo "upgrade() does not bring a legacy state to the current schema version\n";
+    exit(1);
+}
+
 foreach ($cases as $n => $case) {
     $state = OperationReducer::emptyState();
     $results = [];

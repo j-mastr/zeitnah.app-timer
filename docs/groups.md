@@ -244,9 +244,37 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
 | Phase | State | Notes |
 | --- | --- | --- |
 | 0. Specification | done | this document |
-| 1. Schema versioning | open | |
-| 2. Capture targets | open | needs phase 1 released first |
+| 1. Schema versioning | done (version 1) | see "Phase 1 notes"; must be deployed before phase 2 ships |
+| 2. Capture targets | open | needs phase 1 released first; raises the version to 2 |
 | 3. Groups and group types | open | |
 | 4. Groups in rankings | open | |
 | 5. Fields and rule-based groups | open | |
 | 6. Reporting | not planned yet | |
+
+### Phase 1 notes
+
+Built as designed; `CLAUDE.md` ("Schema versioning") documents the implementation. Details
+decided while building it:
+
+- **Recording goes on while outdated.** A client refused with `client_outdated` still accepts
+  what works offline (`OFFLINE_OPS`: recording, assigning, rankings); those ops stay buffered
+  in the cache and are sent by the reloaded page. Everything else is refused with
+  `lock.outdated`. Stopping the recording at the finish line was not an option.
+- New status `outdated` ("Update required") in the status pill; a banner with a reload button
+  (`#outdatedBanner`) for an outdated client and for browser data of a newer version.
+- A server older than the client sends the device back to local mode (toast); its cache stays.
+- Browser data of a newer version blocks every operation plus reset, upload and "copy to this
+  browser"; it is shown, never written.
+- `normalizeState()` treats a `schema` below 1 as 1 (nothing predates version 1); `state.merge`
+  rejects it (`invalid_schema`), like any value that isn't an integer 1…`SCHEMA_VERSION`.
+- Migration steps are keyed by the version they upgrade from (`MIGRATIONS` in PHP: method names,
+  `SCHEMA_MIGRATIONS` in JS: functions). In JS they run on the *raw* state before
+  `normalizeState()` sanitises it, so a step must cope with the legacy field names too.
+- Tests: `tests/reducer-parity.mjs` checks the constants are equal, legacy states come out at
+  the current version, and `state.merge` with valid and invalid `schema` values;
+  `tests/e2e/schema-version.mjs` simulates an older and a newer app version by rewriting
+  `SCHEMA_VERSION` in the served page.
+- **Remaining risk:** a page from before versioning that is left open (or started offline from
+  the service worker cache) doesn't know `schema`; if it writes local data after a newer page
+  stored version-2 data, it downgrades it. Phase 2 should therefore ship some time after
+  phase 1 is deployed.
