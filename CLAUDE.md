@@ -243,7 +243,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   pipeline knows the groups and start times.
 
 ### Undo / redo
-- Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar. Discreet until
+- Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar. Like every
+  top-bar control they are `--bar-h` (32 px) high on every device — the touch enlargement of
+  buttons deliberately leaves them out. Discreet until
   used (premise 3): the pair is hidden while both stacks are empty and appears with the first
   undoable step; from then on either button is only disabled while its stack is empty. The
   tooltip names the step and the shortcut ("Undo: Record time (⌘Z)"); the pair is hidden when
@@ -333,8 +335,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
 - Holds the expected crossing order of participants approaching the line together. Every
   station has its own; the panel shows the one of the device's station and is **hidden while
-  the device has none** (`body.no-workset`, same grid as archived minus the clock). With more
-  than one station its title names the station (`#sortedStation`).
+  the device has none** (`body.no-workset`, same grid as archived minus the clock). Its title
+  doesn't name the station: that is the station pill's job (see Stations).
 - → in the overall list, the quick search and **F** need a station: they join the default one
   or create the first one (`performOnWorkset()`), so ranking stays a single step.
 - Add with → in the overall list or via the **fuzzy quick search** (ranking: prefix >
@@ -383,6 +385,13 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   station, e.g. after copying server data. A single local station is created silently.
 - Every capture stores the `worksetId` of the device that recorded it (null without a station);
   it only leaves that station's ranking. The UI can't change it afterwards.
+- **Station pill** (`#stationPill`, `renderStationPill()`), in the top bar between the status
+  pill and ⚙: the device's station, or "No station" (no device count; that is in the station
+  rows of the settings). Shown only once it matters — the device explicitly works without a
+  station, the race has more than one (that the device sees), or the device's code is bound to
+  stations (so operators can tell their devices apart) — and never in an archived race. A tap
+  opens the settings at the stations. It is the only place outside the settings that
+  names the current station; the status pill and the ranking title don't.
 - Every station has its **own code** (see Access codes). The settings row shows it with a
   "Copy link" button to the direct link `<serverUrl>/#r=<code>`, for devices whose code lets
   them see the race's codes.
@@ -421,8 +430,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   only to hide and block: `blockReason()` returns `lock.forbidden`, and elements marked
   `data-perm="<path>"` are hidden (`applyPermissions()`, `.perm-hidden`); rows built in code
   check `can(path)`. A code restricted to stations (`restrictedToWorksets()`) also hides the
-  race's default station and the station help, and its pill shows the station and the devices
-  on it: "Server verbunden · CODE · Station 2 (3)".
+  race's default station and the station help, and always shows the station pill.
 - Recording needs `capture.add` on the device's station (or plain `capture.add` without one):
   a station code on "No station" doesn't see the record button, the free-capture link and the
   hints, but a hint offering its stations (`#recordBlocked`).
@@ -623,7 +631,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   with `{preventScroll: true}` — otherwise focusing the settings button scrolls back to the
   top and undoes the restore. The panel and the modal backdrop use
   `overscroll-behavior: contain`.
-- Opened by ⚙ in the top bar (next to the status pill and the undo/redo buttons).
+- Opened by ⚙ in the top bar (next to the status pill, the station pill and the undo/redo
+  buttons).
 - Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) ·
   Stations (see Stations) · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced

@@ -106,7 +106,8 @@ try {
   await b.click('#worksetList .ws-row >> nth=1 >> .ws-pick');
   await b.click('#drawerClose');
   assert.equal(await b.locator('#sortedList li').count(), 0);
-  assert.equal(await b.textContent('#sortedStation'), '· Station 2');
+  // With two stations the station pill names this device's station.
+  assert.equal(await b.textContent('#stationText'), 'Station 2');
   await b.click('h1');
   await b.keyboard.press('f');
   await b.fill('#rankSearch', 'ned');
@@ -125,7 +126,10 @@ try {
   await b.waitForSelector('#worksetNotice:not([hidden])');
   assert.equal(await b.textContent('#worksetNoticeText'), '“Station 2” was deleted – this device has no station now.');
   assert.equal(await b.isVisible('.sorted-panel'), false);
+  // One station left, but this device explicitly has none: the pill says so.
+  assert.equal(await b.textContent('#stationText'), 'No station');
   await b.click('#worksetNoticePicks button');
+  assert.equal(await b.isVisible('#stationPill'), false);
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
   assert.equal(await b.isVisible('#worksetNotice'), false);
   step('stations: own list and kind; deleted elsewhere, a notice switches to another');
@@ -141,7 +145,10 @@ try {
   c.on('pageerror', (e) => { throw e; });
   await c.goto(BASE + '#r=' + stationCode);
   await waitStatus(c, 'Connected to server');
-  assert.match(await c.textContent('#statusText'), new RegExp(stationCode + ' · Station 1'));
+  assert.match(await c.textContent('#statusText'), new RegExp(stationCode));
+  // Bound to its station, it names it in the station pill (A does so because it sees two).
+  assert.equal(await c.textContent('#stationText'), 'Station 1');
+  assert.equal(await a.textContent('#stationText'), 'Station 1');
   assert.deepEqual(await c.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
   for (const sel of ['#renameRaceBtn', '#importBtn', '#participantInput']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
   assert.equal(await c.locator('#participantList button[title="Rename"]').count(), 0);

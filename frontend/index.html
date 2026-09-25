@@ -19,6 +19,8 @@
   :root{
     /* iOS standalone draws under the status bar (black-translucent). */
     --safe-top:env(safe-area-inset-top,0px);
+    /* Height of every control in the top bar (pills, undo/redo), the same on every device. */
+    --bar-h:32px;
     --bg:#0A1929; --panel:#112A45; --panel2:#14314F; --text:#EAF0F5; --muted:#7E94A8;
     --accent:#E0A63B; --accent-ink:#2A1C04; --danger:#E0625A; --ok:#3FB37F; --border:rgba(255,255,255,0.09);
     --shade:rgba(2,10,20,0.55);
@@ -59,16 +61,16 @@
   .title-input{font-size:17px; font-weight:600; max-width:320px;}
   .sub{color:var(--muted); font-size:13px; margin-top:2px;}
   .top-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
-  .status-pill{display:inline-flex; align-items:center; gap:7px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:7px 12px; font-size:12px; cursor:pointer; font-family:inherit; max-width:100%;}
+  .status-pill{display:inline-flex; align-items:center; gap:7px; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:0 12px; font-size:12px; cursor:pointer; font-family:inherit; max-width:100%;}
   .status-pill span:last-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
   .dot.online{background:var(--ok);}
   .dot.connecting{background:var(--accent); animation:pulse 1.2s ease-in-out infinite;}
   .dot.offline{background:var(--danger);}
   @keyframes pulse{50%{opacity:.35;}}
-  .settings-btn{display:inline-flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:7px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
-  .history-btns{display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
-  .history-btn{background:none; border:0; color:var(--text); padding:5px 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
+  .settings-btn{display:inline-flex; align-items:center; gap:6px; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:0 12px; font-size:12px; cursor:pointer; font-family:inherit;}
+  .history-btns{display:inline-flex; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+  .history-btn{background:none; border:0; color:var(--text); height:100%; padding:0 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
   .history-btn + .history-btn{border-left:1px solid var(--border);}
   .history-btn:disabled{opacity:.35; cursor:default;}
   .history-btns[hidden], body.archived .history-btns{display:none;}
@@ -128,7 +130,6 @@
   .ws-notice{display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px 8px; margin-top:12px;
     border:1px solid var(--accent); border-radius:10px; padding:8px 10px; font-size:13px;}
   .ws-notice .btn{padding:6px 10px; font-size:12px;}
-  .ws-tag{color:var(--muted); font-weight:400; font-size:12px;}
   .kind-menu{position:absolute; top:34px; right:12px; z-index:30; min-width:220px; max-width:calc(100% - 24px); text-align:left;
     background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:6px; box-shadow:0 8px 24px rgba(0,0,0,.3);}
   .kind-opt{display:flex; align-items:center; gap:6px;}
@@ -255,7 +256,6 @@
        layout and pushes controls out of view. Nothing focusable may be below that here. */
     input, select, textarea, .input, .edit-input, select.assign{font-size:16px;}
     .title-input{font-size:17px;}   /* the rule above must not shrink it */
-    .history-btn{min-width:48px; min-height:42px; font-size:19px;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -393,6 +393,7 @@
         <button class="history-btn" id="redoBtn" type="button" data-edit="critical" disabled>↷</button>
       </div>
       <button class="status-pill" id="statusPill" type="button"><span class="dot" id="statusDot"></span><span id="statusText"></span></button>
+      <button class="status-pill" id="stationPill" type="button" data-i18n-title="worksets.pillTitle" hidden><span id="stationText"></span></button>
       <button class="settings-btn" id="settingsBtn" type="button">⚙ <span data-i18n="settings.title"></span></button>
     </div>
   </header>
@@ -430,7 +431,7 @@
 
     <div class="panel sorted-panel">
       <div class="panel-head">
-        <h2><span id="sortedTitle"></span> <span class="ws-tag" id="sortedStation" hidden></span> <span class="count" id="sortedCount">0</span></h2>
+        <h2><span id="sortedTitle"></span> <span class="count" id="sortedCount">0</span></h2>
       </div>
       <div class="hint-line" data-i18n="sorted.hint"></div>
       <div class="search-wrap" data-edit="critical">
@@ -908,6 +909,7 @@ const TEXTS = {
       'worksets.chooseToRecord': 'Ohne Station kann dieses Gerät keine Zeiten erfassen. Station wählen:',
       'worksets.code': 'Code {code}',
       'worksets.copyLink': 'Link kopieren',
+      'worksets.pillTitle': 'Station dieses Geräts – wechseln in den Einstellungen',
     },
     en: {
       'app.title': 'zeitnah',
@@ -1108,6 +1110,7 @@ const TEXTS = {
       'worksets.chooseToRecord': 'Without a station this device can’t record times. Choose a station:',
       'worksets.code': 'Code {code}',
       'worksets.copyLink': 'Copy link',
+      'worksets.pillTitle': 'This device’s station – change it in the settings',
     },
   },
 
@@ -3658,10 +3661,7 @@ function statusInfo(){
   let text = t(labels[status]);
   if(backend.kind === 'server' && status === 'online'){
     text += ' · ' + backend.code;
-    // A station code shows its station and the devices on it; the race code the whole race.
-    const w = restrictedAccess() ? currentWorkset() : null;
-    if(w) text += ' · ' + worksetLabel(w);
-    const clients = w ? backend.worksetClientCount(w.id) : backend.clientCount();
+    const clients = backend.clientCount();
     if(clients) text += ' (' + clients + ')';
   }
   const pending = backend.pendingCount();
@@ -3669,7 +3669,26 @@ function statusInfo(){
   if(S().archived) text = t('status.archived') + ' · ' + text;
   return {status, text};
 }
+/*
+ * The station pill: this device's station, once it matters — the device explicitly works
+ * without one, the race has more than one station (that this device sees), or the code binds
+ * the device to its station (so operators can tell their devices apart). A tap opens the
+ * settings at the stations.
+ */
+function renderStationPill(){
+  const s = S();
+  const pill = document.getElementById('stationPill');
+  const w = currentWorkset(s);
+  pill.hidden = s.archived || !s.worksets.length || !(deviceWorkset === null || s.worksets.length > 1 || restrictedAccess());
+  if(!pill.hidden) document.getElementById('stationText').textContent = w ? worksetLabel(w) : t('worksets.none');
+}
+document.getElementById('stationPill').addEventListener('click', () => {
+  openSettings();
+  document.getElementById('worksetsSection').scrollIntoView({block: 'nearest'});
+});
+
 function renderStatus(){
+  renderStationPill();
   const {status, text} = statusInfo();
   document.getElementById('statusDot').className = 'dot ' + status;
   document.getElementById('statusText').textContent = text;
@@ -3794,10 +3813,6 @@ function renderSorted(){
   const role = kindRole(s, w.captureKind);
   document.getElementById('sortedTitle').textContent = role === 'start' ? t('sorted.titleStart')
     : role === 'split' ? t('sorted.titleSplit', {kind: kindLabel(w.captureKind)}) : t('sorted.title');
-  // With several stations the list names the one it belongs to.
-  const station = document.getElementById('sortedStation');
-  station.hidden = s.worksets.length < 2;
-  station.textContent = '· ' + worksetLabel(w);
   sortedList.innerHTML = '';
   document.getElementById('sortedCount').textContent = w.ranking.length;
   document.getElementById('sortedEmpty').hidden = w.ranking.length > 0;
