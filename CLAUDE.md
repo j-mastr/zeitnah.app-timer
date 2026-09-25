@@ -139,7 +139,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (`LIST_SHORTCUTS`, plain keys, no modifier — they stay the same in every language):
   **F** focus the ranking's quick search · **N** focus the add-participant field ·
   **A** / **O** / **H** the three filters · **S** cycle the sort field · **D** reverse it.
-- A **shortcuts dialog** (`#shortcuts`) lists them all. It opens from "Tastenkürzel anzeigen"
+- A **shortcuts dialog** (`#shortcuts`) lists them all, closed with an ✕ in its top right
+  corner (`.modal-head`, like the settings drawer). It opens from "Tastenkürzel anzeigen"
   / "Show keyboard shortcuts" in the settings, from the footer link, and by holding
   **Ctrl/Cmd** alone for `SHORTCUTS_HOLD_MS` (1.5 s) — pressing any other key within that
   time cancels the hold, so ⌘C and friends never open it. It closes on release, on window
@@ -198,7 +199,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   as that participant is still among the matches (`selectedMatchId`); the list is a
   `role="listbox"` with `aria-activedescendant` on the input.
 - Reorder with ▲▼ buttons and drag & drop (drag handle ⠿; pointer events with document-level
-  listeners so it works with touch and when the pointer leaves the handle).
+  listeners so it works with touch and when the pointer leaves the handle). Only the handle
+  has `touch-action: none` — the row must not, or a swipe over a long ranking list would be
+  captured by the drag instead of scrolling the page.
 - Remove with ↩ (the participant stays in the overall list).
 - A participant is in the ranking at most once.
 
@@ -344,10 +347,20 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   that strip instead of starting below it — see Pinned clock).
 
 ### Settings panel (slide-over from the right)
-- Shell + `.drawer-panel` (see the overflow rule under Layout). `visibility` switches at once
-  when opening and only after the slide when closing (`transition: visibility 0s linear .22s`,
-  delay 0 while open) — a transitioned `visibility` stays hidden for part of the duration,
-  which swallowed the focus call for the ✕ and left Escape without a handler in the drawer.
+- Shell + `.drawer-panel` (see the overflow rule under Layout). The shell is never hidden
+  with `visibility`: it only switches `pointer-events`, and the closed drawer is kept out of
+  the tab order and the a11y tree with the `inert` attribute (set in the markup, toggled in
+  `openSettings`/`closeSettings`). The panel is therefore always laid out, and opening
+  animates nothing but its `transform` — a panel that becomes visible in the same frame does
+  not animate reliably (Safari), and a transitioned `visibility` also swallowed the focus
+  call for the ✕, which left Escape without a handler inside the drawer.
+- While the drawer or a modal is open the page behind it does not scroll: `lockScroll()`
+  (reference-counted, so a dialog opened from the drawer doesn't unlock it) fixes the body at
+  its current offset (`body.scroll-locked` + `top: -scrollY`, since `overflow:hidden` on the
+  body is ignored by iOS Safari) and restores the offset on close. Focus is always returned
+  with `{preventScroll: true}` — otherwise focusing the settings button scrolls back to the
+  top and undoes the restore. The panel and the modal backdrop use
+  `overscroll-behavior: contain`.
 - Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
   Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
   data" · server mode: status with transport, client count and pending count, code (read-only), direct

@@ -159,7 +159,6 @@
   ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
 
   .participant-row, .sorted-row{display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
-  .sorted-row{touch-action:none;}
   .sorted-row.dragging{opacity:.45;}
   .drag-handle{cursor:grab; color:var(--muted); font-size:16px; padding:2px 6px; touch-action:none; user-select:none; flex-shrink:0;}
   .kbd{display:inline-flex; align-items:center; justify-content:center; min-width:19px; height:19px; padding:0 4px; border:1px solid var(--border); border-radius:5px; background:var(--panel); color:var(--muted); font-family:'Space Mono',monospace; font-size:11px; flex-shrink:0;}
@@ -234,9 +233,10 @@
      out beyond the right edge of the viewport (which iOS Safari counts as page width and
      which then made 100vw — and the drawer with it — wider than the screen). */
   .drawer{position:fixed; top:0; right:0; bottom:0; width:min(420px,100%); z-index:61;
-    overflow:hidden; visibility:hidden; transition:visibility 0s linear .22s;}
-  .drawer.open{visibility:visible; transition-delay:0s;}
-  .drawer-panel{height:100%; overflow-y:auto; overflow-x:hidden;
+    overflow:hidden; pointer-events:none;}
+  .drawer.open{pointer-events:auto;}
+  body.scroll-locked{position:fixed; left:0; right:0; width:100%;}
+  .drawer-panel{height:100%; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
     background:var(--bg); border-left:1px solid var(--border);
     padding:calc(16px + var(--safe-top)) 16px calc(24px + env(safe-area-inset-bottom,0px));
     transform:translateX(100%); transition:transform .22s ease;}
@@ -264,10 +264,12 @@
   .action:first-of-type{margin-top:0;}
 
   /* ---------- dialog ---------- */
-  .modal-backdrop{position:fixed; inset:0; background:var(--shade); z-index:80; display:flex; align-items:center; justify-content:center; padding:16px;}
+  .modal-backdrop{position:fixed; inset:0; background:var(--shade); z-index:80; display:flex; align-items:center; justify-content:center; padding:16px; overflow-y:auto; overscroll-behavior:contain;}
   .modal{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px; max-width:440px; width:100%; max-height:calc(100vh - 32px); overflow-y:auto;}
   .modal h3{margin:0 0 8px; font-size:16px;}
-  .shortcut-list{margin:0 0 16px; gap:10px;}
+  .modal-head{display:flex; align-items:flex-start; justify-content:space-between; gap:10px;}
+  .modal-head h3{margin:0 0 12px;}
+  .shortcut-list{margin:0; gap:10px;}
   .shortcut-list li{display:flex; align-items:center; gap:10px; font-size:13px;}
   .shortcut-list .keys{display:inline-flex; align-items:center; gap:4px; flex:0 0 84px;}
   .modal p{margin:0 0 16px; font-size:14px; line-height:1.5;}
@@ -283,7 +285,7 @@
 
   @media (prefers-reduced-motion: reduce){
     .dot.connecting{animation:none;}
-    .drawer, .drawer-panel{transition:none;}
+    .drawer-panel{transition:none;}
   }
 </style>
 </head>
@@ -385,7 +387,7 @@
 
 <!-- ---------- settings drawer ---------- -->
 <div class="overlay" id="drawerOverlay" hidden></div>
-<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" inert>
  <div class="drawer-panel">
   <div class="drawer-head">
     <h2 id="drawerTitle" data-i18n="settings.title"></h2>
@@ -491,7 +493,10 @@
 <!-- ---------- shortcuts dialog ---------- -->
 <div class="modal-backdrop" id="shortcuts" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
-    <h3 id="shortcutsTitle" data-i18n="shortcuts.title"></h3>
+    <div class="modal-head">
+      <h3 id="shortcutsTitle" data-i18n="shortcuts.title"></h3>
+      <button class="mini" id="shortcutsClose" data-i18n-title="dialog.close">✕</button>
+    </div>
     <ul class="shortcut-list">
       <li><span class="keys"><span class="kbd">␣</span></span><span data-i18n="clock.hintNext"></span></li>
       <li><span class="keys"><span class="kbd">1</span>–<span class="kbd">9</span></span><span data-i18n="clock.hintDirect"></span></li>
@@ -505,9 +510,6 @@
       <li><span class="keys"><span class="kbd">D</span></span><span data-i18n="shortcuts.sortDir"></span></li>
       <li><span class="keys"><span class="kbd" id="shortcutsModKey">Ctrl</span></span><span data-i18n="shortcuts.hold"></span></li>
     </ul>
-    <div class="modal-actions">
-      <button class="btn primary" id="shortcutsClose" data-i18n="dialog.close"></button>
-    </div>
   </div>
 </div>
 
@@ -2032,19 +2034,40 @@ function askConfirm({title, text, ok, cancel, danger = false}){
     cancelBtn.textContent = cancel || t('dialog.cancel');
     okBtn.className = 'btn ' + (danger ? 'danger' : 'primary');
     const previousFocus = document.activeElement;
+    lockScroll(true);
     dialogEl.hidden = false;
-    okBtn.focus();
+    okBtn.focus({preventScroll: true});
     const close = (result) => {
       dialogEl.hidden = true;
+      lockScroll(false);
       okBtn.onclick = cancelBtn.onclick = null;
       dialogEl.onkeydown = null;
-      if(previousFocus && previousFocus.focus) previousFocus.focus();
+      if(previousFocus && previousFocus.focus) previousFocus.focus({preventScroll: true});
       resolve(result);
     };
     okBtn.onclick = () => close(true);
     cancelBtn.onclick = () => close(false);
     dialogEl.onkeydown = (e) => { if(e.key === 'Escape'){ e.preventDefault(); close(false); } };
   });
+}
+
+// ---------- background scroll lock ----------
+// While an overlay covers the app, only the overlay scrolls. `overflow:hidden` on the body
+// is ignored by iOS Safari, so the body is fixed at the current offset and restored after.
+let scrollLocks = 0;
+let scrollLockY = 0;
+function lockScroll(on){
+  if(on){
+    if(scrollLocks++ > 0) return;
+    scrollLockY = window.scrollY;
+    document.body.classList.add('scroll-locked');
+    document.body.style.top = -scrollLockY + 'px';
+  }else{
+    if(scrollLocks === 0 || --scrollLocks > 0) return;
+    document.body.classList.remove('scroll-locked');
+    document.body.style.top = '';
+    window.scrollTo(0, scrollLockY);
+  }
 }
 
 // ---------- shortcuts dialog ----------
@@ -2057,14 +2080,16 @@ function openShortcuts(held){
   if(!shortcutsEl.hidden) return;
   shortcutsHeld = !!held;
   shortcutsFocus = document.activeElement;
+  lockScroll(true);
   shortcutsEl.hidden = false;
-  if(!held) document.getElementById('shortcutsClose').focus();
+  if(!held) document.getElementById('shortcutsClose').focus({preventScroll: true});
 }
 function closeShortcuts(){
   if(shortcutsEl.hidden) return;
   shortcutsHeld = false;
   shortcutsEl.hidden = true;
-  if(shortcutsFocus && shortcutsFocus.focus) shortcutsFocus.focus();
+  lockScroll(false);
+  if(shortcutsFocus && shortcutsFocus.focus) shortcutsFocus.focus({preventScroll: true});
   shortcutsFocus = null;
 }
 document.getElementById('showShortcutsBtn').addEventListener('click', () => openShortcuts(false));
@@ -2783,16 +2808,19 @@ const drawer = document.getElementById('drawer');
 const drawerOverlay = document.getElementById('drawerOverlay');
 function openSettings(){
   renderSettings();
+  lockScroll(true);
   drawerOverlay.hidden = false;
+  drawer.inert = false;
   drawer.classList.add('open');
-  // Still hidden in this frame, so focus() would be dropped — and Escape needs the focus
-  // inside the drawer to reach its handler.
-  requestAnimationFrame(() => document.getElementById('drawerClose').focus());
+  // Escape needs the focus inside the drawer to reach its handler.
+  document.getElementById('drawerClose').focus({preventScroll: true});
 }
 function closeSettings(){
   drawer.classList.remove('open');
   drawerOverlay.hidden = true;
-  document.getElementById('settingsBtn').focus();
+  lockScroll(false);
+  document.getElementById('settingsBtn').focus({preventScroll: true});
+  drawer.inert = true;   // after the focus moved out; the panel still slides away
 }
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('statusPill').addEventListener('click', openSettings);
