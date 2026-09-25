@@ -84,6 +84,7 @@ src/WebSocket/SyncServer.php       WebSocket protocol, subscriptions, broadcasti
 src/WebSocket/ClientSession.php    Per-connection state
 tests/reducer-parity.mjs|.php      JS vs PHP reducer equivalence test
 tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
+tests/undo-history.mjs             Undo/redo: random sequences undone and redone restore the states
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
 tests/e2e/offline-start.mjs        PWA test: starts/stops its own PHP server, checks offline start
 tools/generate-icons.mjs           Renders public/icons/*.png from the SVG definition inside it
@@ -188,6 +189,35 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   query picks one) — and a line
   "Made with ❤️ and Claude in Hamburg · Star on GitHub" linking to
   https://github.com/j-mastr/zeitnah.app-timer.
+
+### Undo / redo
+- Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar; disabled while
+  there is nothing to undo/redo, tooltip names the step and the shortcut ("Undo: Record time
+  (⌘Z)"), hidden when the race is archived. Keys follow the platform: **⌘Z / ⇧⌘Z** on Apple
+  devices (`APPLE`), **Ctrl+Z / Ctrl+Y** (and Ctrl+Shift+Z) elsewhere; ⌘Y is left alone (Chrome
+  history). Like the other shortcuts they are ignored while typing in inputs (the native text undo
+  applies there) and while a dialog or the settings are open. Listed in the shortcuts dialog.
+- Every action is undoable except `race.archive` and `state.merge` (both clear the history), as
+  are resetting the local data and copying server data (not operations).
+- **Compensating operations**, no reducer or server involvement: `perform()` asks
+  `historyEntry(state, op)` for the operations that reverse `op` (e.g. `capture.add` →
+  `capture.delete`; `participant.delete` → `participants.add` with the same id + back into the
+  ranking at its old position). Undoing a recorded time puts a participant that the capture took
+  out of the ranking back at its old position. Redo re-sends the original operation. Replayed
+  operations always get a fresh `opId`.
+- **Conflicts are refused with a toast** (`history.undoConflict` / `history.redoConflict`) and the
+  entry is dropped, so the next step continues below it. Each entry lists the state `parts` it
+  touches (`name`, `sport`, `participant`, `ranked`, `next` = ranking neighbour, `capture`) and
+  stores their `footprint()` before and after. Undo requires the current footprint to equal
+  "after" (nobody changed those parts since) and checks on a copy (`footprintAfter()`) that the
+  compensating operations really lead back to "before"; redo the other way round. The copy check
+  also catches what the reducers can't restore, e.g. a capture of a deleted participant.
+- Undo/redo is subject to `blockReason()` like the operations it sends (e.g. undoing a
+  participant delete needs the connection); the entry then stays on the stack.
+- Per device and **in memory only** (lost on reload), 50 steps (`HISTORY_LIMIT`). Only this
+  device's own actions are recorded. Cleared when switching backends (connect/disconnect), when
+  the local data is replaced (reset, another tab — `onReload`) and when the server rejects an
+  operation. A new action clears the redo stack; no-op actions aren't recorded.
 
 ### Finishes list ("Zieldurchläufe")
 - Newest first; each row shows place `#n` (by time ascending), time, delta to the
@@ -409,6 +439,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   with `{preventScroll: true}` — otherwise focusing the settings button scrolls back to the
   top and undoes the restore. The panel and the modal backdrop use
   `overscroll-behavior: contain`.
+- Opened by ⚙ in the top bar (next to the status pill and the undo/redo buttons).
 - Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced
   settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
@@ -500,6 +531,7 @@ php -S 127.0.0.1:8000 -t public          # PHP_CLI_SERVER_WORKERS=4 helps with p
 php bin/console app:websocket-server -v
 node tests/reducer-parity.mjs
 node tests/text-keys.mjs
+node tests/undo-history.mjs
 node tests/e2e/offline-start.mjs   # starts its own PHP server on port 8123
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install first
 ```
@@ -514,9 +546,12 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
 4. Mark its UI controls with `data-edit="normal"` or `"critical"`.
-5. Add texts (de + en) to `common` or to every sport set, extend
+5. Make it undoable: a case in `historyEntry()` (compensating ops + the `parts` it touches) and
+   a label in `HISTORY_LABELS`, extend `tests/undo-history.mjs` — or add it to
+   `HISTORY_BARRIER_OPS` if it can't be undone.
+6. Add texts (de + en) to `common` or to every sport set, extend
    `tests/reducer-parity.mjs`, run all tests.
-6. Update the operations table in this file.
+7. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
 - No authentication: anyone who knows a race code can read and edit it.
