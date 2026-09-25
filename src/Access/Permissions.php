@@ -170,9 +170,11 @@ final class Permissions
 
                 return [...self::captureScope($capture['worksetId'] ?? null), ['add', null]];
             case 'capture.assign': case 'capture.delete': case 'capture.setKind':
+            case 'capture.target.add': case 'capture.target.remove':
                 foreach ($state['captures'] ?? [] as $capture) {
                     if ($capture['id'] === ($op['captureId'] ?? null)) {
-                        return [...self::captureScope($capture['worksetId'] ?? null), [$parts[1], null]];
+                        // Changing a capture's targets is assigning it.
+                        return [...self::captureScope($capture['worksetId'] ?? null), [count($parts) > 2 ? 'assign' : $parts[1], null]];
                     }
                 }
 

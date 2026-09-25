@@ -105,7 +105,7 @@ start removes the group ref, not its members.
 | type | fields | notes | offline |
 | --- | --- | --- | --- |
 | `capture.add` | `capture.targets` (also still `capture.participantId`) | legacy shape accepted forever | yes |
-| `capture.assign` | `captureId`, `participantId` or `target` | replaces all targets | yes |
+| `capture.assign` | `captureId`, `targets` (list) or legacy `participantId` | replaces all targets | yes |
 | `capture.target.add` / `.remove` | `captureId, target` | commutative list edits | yes |
 | `groupType.add` / `.update` / `.delete` | | | locked |
 | `group.add` / `.update` / `.delete` | `add` restores members and position (undo) | `delete` removes it from other groups' members and from rankings; captures keep the ref ("(deleted group)") | locked |
@@ -245,7 +245,7 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
 | --- | --- | --- |
 | 0. Specification | done | this document |
 | 1. Schema versioning | done (version 1) | see "Phase 1 notes"; must be deployed before phase 2 ships |
-| 2. Capture targets | open | needs phase 1 released first; raises the version to 2 |
+| 2. Capture targets | done (version 2) | see "Phase 2 notes"; deploy only after phase 1 has been live for a while |
 | 3. Groups and group types | open | |
 | 4. Groups in rankings | open | |
 | 5. Fields and rule-based groups | open | |
@@ -278,3 +278,28 @@ decided while building it:
   the service worker cache) doesn't know `schema`; if it writes local data after a newer page
   stored version-2 data, it downgrades it. Phase 2 should therefore ship some time after
   phase 1 is deployed.
+
+### Phase 2 notes
+
+Built as designed, participants only (`TARGET_TYPES = ['participant']`; a `group` ref is
+rejected with `invalid_capture_target` until phase 3 raises the version again).
+`CLAUDE.md` documents the operations and the UI. Details decided while building it:
+
+- **`capture.assign` takes a `targets` list** (replacing all targets, unknown ones dropped)
+  instead of a single `target` as planned. Undo of every target change needs to restore a whole
+  list, and one op does that. The legacy `participantId` form keeps its exact old semantics
+  (an unknown participant makes it a no-op).
+- `capture.target.add` / `.remove` need the `assign` permission (`workset[W].capture.assign`);
+  no new permission path, so existing station codes keep working unchanged.
+- Duplicates in a target list are dropped (first occurrence wins); at most 500 targets.
+- **Elapsed time** is computed per participant (`elapsedBy`); a row shows it only when it is the
+  same for all of its participants. A start with several targets is the own start of each.
+- **UI:** a single-participant row is unchanged (the select replaces the assignment). The "+"
+  select appears only on marker rows with a participant and on rows with several; several are
+  shown as chips with ✕. The row's controls wrap, so the chips get a line of their own on
+  narrow screens.
+- Undo of a capture of several ranked participants re-ranks them last-first, so each is moved
+  before a neighbour that is already back.
+- Limitation of the parity test: objects with keys `0…n` (e.g. `{"0": ref}`) decode as lists in
+  PHP; the generator doesn't send them (no real client does).
+- `tests/e2e/offline-start.mjs` now announces the server's schema when it fetches a snapshot.

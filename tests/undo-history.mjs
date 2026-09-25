@@ -38,10 +38,11 @@ const kindIds = ['k1', 'k2', 'k3'];
 const captureKinds = ['start', 'split', 'finish', ...kindIds];
 const worksetIds = ['w1', 'w2', 'w3'];
 
+const randomTargets = () => Array.from({length: Math.floor(rnd() * 4)}, () => ({type: 'participant', id: pick(participantIds)}));
 function randomOp(i) {
   const type = pick(['race.rename', 'race.setSport', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
     'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move',
-    'capture.add', 'capture.add', 'capture.assign', 'capture.delete',
+    'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.target.add', 'capture.target.remove',
     'capture.setKind', 'workset.setKind', 'kind.add', 'kind.add', 'kind.update', 'kind.delete',
     'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault']);
   switch (type) {
@@ -57,9 +58,14 @@ function randomOp(i) {
     case 'workset.rename': return {type, worksetId: pick(worksetIds), name: pick([null, 'Gate', 'Finish ' + i])};
     case 'workset.delete': case 'workset.makeDefault': return {type, worksetId: pick(worksetIds)};
     case 'capture.add':
-      return {type, capture: {id: pick(captureIds), ts: 1790000000000 + i, tzOffset: pick([120, null]), participantId: pick([...participantIds, null]),
+      return {type, capture: {id: pick(captureIds), ts: 1790000000000 + i, tzOffset: pick([120, null]),
+        ...(rnd() < 0.5 ? {participantId: pick([...participantIds, null])} : {targets: randomTargets()}),
         kind: pick(captureKinds), worksetId: pick([null, ...worksetIds])}};
-    case 'capture.assign': return {type, captureId: pick(captureIds), participantId: pick([...participantIds, null])};
+    case 'capture.assign':
+      return rnd() < 0.5 ? {type, captureId: pick(captureIds), participantId: pick([...participantIds, null])}
+        : {type, captureId: pick(captureIds), targets: randomTargets()};
+    case 'capture.target.add': case 'capture.target.remove':
+      return {type, captureId: pick(captureIds), target: {type: 'participant', id: pick(participantIds)}};
     case 'capture.delete': return {type, captureId: pick(captureIds)};
     case 'capture.setKind': return {type, captureId: pick(captureIds), kind: pick(captureKinds)};
     case 'workset.setKind': return {type, worksetId: pick(worksetIds), kind: pick(captureKinds)};
@@ -110,6 +116,23 @@ for (let n = 0; n < cases; n++) {
   assert.equal(canonical(state), canonical(baseline), 'undoing everything restores the initial state');
   for (const entry of history) replay(state, entry.redo);
   assert.equal(canonical(state), canonical(final), 'redoing everything restores the final state');
+}
+
+// A capture of several ranked participants: undo puts them all back in their order.
+{
+  const s = replay(emptyState(), [
+    {type: 'participants.add', participants: ['a', 'b', 'c', 'd'].map((id) => ({id, name: id.toUpperCase()}))},
+    {type: 'workset.add', workset: {id: 'w'}},
+    ...['a', 'b', 'c', 'd'].map((id) => ({type: 'workset.ranking.add', worksetId: 'w', participantId: id})),
+  ]);
+  const before = clone(s);
+  const op = {type: 'capture.add', capture: {id: 'x', ts: 1, tzOffset: 0, kind: 'finish', worksetId: 'w',
+    targets: [{type: 'participant', id: 'c'}, {type: 'participant', id: 'b'}]}};
+  const entry = historyEntry(s, op);
+  applyOp(s, clone(op));
+  assert.deepEqual(s.worksets[0].ranking, ['a', 'd']);
+  replay(s, entry.undo);
+  assert.equal(canonical(s), canonical(before), 'undoing a capture of several participants restores the ranking');
 }
 
 // Conflicts: another device changed what the entry touched.

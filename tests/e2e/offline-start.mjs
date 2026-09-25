@@ -97,7 +97,9 @@ try {
   await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('Server verbunden'), null, {timeout: 20000});
   await sleep(2000);
   assert.equal(await page.locator('.pending-mark').count(), 0);
-  const snapshot = await (await fetch(BASE + 'api/races/' + code)).json();
+  // Race requests announce a schema version (an older one is refused): the server's own.
+  const {schema} = await (await fetch(BASE + 'api/config')).json();
+  const snapshot = await (await fetch(BASE + 'api/races/' + code + '?schema=' + schema)).json();
   assert.equal(snapshot.state.captures.length, 2);
   step('buffered capture reaches the server after it is back');
 

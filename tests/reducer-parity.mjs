@@ -44,8 +44,15 @@ const randomWorkset = () => (rnd() < 0.1 ? pick([null, 'w1', {}]) : {
   id: pick(worksetIds), name: pick(worksetNames), number: pick([undefined, undefined, undefined, undefined, null, 3, 0, 1.5, '2']),
   ranking: pick(rankings), captureKind: pick([undefined, undefined, ...captureKinds]),
 });
+const ref = (id) => ({type: 'participant', id});
+const randomTarget = () => pick([ref(pick(participantIds)), ref(pick(participantIds)), ref(pick(participantIds)), {type: 'group', id: 'g1'},
+  {id: 'b1'}, {type: 'participant', id: 'not valid!'}, {type: 'participant'}, 'b1', null, ['participant', 'b1']]);
+const randomTargets = () => pick([undefined, null, [], [ref(pick(participantIds))], [ref(pick(participantIds)), ref(pick(participantIds)), ref('b1')],
+  [randomTarget(), randomTarget()], Array.from({length: 501}, () => ref('b1')), 'b1', {type: 'participant', id: 'b1'}]);
+// (Not generated: objects with keys 0…n, e.g. {0: ref}, which PHP decodes as a list.)
 const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
   'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+  'capture.add', 'capture.assign', 'capture.target.add', 'capture.target.add', 'capture.target.remove',
   'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus',
   'workset.add', 'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
   'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move'];
@@ -66,8 +73,15 @@ function randomOp(i) {
     case 'workset.add': op.workset = randomWorkset(); if (rnd() < 0.4) op.beforeId = pick([...worksetIds, null]); break;
     case 'workset.rename': op.worksetId = pick(worksetRefs); op.name = pick(worksetNames); break;
     case 'workset.delete': case 'workset.makeDefault': op.worksetId = pick(worksetRefs); break;
-    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null]), kind: pick(captureKinds), worksetId: pick(worksetRefs)}; break;
-    case 'capture.assign': op.captureId = pick(captureIds); op.participantId = pick([...participantIds, null]); break;
+    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null]), kind: pick(captureKinds), worksetId: pick(worksetRefs)};
+      if (rnd() < 0.6) op.capture.targets = randomTargets();
+      if (rnd() < 0.4) delete op.capture.participantId;
+      break;
+    case 'capture.assign':
+      op.captureId = pick(captureIds);
+      if (rnd() < 0.5) op.participantId = pick([...participantIds, null]); else op.targets = randomTargets();
+      break;
+    case 'capture.target.add': case 'capture.target.remove': op.captureId = pick(captureIds); op.target = randomTarget(); break;
     case 'capture.delete': op.captureId = pick(captureIds); break;
     case 'capture.setKind': op.captureId = pick(captureIds); op.kind = pick(captureKinds); break;
     case 'workset.setKind': op.worksetId = pick(worksetRefs); op.kind = pick(captureKinds); break;
@@ -84,8 +98,8 @@ function randomOp(i) {
         worksets: pick([undefined, [], [randomWorkset()],
           [{id: 'mw' + i, name: pick(['Finish', null, 'Gate']), ranking: ['m' + i, pick(participantIds)], captureKind: pick(['mk' + i, 'start', 'k1'])},
             {id: pick(worksetIds), name: pick(worksetNames), ranking: pick(rankings)}]]),
-        captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), participantId: 'm' + i, kind: pick(['mk' + i, ...captureKinds]),
-          worksetId: pick(['mw' + i, ...worksetRefs])},
+        captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), kind: pick(['mk' + i, ...captureKinds]),
+          worksetId: pick(['mw' + i, ...worksetRefs]), ...pick([{participantId: 'm' + i}, {targets: [ref('m' + i), ref(pick(participantIds)), ref('zz')]}, {targets: randomTargets()}])},
           {id: pick(captureIds), ts: 5, participantId: null}],
       };
       break;
@@ -96,6 +110,7 @@ function randomOp(i) {
 // States stored before versioning (no `schema`) come out at the current version on both sides.
 const legacy = normalizeState({boats: [{id: 'b1', name: 'GER 1'}], ranking: ['b1'], captures: [{id: 'c1', ts: 5, boatId: 'b1'}]});
 if (legacy.schema !== SCHEMA_VERSION) throw new Error('normalizeState() does not set the current schema version');
+if (JSON.stringify(legacy.captures[0].targets) !== JSON.stringify([ref('b1')])) throw new Error('normalizeState() does not migrate a capture\'s participant');
 
 const count = parseInt(process.argv[2] || '200', 10);
 const cases = [];
