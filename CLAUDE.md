@@ -10,7 +10,8 @@ A timekeeping app for the finish line of a race. A large clock shows the current
 button (or the space bar) records the exact time of each finish-line crossing. Participants
 approaching the line together can be put into an "approaching the finish" queue in the order
 they cross, so
-recorded times are assigned to them automatically. Data lives in the browser by default;
+recorded times are assigned to them automatically. Besides finishes, a time can be of another
+**kind** (start, split, or a custom kind such as a protest). Data lives in the browser by default;
 optionally several devices share one race through the server with real-time sync. The
 primary device is an iPad (touch), laptops with keyboards are also used.
 
@@ -58,6 +59,9 @@ product owner before implementing.
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
 | `capture` (`{id, ts, tzOffset, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
 | `ranking` — the queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
+| capture `kind` — what a capture marks: built-in `start` / `split` / `finish` or a custom kind | Start / Tonnenrundung / Zieldurchlauf, Zeitart / event type |
+| custom kind (`{id, name, role}`, role `split` or `marker`) | e.g. Protest (a marker) |
+| workset — `ranking` + `captureKind` (the kind new captures get); today one default workset per race | – |
 
 The other sport sets (`generic`, `running`, `swimming`, `motor`) use the same concepts with
 their own vocabulary, e.g. `participant` is "Runner"/"Läufer" in `running`, "Swimmer"/
@@ -141,7 +145,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   the wall-clock time it was taken at. `tzOffset` is `null` only for data from earlier
   versions; those captures fall back to this device's zone.
   - If the ranking is non-empty, the capture is assigned to its **first** participant and that
-    participant leaves the ranking. Otherwise the capture is stored unassigned.
+    participant leaves the ranking (not for a marker kind, see Capture kinds). Otherwise the
+    capture is stored unassigned. The capture gets the one-shot kind if one is armed, else the
+    selected kind (`effectiveKind()`).
 - A link-styled button under the big one ("Zeit ohne Zuordnung erfassen" / "Record a time
   without assigning it", `.link-btn`) and the key **0** (top row or numpad) record a capture
   that stays unassigned, whatever the ranking holds (`recordTime(null)`).
@@ -174,7 +180,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Letter keys** drive the participant list, same actions as the controls themselves
   (`LIST_SHORTCUTS`, plain keys, no modifier — they stay the same in every language):
   **F** focus the ranking's quick search · **N** focus the add-participant field ·
-  **A** / **O** / **H** the three filters · **S** cycle the sort field · **D** reverse it.
+  **A** / **O** / **H** the three filters · **S** cycle the sort field · **D** reverse it ·
+  **K** next sticky capture kind · **Shift+K** next one-shot kind · **Escape** cancels a
+  one-shot kind.
 - A **shortcuts dialog** (`#shortcuts`) lists them all, closed with an ✕ in its top right
   corner (`.modal-head`, like the settings drawer). It opens from "Tastenkürzel anzeigen"
   / "Show keyboard shortcuts" in the settings, from the footer link, and by holding
@@ -190,6 +198,45 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   "Made with ❤️ and Claude in Hamburg · Star on GitHub" linking to
   https://github.com/j-mastr/zeitnah.app-timer.
 
+### Capture kinds (event types)
+- Every capture has a `kind`. Built-in kinds are the sport-neutral ids `start`, `split`, `finish`
+  (`BUILTIN_KINDS`, default `finish`); each sport set labels them (`kind.start` …, sailing:
+  Start / Tonnenrundung / Zieldurchlauf, motor: … / Runde / …). A built-in kind is its own role.
+- **Custom kinds** (`state.kinds`, `{id, name, role}`, name ≤ 40 chars, unique case-insensitively,
+  also against the built-in labels in the UI) have the role `split` (a point the participants pass:
+  numbered per participant, "Tor 3 2") or `marker` (an annotation such as a protest: no place, no
+  delta, no elapsed time). Managed in the settings drawer between Sport and the server connection:
+  rename inline, change the role, delete (✕, confirmation). Each sport set offers
+  `kinds.suggestions` (`name:role, …`) as one-tap buttons; a picked suggestion is an ordinary
+  custom kind with its name stored. The ops are `data-edit="normal"` (locked offline).
+- A capture takes its participant out of the ranking **unless its kind is a marker**. An unknown
+  kind id (a custom kind deleted, possibly concurrently) counts as a marker. Deleting a kind keeps
+  its id on the captures ("(gelöschte Zeitart)" / "(deleted event type)").
+- **Selected kind** (`state.captureKind`, `workset.setKind`): sticky and synced — every device on
+  the race records that kind until someone changes it. It is a field of the race's implicit
+  **default workset** together with `ranking`. Planned (not built): several worksets per race, each
+  with its own ranking and kind; a device works on exactly one, devices on the same workset share
+  both, and a participant can be in several worksets' rankings (once each). Operations would gain
+  an optional `worksetId` (absent = default workset); keep new code compatible with that.
+- **One-shot kind** (`nextKind`, per device, in memory): applies to the next capture only, then the
+  sticky kind applies again. Armed via "next time only" in the kind menu, a long press (touch) or
+  right-click on the segmented control, or **Shift+K**; cancelled with Escape or the note's link.
+  Only a one-shot kind returns to the previous choice — a sticky choice never reverts on its own.
+- **Discreet until used** (`kindsUnlocked()`: a kind other than finish selected or armed, a custom
+  kind exists, or a capture isn't a finish): until then the only trace is the ⚑ `.icon-btn` in
+  the clock card's tool row (menu: every kind with "next time only", plus "New event type …",
+  which opens the settings). Once unlocked: a segmented control above the big button (tap =
+  sticky), a kind select in every capture row. **K** cycles the sticky kind at any time.
+- The button shows a kind other than finish in its label ("START ERFASSEN" / "RECORD START") and
+  a stripe in the role colour (`--kind-start`, `--kind-split`, `--kind-marker`); a one-shot kind
+  adds a dashed ring and a note "Next time: Protest – then back to Finish." The toast names the
+  kind. The ranking title follows the sticky kind's role (`sorted.titleStart`,
+  `sorted.titleSplit`, else `sorted.title`).
+- **Elapsed time** of a finish = its time minus the participant's own latest start before it,
+  else the latest unassigned start before it. A staggered start is recorded as one unassigned
+  start per group, so elapsed times of earlier groups drift — accepted for now; the analytics
+  pipeline knows the groups and start times.
+
 ### Undo / redo
 - Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar. Discreet until
   used (premise 3): the pair is hidden while both stacks are empty and appears with the first
@@ -199,6 +246,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   devices (`APPLE`), **Ctrl+Z / Ctrl+Y** (and Ctrl+Shift+Z) elsewhere; ⌘Y is left alone (Chrome
   history). Like the other shortcuts they are ignored while typing in inputs (the native text undo
   applies there) and while a dialog or the settings are open. Listed in the shortcuts dialog.
+- Capture kinds: choosing the sticky kind (`workset.setKind`), retyping a capture and the custom
+  kind operations are undoable; arming a one-shot kind is not an operation and isn't recorded.
 - Every action is undoable except `race.archive` and `state.merge` (both clear the history), as
   are resetting the local data and copying server data (not operations).
 - **Compensating operations**, no reducer or server involvement: `perform()` asks
@@ -222,11 +271,16 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   operation. A new action clears the redo stack; no-op actions aren't recorded.
 
 ### Finishes list ("Zieldurchläufe")
-- Newest first; each row shows place `#n` (by time ascending), time, delta to the
-  previous capture ("First" for the first), the date (spelled out only when the capture is
+- Newest first; each row shows place `#n` (by time ascending, counted within the capture's kind;
+  none for markers), time, delta to the previous capture of the same kind ("First" for the
+  first; none for markers) plus the elapsed time for finishes with a start, the date (spelled out only when the capture is
   not from today; the full ISO timestamp is always in the row's `title`), a participant
   dropdown to assign/reassign
   (including "(deleted participant)" if the participant was deleted) and a delete button.
+- Once kinds are unlocked, each row has a kind select before the participant select (its left
+  border in the role colour; split kinds show their number). As soon as a capture isn't a finish
+  the title becomes "Zeiten" / "Times", and with more than one kind among the captures a filter
+  (`prefs.captureFilter`, per device) appears under the header.
 - Captures not yet confirmed by the server show a "⏳ not synced" marker.
 - Header count uses the same `.count` style as the other panels.
 - CSV export via the ↧ icon button in the panel header (`.icon-btn`: borderless, muted,
@@ -234,7 +288,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (sailing: `Platz;Zeitstempel;Uhrzeit;Boot` / `Place;Timestamp;Time;Boat`). The
   *Zeitstempel/Timestamp* column is the full ISO 8601 timestamp with date and offset
   (`2026-09-25T14:33:12.45+02:00`), the *Uhrzeit/Time* column the same instant as a readable
-  local time.
+  local time. As long as every capture is a finish that is the whole file; otherwise the header
+  is `export.headerKinds` (… `;Zeitart;Laufzeit` / `;Event type;Elapsed`) and the place column
+  counts within each kind (empty for markers).
 
 ### Participants (overall list)
 - Add by name (sailing UI: sail number or boat name; max 60 chars; whitespace
@@ -244,12 +300,15 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   one participant per line, first column (`;` or `,` separated, quotes stripped),
   an optional header line matching the text `import.headerPattern` is skipped (sailing:
   `name`, `boot`, `boat`, `segelnummer`, `sail`…), existing names are skipped.
-- Each row shows the latest recorded time of the participant, with `+x` if it has more.
+- Each row shows the participant's latest finish (captures of role finish only), with `+x` if it
+  has more, and its elapsed time when there is a start.
 - Filters are toggle buttons in one bar: **All**, **No finish time**, **Hide approaching**.
   "No finish time" and "Hide approaching" can be active at the same time; clicking "All"
   turns both off; activating either turns "All" off. By default ranked participants are shown
   in the overall list too, marked with an "Approaching #n" badge and a ↩ button instead of →/✕.
-- Sorting: **Order added / Name / Finish time** plus a direction toggle (↑/↓).
+- Sorting: **Order added / Name / Finish time** (and **Elapsed** once a start has been
+  recorded, sorting like Finish time by the elapsed times) plus a direction toggle (↑/↓).
+  "Finish time", "Elapsed" and the "No finish time" filter only look at finishes.
   Finish time ascending uses the participant's *first* recorded time, descending its *last*
   recorded time; participants without a time always come last. Name sort is locale-aware and
   numeric.
@@ -314,9 +373,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   safe-area insets matter (iPad).
 
 ### Pinned clock
-- A borderless 📌 `.icon-btn` in the clock card's top row (its own flex row, so the clock
-  keeps the full width) makes the card sticky at the top while scrolling; it is greyscale and
-  dimmed while inactive and shows its colours when the clock is pinned. Pinned, the card
+- A borderless pushpin `.icon-btn` (inline SVG in `currentColor`, sized like the ⚑ kind button next to it) in the clock card's top row (its own flex row, so the clock
+  keeps the full width) makes the card sticky at the top while scrolling; it is muted while
+  inactive and in the accent colour when the clock is pinned. Pinned, the card
   sticks at `top: var(--safe-top)` (the `env(safe-area-inset-top)` token on `:root`).
   A scroll listener sets `body.clock-stuck` while the card actually sits at the top edge;
   only then does it square its top corners and paint a `::before` strip over the status bar,
@@ -369,8 +428,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   - *Upload local data*: merge local → server; the local data stays in this browser
     (reset it explicitly in local mode if you want it gone). Merging never deletes:
     participants are matched by id or case-insensitive name, missing ranked participants appended,
-    captures added unless their id exists, name only set if the race has none, sport
-    only set if the race still has the default (`generic`).
+    custom kinds matched by id or case-insensitive name (captures' kinds remapped), captures
+    added unless their id exists, name only set if the race has none, sport only set if the race
+    still has the default (`generic`); the selected kind is not merged.
   - *Copy server data to this browser*: overwrite local data with the race (never merge).
 - **Disconnect** switches back to local storage; the server race is untouched.
 
@@ -383,9 +443,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `localStorage['zeitnah.cache:<serverUrl>|<code>']`, so buffered changes survive
   reloads.
 - Allowed while not connected (buffered, sent on reconnect): `capture.add`,
-  `capture.assign`, `capture.delete`, `ranking.add`, `ranking.remove`, `ranking.move`
-  (`OFFLINE_OPS` in the frontend).
-- Everything else (rename race, add/import/rename/delete participants, merge, archive) is
+  `capture.assign`, `capture.delete`, `capture.setKind`, `workset.setKind`, `ranking.add`,
+  `ranking.remove`, `ranking.move` (`OFFLINE_OPS` in the frontend).
+- Everything else (rename race, add/import/rename/delete participants, custom kinds, merge,
+  archive) is
   disabled until the connection is back: elements marked `data-edit="normal"` are dimmed
   via `body.lock-normal`, and `perform()` refuses with a toast.
 - Status (local / connecting / connected / connection lost, plus pending count and
@@ -442,7 +503,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   top and undoes the restore. The panel and the modal backdrop use
   `overscroll-behavior: contain`.
 - Opened by ⚙ in the top bar (next to the status pill and the undo/redo buttons).
-- Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
+- Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced
   settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
@@ -468,15 +529,23 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `ranking.add` | `participantId` | appends if the participant exists and isn't ranked |
 | `ranking.remove` | `participantId` | |
 | `ranking.move` | `participantId, beforeId` (null = end) | no-op if not ranked |
-| `capture.add` | `capture: {id, ts, tzOffset, participantId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); ignored if id exists; unknown participant → unassigned; removes the participant from the ranking |
+| `capture.add` | `capture: {id, ts, tzOffset, participantId, kind}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); ignored if id exists; unknown participant → unassigned; removes the participant from the ranking unless the kind is a marker |
 | `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
 | `capture.delete` | `captureId` | |
-| `state.merge` | `state: {name, sport, participants, ranking, captures}` | non-destructive merge (see above); `sport` optional, rejected with `invalid_sport` if unknown |
+| `capture.setKind` | `captureId, kind` | same `kind` rules as `capture.add`; no-op if the capture is gone; ranking untouched |
+| `workset.setKind` | `kind` | sets `captureKind`; no-op unless the kind is built-in or an existing custom kind |
+| `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
+| `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
+| `kind.delete` | `kindId` | captures keep the id; resets `captureKind` to `finish` if it was this kind |
+| `state.merge` | `state: {name, sport, participants, ranking, kinds, captures}` | non-destructive merge (see above); `sport` and `kinds` optional, `sport` rejected with `invalid_sport` if unknown |
 
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,tzOffset,participantId}]}`.
+`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captureKind, kinds:[{id,name,role}], captures:[{id,ts,tzOffset,participantId,kind}]}`.
+States stored by earlier versions lack `captureKind`, `kinds` and the captures' `kind`:
+`OperationReducer::upgrade()` fills them in when the repository loads a race, `normalizeState()`
+on the client.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
@@ -556,6 +625,9 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 7. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
+- Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
+  group) they are wrong for all but the last group. Groups are not modelled yet.
+- Only the default workset exists: all devices on a race share one ranking and one selected kind.
 - No authentication: anyone who knows a race code can read and edit it.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
   run service workers; the app still works, but a reload then needs the server.

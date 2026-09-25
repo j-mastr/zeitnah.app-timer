@@ -9,12 +9,20 @@ namespace App\Race;
  *
  * State shape:
  *   name: ?string, archived: bool, sport: string,
- *   participants: list<{id, name}>, ranking: list<participantId>, captures: list<{id, ts, tzOffset: ?int, participantId: ?string}>
+ *   participants: list<{id, name}>, ranking: list<participantId>, captureKind: string,
+ *   kinds: list<{id, name, role}>, captures: list<{id, ts, tzOffset: ?int, participantId: ?string, kind: string}>
  *
  * A capture timestamp is the pair `ts` (Unix milliseconds, the absolute instant including
  * the date) and `tzOffset` (minutes east of UTC on the recording device, null when the
  * recording client did not report one), so it can always be rendered as a full local
  * timestamp with date and time zone.
+ *
+ * Every capture has a `kind`: one of the built-in kinds (start, split, finish; the default
+ * is finish) or the id of a custom kind in `kinds`. A custom kind has the role `split` (a
+ * point the participants pass) or `marker` (an annotation such as a protest). A capture takes
+ * its participant out of the ranking unless its kind is a marker; an unknown kind id (e.g. a
+ * custom kind deleted concurrently) counts as a marker. `ranking` and `captureKind` (the kind
+ * new captures get) together form the race's default workset.
  *
  * `sport` selects the UI text set (see TEXTS in frontend/index.html); the reducer only
  * validates it against SPORTS, it carries no other meaning server-side.
@@ -29,7 +37,8 @@ final class OperationReducer
         'race.rename', 'race.archive', 'race.setSport',
         'participants.add', 'participant.rename', 'participant.delete',
         'ranking.add', 'ranking.remove', 'ranking.move',
-        'capture.add', 'capture.assign', 'capture.delete',
+        'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+        'workset.setKind', 'kind.add', 'kind.update', 'kind.delete',
         'state.merge',
     ];
 
@@ -38,13 +47,36 @@ final class OperationReducer
 
     public const DEFAULT_SPORT = 'generic';
 
+    // Mirrors BUILTIN_KINDS / CUSTOM_KIND_ROLES in frontend/index.html. A built-in kind is its own role.
+    public const BUILTIN_KINDS = ['start', 'split', 'finish'];
+    public const DEFAULT_KIND = 'finish';
+    public const CUSTOM_KIND_ROLES = ['split', 'marker'];
+
     private const ID_PATTERN = '/^[A-Za-z0-9_-]{1,40}$/';
     private const MAX_PARTICIPANT_NAME = 60;
     private const MAX_RACE_NAME = 80;
+    private const MAX_KIND_NAME = 40;
 
     public static function emptyState(): array
     {
-        return ['name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [], 'ranking' => [], 'captures' => []];
+        return [
+            'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [], 'ranking' => [],
+            'captureKind' => self::DEFAULT_KIND, 'kinds' => [], 'captures' => [],
+        ];
+    }
+
+    /**
+     * Fills in the fields a state stored by an earlier version lacks (sport, captureKind,
+     * kinds, the kind of each capture), so the reducer can rely on them.
+     */
+    public static function upgrade(array $state): array
+    {
+        $state += self::emptyState();
+        foreach ($state['captures'] as $i => $capture) {
+            $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND];
+        }
+
+        return $state;
     }
 
     /**
@@ -155,14 +187,16 @@ final class OperationReducer
                 $ts = self::timestamp($capture['ts'] ?? null);
                 $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
                 $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
+                $kind = self::captureKind($capture['kind'] ?? null);
                 if (null !== self::findCapture($state, $id)) {
                     return $state;
                 }
                 if (null !== $participantId && null === self::findParticipant($state, $participantId)) {
                     $participantId = null;
                 }
-                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId];
-                if (null !== $participantId) {
+                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId, 'kind' => $kind];
+                // A marker (e.g. a protest) annotates a participant without it passing the point.
+                if (null !== $participantId && 'marker' !== self::kindRole($state, $kind)) {
                     $state['ranking'] = self::without($state['ranking'], $participantId);
                 }
 
@@ -182,6 +216,53 @@ final class OperationReducer
             case 'capture.delete':
                 $captureId = self::id($op['captureId'] ?? null, 'capture_id');
                 $state['captures'] = array_values(array_filter($state['captures'], static fn ($c) => $c['id'] !== $captureId));
+
+                return $state;
+
+            case 'capture.setKind':
+                $captureId = self::id($op['captureId'] ?? null, 'capture_id');
+                $kind = self::captureKind($op['kind'] ?? null);
+                $index = self::findCapture($state, $captureId);
+                if (null !== $index) {
+                    $state['captures'][$index]['kind'] = $kind;
+                }
+
+                return $state;
+
+            case 'workset.setKind':
+                $kind = self::captureKind($op['kind'] ?? null);
+                if (self::isKnownKind($state, $kind)) {
+                    $state['captureKind'] = $kind;
+                }
+
+                return $state;
+
+            case 'kind.add':
+                $kind = self::customKind($op['kind'] ?? null);
+                if (null === self::findKind($state, $kind['id']) && null === self::findKindByName($state, $kind['name'])) {
+                    $state['kinds'][] = $kind;
+                }
+
+                return $state;
+
+            case 'kind.update':
+                $id = self::id($op['kindId'] ?? null, 'kind_id');
+                $name = self::name($op['name'] ?? null, self::MAX_KIND_NAME, 'kind_name');
+                $role = self::kindRoleValue($op['role'] ?? null);
+                $index = self::findKind($state, $id);
+                if (null !== $index) {
+                    $state['kinds'][$index] = ['id' => $id, 'name' => $name, 'role' => $role];
+                }
+
+                return $state;
+
+            case 'kind.delete':
+                $id = self::id($op['kindId'] ?? null, 'kind_id');
+                // Captures keep the id, like they keep the id of a deleted participant.
+                $state['kinds'] = array_values(array_filter($state['kinds'], static fn ($k) => $k['id'] !== $id));
+                if ($state['captureKind'] === $id) {
+                    $state['captureKind'] = self::DEFAULT_KIND;
+                }
 
                 return $state;
 
@@ -205,9 +286,10 @@ final class OperationReducer
         }
         $participants = $source['participants'] ?? [];
         $ranking = $source['ranking'] ?? [];
+        $kinds = $source['kinds'] ?? [];
         $captures = $source['captures'] ?? [];
-        if (!is_array($participants) || !is_array($ranking) || !is_array($captures)
-            || count($participants) > 5000 || count($ranking) > 5000 || count($captures) > 20000) {
+        if (!is_array($participants) || !is_array($ranking) || !is_array($kinds) || !is_array($captures)
+            || count($participants) > 5000 || count($ranking) > 5000 || count($kinds) > 500 || count($captures) > 20000) {
             throw new InvalidOperationException('invalid_state');
         }
 
@@ -232,6 +314,19 @@ final class OperationReducer
             }
         }
 
+        // Custom kinds are matched by id or (case-insensitive) name, like participants.
+        $kindMap = [];
+        foreach ($kinds as $kind) {
+            $kind = self::customKind($kind);
+            $index = self::findKind($state, $kind['id']) ?? self::findKindByName($state, $kind['name']);
+            if (null === $index) {
+                $state['kinds'][] = $kind;
+                $kindMap[$kind['id']] = $kind['id'];
+            } else {
+                $kindMap[$kind['id']] = $state['kinds'][$index]['id'];
+            }
+        }
+
         foreach ($captures as $capture) {
             if (!is_array($capture)) {
                 throw new InvalidOperationException('invalid_capture');
@@ -240,10 +335,15 @@ final class OperationReducer
             $ts = self::timestamp($capture['ts'] ?? null);
             $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
             $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
+            $kind = self::captureKind($capture['kind'] ?? null);
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
-            $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null];
+            $state['captures'][] = [
+                'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset,
+                'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null,
+                'kind' => $kindMap[$kind] ?? $kind,
+            ];
         }
 
         $name = $source['name'] ?? null;
@@ -322,6 +422,83 @@ final class OperationReducer
         }
 
         return $value;
+    }
+
+    /** The kind of a capture: a built-in or custom kind id; null (older clients) means finish. */
+    private static function captureKind(mixed $value): string
+    {
+        if (null === $value) {
+            return self::DEFAULT_KIND;
+        }
+        if (!is_string($value) || !preg_match(self::ID_PATTERN, $value)) {
+            throw new InvalidOperationException('invalid_capture_kind');
+        }
+
+        return $value;
+    }
+
+    /** A custom kind definition {id, name, role}; its id must not be a built-in one. */
+    private static function customKind(mixed $value): array
+    {
+        if (!is_array($value)) {
+            throw new InvalidOperationException('invalid_kind');
+        }
+        $id = self::id($value['id'] ?? null, 'kind_id');
+        if (in_array($id, self::BUILTIN_KINDS, true)) {
+            throw new InvalidOperationException('invalid_kind_id');
+        }
+        $name = self::name($value['name'] ?? null, self::MAX_KIND_NAME, 'kind_name');
+        $role = self::kindRoleValue($value['role'] ?? null);
+
+        return ['id' => $id, 'name' => $name, 'role' => $role];
+    }
+
+    private static function kindRoleValue(mixed $value): string
+    {
+        if (!is_string($value) || !in_array($value, self::CUSTOM_KIND_ROLES, true)) {
+            throw new InvalidOperationException('invalid_kind_role');
+        }
+
+        return $value;
+    }
+
+    /** Role of a kind id: a built-in kind is its own role; unknown ids count as markers. */
+    private static function kindRole(array $state, string $kind): string
+    {
+        if (in_array($kind, self::BUILTIN_KINDS, true)) {
+            return $kind;
+        }
+        $index = self::findKind($state, $kind);
+
+        return null === $index ? 'marker' : $state['kinds'][$index]['role'];
+    }
+
+    private static function isKnownKind(array $state, string $kind): bool
+    {
+        return in_array($kind, self::BUILTIN_KINDS, true) || null !== self::findKind($state, $kind);
+    }
+
+    private static function findKind(array $state, string $id): ?int
+    {
+        foreach ($state['kinds'] as $i => $kind) {
+            if ($kind['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findKindByName(array $state, string $name): ?int
+    {
+        $key = self::key($name);
+        foreach ($state['kinds'] as $i => $kind) {
+            if (self::key($kind['name']) === $key) {
+                return $i;
+            }
+        }
+
+        return null;
     }
 
     private static function findParticipant(array $state, string $id): ?int
