@@ -4571,7 +4571,7 @@ function renderCaptures(){
       });
       side.appendChild(kindSel);
     }
-    const targets = buildTargetControls(s, c, f, editable('assign'));
+    const targets = buildTargetControls(s, c, editable('assign'));
     const del = document.createElement('button');
     del.className = 'mini';
     del.textContent = '✕';
@@ -4588,11 +4588,10 @@ function renderCaptures(){
 }
 /*
  * A capture's participants. One (or none): a select that replaces the assignment, as always.
- * Several — a protest or a recall concerns more than one — are chips with ✕ each. The "+"
- * select that adds one more is discreet: only on marker rows and rows that already have
- * several participants (premise 3).
+ * Several — a protest, a recall, a dead heat — are chips with ✕ each. Once a capture has a
+ * participant, a small "+" select adds another one, whatever the kind.
  */
-function buildTargetControls(s, c, f, editable){
+function buildTargetControls(s, c, editable){
   const pids = captureParticipantIds(c);
   const nameOf = (id) => { const p = participantById(id); return p ? p.name : t('captures.deletedParticipant'); };
   const option = (value, text, selected = false) => {
@@ -4636,7 +4635,7 @@ function buildTargetControls(s, c, f, editable){
     });
     out.push(sel);
   }
-  if(editable && (pids.length > 1 || (f.role === 'marker' && pids.length === 1))){
+  if(editable && pids.length > 0){
     const add = document.createElement('select');
     add.className = 'assign add-target';
     add.dataset.edit = 'critical';

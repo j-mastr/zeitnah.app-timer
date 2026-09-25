@@ -304,10 +304,11 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   not from today; the full ISO timestamp is always in the row's `title`), a participant
   dropdown to assign/reassign (`capture.assign`, replaces all participants)
   (including "(deleted participant)" if the participant was deleted) and a delete button.
-- **Several participants on one capture** (a protest, a recall): a marker row with a participant
-  also has a "+" select (`.add-target`, `capture.target.add`); a capture with several shows
-  them as chips (`.target-chip`) with ✕ (`capture.target.remove`) plus the "+" instead of the
-  dropdown (`buildTargetControls()`). Discreet: other rows look as before. Split numbering
+- **Several participants on one capture** (a protest, a recall, a dead heat), for every kind: a
+  row with a participant also has a small "+" select (`.add-target`, `capture.target.add`); a
+  capture with several shows them as chips (`.target-chip`) with ✕ (`capture.target.remove`)
+  plus the "+" instead of the dropdown (`buildTargetControls()`). An unassigned row has only the
+  dropdown. Split numbering
   (`captureFacts().number`) only counts captures of exactly one participant. The CSV
   participant column lists all of them, comma-separated.
 - Once kinds are unlocked, each row has a kind select before the participant select (its left

@@ -135,8 +135,8 @@ Limits (new error codes): ≤ 500 groups, ≤ 5000 members per group, ≤ 500 ta
   Class, Start group · running Wave, Age group, Distance · swimming Heat, Event · motor Class,
   Team.
 - Unlocked once they exist: group chips on participant rows, a group filter, groups in the
-  quick search and in the capture target select (`<optgroup>`), "+" on marker rows for more
-  targets, a CSV column per group type and per field.
+  quick search and in the capture target selects (`<optgroup>`), a CSV column per group type
+  and per field.
 - Rule-based groups: "Create groups from the values of *Class*" makes one group per distinct
   value with an `eq` rule; yardstick bands use `range` rules.
 - CSV import: extra columns with a header row become fields + meta values; the first column
@@ -226,7 +226,7 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
    newer local data, parity fixtures. Released first, still at version 1.
 2. **Capture targets** (schema 2) — `participantId` → `targets`, legacy op shapes,
    `capture.target.add/remove`, merge remapping, undo parts, `captureFacts()` via a memoised
-   `resolvedTargets(c)`, sorting, participant rows, CSV; "+" on marker rows.
+   `resolvedTargets(c)`, sorting, participant rows, CSV; "+" on assigned rows of every kind.
 3. **Groups and group types** — ops in both reducers, cycle-safe `resolve()` in JS,
    `participant.delete` clean-up, merge, permissions, undo (a participant delete restores its
    memberships), the new elapsed rule; UI: manager, chips, filter, groups in selects/search,
@@ -294,9 +294,10 @@ rejected with `invalid_capture_target` until phase 3 raises the version again).
 - Duplicates in a target list are dropped (first occurrence wins); at most 500 targets.
 - **Elapsed time** is computed per participant (`elapsedBy`); a row shows it only when it is the
   same for all of its participants. A start with several targets is the own start of each.
-- **UI:** a single-participant row is unchanged (the select replaces the assignment). The "+"
-  select appears only on marker rows with a participant and on rows with several; several are
-  shown as chips with ✕. The row's controls wrap, so the chips get a line of their own on
+- **UI:** the select of a single-participant row replaces the assignment as before. Every row
+  with a participant, of any kind, has a small "+" select to add another one (decided by the
+  product owner: not only markers — e.g. a dead heat of two finishers); several are shown as
+  chips with ✕. An unassigned row has only the select. The row's controls wrap, so the chips get a line of their own on
   narrow screens.
 - Undo of a capture of several ranked participants re-ranks them last-first, so each is moved
   before a neighbour that is already back.

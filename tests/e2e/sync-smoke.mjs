@@ -71,6 +71,9 @@ try {
   await sleep(800);
   assert.equal(await b.textContent('#capCount'), '2');
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  // Any assigned capture can take further participants ("+"); an unassigned one can't yet.
+  assert.equal(await b.locator('#capList .cap-row >> nth=0 >> select.add-target').count(), 1);
+  assert.equal(await b.locator('#capList .cap-row >> nth=1 >> select.add-target').count(), 0);
   step('space bar assigns the first sorted participant on all clients');
 
   // Capture kinds: custom kinds and the selected kind are race data; a one-shot kind stays on its device.
