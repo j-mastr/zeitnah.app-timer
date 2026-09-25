@@ -2,6 +2,7 @@
 
 namespace App\WebSocket;
 
+use App\Race\AccessRevokedException;
 use App\Race\RaceNotFoundException;
 use App\Race\RaceRepository;
 use GuzzleHttp\Psr7\HttpFactory;
@@ -19,17 +20,19 @@ use React\Socket\ConnectionInterface;
  * Real-time synchronisation over WebSockets.
  *
  * Protocol (JSON text messages):
- *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a race
- *   server → client  {"type":"snapshot","code","seq","state"}
+ *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a race (with any of its access codes)
+ *   server → client  {"type":"snapshot","code","seq","state","access"}
  *   client → server  {"type":"workset","worksetId"}         the workset this device works on (null: none)
  *   client → server  {"type":"ops","ops":[{opId,type,...}]}
- *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber
+ *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber, filtered by its
+ *                                                             access ({seq,opId,redacted} / {seq,opId,resync})
+ *   server → client  {"type":"access","code","rules","codes"?} after worksets were added or deleted
  *   server → client  {"type":"presence","code","clients","worksets":{id:n}}
  *                                                             subscriber count of this race, and per workset
  *   server → client  {"type":"ack","opId"}                   op had already been applied
  *   server → client  {"type":"rejected","opId","error"}
  *   client ↔ server  {"type":"ping"} / {"type":"pong"}
- *   server → client  {"type":"error","error"}                e.g. not_found
+ *   server → client  {"type":"error","error"}                e.g. not_found, access_revoked (then unsubscribed)
  */
 final class SyncServer
 {
@@ -39,10 +42,12 @@ final class SyncServer
 
     /** @var array<int, ClientSession> */
     private array $sessions = [];
-    /** @var array<string, array<int, ClientSession>> code => sessions */
+    /** @var array<int, array<int, ClientSession>> race id => sessions */
     private array $subscribers = [];
-    /** @var array<string, int> last sequence number pushed per race */
+    /** @var array<int, int> last sequence number pushed per race */
     private array $pushedSeq = [];
+    /** Operations after which the access of connected clients is checked again. */
+    private const ACCESS_CHANGING_OPS = ['workset.add', 'workset.delete', 'state.merge'];
     private ServerNegotiator $negotiator;
     private \Closure $log;
 
@@ -74,9 +79,9 @@ final class SyncServer
         }
         try {
             $current = $this->races->currentSeqs(array_keys($this->subscribers));
-            foreach ($current as $code => $seq) {
-                if ($seq > ($this->pushedSeq[$code] ?? 0)) {
-                    $this->broadcast($code);
+            foreach ($current as $raceId => $seq) {
+                if ($seq > ($this->pushedSeq[$raceId] ?? 0)) {
+                    $this->broadcast($raceId);
                 }
             }
         } catch (\Throwable $e) {
@@ -203,22 +208,26 @@ final class SyncServer
 
     private function onHello(ClientSession $session, string $code): void
     {
-        $code = RaceRepository::normalizeCode($code);
         try {
-            $snapshot = $this->races->snapshot($code);
+            $access = $this->races->resolve($code);
+            $snapshot = $this->races->snapshot($access);
         } catch (RaceNotFoundException) {
             $session->send(['type' => 'error', 'error' => 'not_found']);
+
+            return;
+        } catch (AccessRevokedException) {
+            $session->send(['type' => 'error', 'error' => 'access_revoked']);
 
             return;
         }
 
         $this->unsubscribe($session);
-        $session->code = $code;
-        $this->subscribers[$code][$session->id()] = $session;
-        $this->pushedSeq[$code] ??= $snapshot['seq'];
+        $session->access = $access;
+        $this->subscribers[$access->raceId][$session->id()] = $session;
+        $this->pushedSeq[$access->raceId] ??= $snapshot['seq'];
         $session->send(['type' => 'snapshot'] + $snapshot);
-        ($this->log)(sprintf('client #%d subscribed to %s', $session->id(), $code));
-        $this->broadcastPresence($code);
+        ($this->log)(sprintf('client #%d subscribed to race %d with %s', $session->id(), $access->raceId, $access->code));
+        $this->broadcastPresence($access->raceId);
     }
 
     /** A device announces the workset it works on; it only feeds the presence counts. */
@@ -229,14 +238,14 @@ final class SyncServer
             return;
         }
         $session->worksetId = $worksetId;
-        if (null !== $session->code) {
-            $this->broadcastPresence($session->code);
+        if (null !== $session->access) {
+            $this->broadcastPresence($session->access->raceId);
         }
     }
 
     private function onOperations(ClientSession $session, mixed $ops): void
     {
-        if (null === $session->code) {
+        if (null === $session->access) {
             $session->send(['type' => 'error', 'error' => 'not_subscribed']);
 
             return;
@@ -248,7 +257,7 @@ final class SyncServer
         }
 
         try {
-            $results = $this->races->applyOperations($session->code, $ops);
+            $results = $this->races->applyOperations($session->access, $ops);
         } catch (RaceNotFoundException) {
             $session->send(['type' => 'error', 'error' => 'not_found']);
 
@@ -261,37 +270,67 @@ final class SyncServer
                 $session->send(['type' => 'ack', 'opId' => $result['opId']]);
             }
         }
-        $this->broadcast($session->code);
+        $this->broadcast($session->access->raceId);
     }
 
     /**
-     * Tells every subscriber how many clients watch this race, in total and per workset. Only
-     * this process's WebSocket connections are counted; HTTP polling clients are invisible here.
+     * Tells every subscriber how many clients watch this race, in total and per workset (only
+     * the worksets it may see). Only this process's WebSocket connections are counted; HTTP
+     * polling clients are invisible here.
      */
-    private function broadcastPresence(string $code): void
+    private function broadcastPresence(int $raceId): void
     {
-        $subscribers = $this->subscribers[$code] ?? [];
+        $subscribers = $this->subscribers[$raceId] ?? [];
         $worksets = [];
         foreach ($subscribers as $subscriber) {
             if (null !== $subscriber->worksetId) {
                 $worksets[$subscriber->worksetId] = ($worksets[$subscriber->worksetId] ?? 0) + 1;
             }
         }
-        $message = ['type' => 'presence', 'code' => $code, 'clients' => count($subscribers), 'worksets' => (object) $worksets];
         foreach ($subscribers as $subscriber) {
-            $subscriber->send($message);
+            $visible = array_filter($worksets, static fn ($id) => $subscriber->access->canViewWorkset((string) $id), ARRAY_FILTER_USE_KEY);
+            $subscriber->send([
+                'type' => 'presence', 'code' => $subscriber->access->code, 'clients' => count($subscribers), 'worksets' => (object) $visible,
+            ]);
         }
     }
 
-    private function broadcast(string $code): void
+    private function broadcast(int $raceId): void
     {
-        $events = $this->races->eventsSince($code, $this->pushedSeq[$code] ?? 0);
+        $events = $this->races->eventsSince($raceId, $this->pushedSeq[$raceId] ?? 0);
         if (!$events) {
             return;
         }
-        $this->pushedSeq[$code] = end($events)['seq'];
-        foreach ($this->subscribers[$code] ?? [] as $subscriber) {
-            $subscriber->send(['type' => 'events', 'events' => $events]);
+        $this->pushedSeq[$raceId] = end($events)['seq'];
+        foreach ($this->subscribers[$raceId] ?? [] as $subscriber) {
+            $subscriber->send(['type' => 'events', 'events' => array_map($subscriber->access->filterEvent(...), $events)]);
+        }
+        foreach ($events as $event) {
+            if (in_array($event['op']['type'] ?? null, self::ACCESS_CHANGING_OPS, true)) {
+                $this->refreshAccess($raceId);
+                break;
+            }
+        }
+    }
+
+    /**
+     * After worksets were added or deleted: clients whose code lost its last workset are told
+     * and dropped; the others get their access again (with the race's codes, if they see them).
+     */
+    private function refreshAccess(int $raceId): void
+    {
+        try {
+            $state = $this->races->state($raceId);
+        } catch (RaceNotFoundException) {
+            return;
+        }
+        foreach ($this->subscribers[$raceId] ?? [] as $subscriber) {
+            if ($subscriber->access->isRevokedIn($state)) {
+                $subscriber->send(['type' => 'error', 'error' => 'access_revoked']);
+                $this->unsubscribe($subscriber);
+                continue;
+            }
+            $subscriber->send(['type' => 'access'] + $this->races->accessInfo($subscriber->access, $state));
         }
     }
 
@@ -304,17 +343,17 @@ final class SyncServer
 
     private function unsubscribe(ClientSession $session): void
     {
-        $code = $session->code;
-        if (null === $code) {
+        $raceId = $session->access?->raceId;
+        if (null === $raceId) {
             return;
         }
-        unset($this->subscribers[$code][$session->id()]);
-        $session->code = null;
-        if (empty($this->subscribers[$code])) {
-            unset($this->subscribers[$code], $this->pushedSeq[$code]);
+        unset($this->subscribers[$raceId][$session->id()]);
+        $session->access = null;
+        if (empty($this->subscribers[$raceId])) {
+            unset($this->subscribers[$raceId], $this->pushedSeq[$raceId]);
 
             return;
         }
-        $this->broadcastPresence($code);
+        $this->broadcastPresence($raceId);
     }
 }

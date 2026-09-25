@@ -108,6 +108,18 @@ class Database
                     UNIQUE (race_id, seq),
                     UNIQUE (race_id, op_id)
                 )',
+                'CREATE TABLE IF NOT EXISTS access_code (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code VARCHAR(16) NOT NULL UNIQUE,
+                    target_type VARCHAR(16) NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    rules TEXT NOT NULL,
+                    source VARCHAR(16) NOT NULL,
+                    source_ref VARCHAR(64) NULL,
+                    created_at VARCHAR(32) NOT NULL,
+                    revoked_at VARCHAR(32) NULL,
+                    UNIQUE (target_type, target_id, source, source_ref)
+                )',
             ],
             'mysql' => [
                 'CREATE TABLE IF NOT EXISTS race (
@@ -129,6 +141,18 @@ class Database
                     UNIQUE KEY uniq_op (race_id, op_id),
                     CONSTRAINT fk_event_race FOREIGN KEY (race_id) REFERENCES race(id) ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+                'CREATE TABLE IF NOT EXISTS access_code (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    code VARCHAR(16) NOT NULL UNIQUE,
+                    target_type VARCHAR(16) NOT NULL,
+                    target_id INT NOT NULL,
+                    rules TEXT NOT NULL,
+                    source VARCHAR(16) NOT NULL,
+                    source_ref VARCHAR(64) NULL,
+                    created_at VARCHAR(32) NOT NULL,
+                    revoked_at VARCHAR(32) NULL,
+                    UNIQUE KEY uniq_source (target_type, target_id, source, source_ref)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
             ],
             'pgsql' => [
                 'CREATE TABLE IF NOT EXISTS race (
@@ -149,9 +173,27 @@ class Database
                     UNIQUE (race_id, seq),
                     UNIQUE (race_id, op_id)
                 )',
+                'CREATE TABLE IF NOT EXISTS access_code (
+                    id SERIAL PRIMARY KEY,
+                    code VARCHAR(16) NOT NULL UNIQUE,
+                    target_type VARCHAR(16) NOT NULL,
+                    target_id INTEGER NOT NULL,
+                    rules TEXT NOT NULL,
+                    source VARCHAR(16) NOT NULL,
+                    source_ref VARCHAR(64) NULL,
+                    created_at VARCHAR(32) NOT NULL,
+                    revoked_at VARCHAR(32) NULL,
+                    UNIQUE (target_type, target_id, source, source_ref)
+                )',
             ],
             default => throw new \RuntimeException(sprintf('Unsupported database driver "%s".', $this->driver())),
         };
+
+        // Every race code grants full access to its race; races created before access codes
+        // existed get their row here (idempotent).
+        $statements[] = "INSERT INTO access_code (code, target_type, target_id, rules, source, source_ref, created_at)
+            SELECT r.code, 'race', r.id, '[\"*\"]', 'race', NULL, r.created_at FROM race r
+            WHERE NOT EXISTS (SELECT 1 FROM access_code a WHERE a.code = r.code)";
 
         foreach ($statements as $sql) {
             $this->pdo()->exec($sql);

@@ -41,6 +41,8 @@
   }
   *{box-sizing:border-box;}
   [hidden]{display:none !important;}
+  /* Controls the access code doesn't allow (data-perm, see applyPermissions). */
+  .perm-hidden{display:none !important;}
   /* Backstop against anything widening the page (iOS then zooms the whole app out).
      `clip`, unlike `hidden`, makes no scroll container, so the sticky clock keeps working. */
   html{scroll-padding-top:var(--safe-top); overflow-x:clip; -webkit-text-size-adjust:100%;}
@@ -338,10 +340,14 @@
   .kind-add #kindNameInput{flex:1 1 100%;}
   .kind-add .kind-role{flex:1 1 auto;}
   .kind-suggest{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:12px; color:var(--muted);}
-  .ws-row{display:flex; gap:6px; align-items:center;}
-  .ws-row .input{flex:1 1 auto; min-width:0; padding:8px 10px;}
+  .ws-row{display:flex; flex-wrap:wrap; gap:6px; align-items:center;}
+  .ws-sub{flex:1 1 100%; display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding-left:32px; font-size:11px; color:var(--muted);}
+  .ws-sub .ws-code{font-family:'Space Mono',monospace; color:var(--text); letter-spacing:.5px;}
+  .ws-sub .link-btn{margin:0; padding:0; font-size:11px;}
+  .station-picks{display:flex; flex-direction:column; gap:8px;}
+  /* A basis, not 100 %: the row wraps (for its second line), and the name must share the first. */
+  .ws-row .input{flex:1 1 120px; width:auto; min-width:0; padding:8px 10px;}
   .ws-row .ws-none{flex:1 1 auto; font-size:13px; color:var(--muted);}
-  .ws-meta{color:var(--muted); font-size:11px; white-space:nowrap;}
   .ws-pick.on{color:var(--accent); border-color:var(--accent);}
   #addWorksetBtn{margin-top:0;}
 
@@ -377,7 +383,7 @@
     <div>
       <div class="title-row">
         <h1 id="raceTitle"></h1>
-        <button class="mini" id="renameRaceBtn" data-edit="normal" data-i18n-title="header.rename">✎</button>
+        <button class="mini" id="renameRaceBtn" data-edit="normal" data-perm="race.rename" data-i18n-title="header.rename">✎</button>
       </div>
       <div class="sub" data-i18n="header.subtitle"></div>
     </div>
@@ -404,6 +410,10 @@
       <div class="date" id="dateLine"></div>
       <div><div class="seg kind-seg" id="kindSeg" role="radiogroup" data-edit="critical" data-i18n-title="kinds.segHint" hidden></div></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical"></button>
+      <div class="ws-notice" id="recordBlocked" hidden>
+        <span data-i18n="worksets.chooseToRecord"></span>
+        <span id="recordBlockedPicks"></span>
+      </div>
       <div class="kind-note" id="kindOnceNote" hidden><span id="kindOnceText"></span> <button class="link-btn" id="kindOnceCancel" data-i18n="kinds.onceCancel"></button></div>
       <div id="captureFreeRow"><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
       <div class="hint-line" id="clockHints">
@@ -434,7 +444,7 @@
     <div class="panel participants-panel">
       <div class="panel-head">
         <h2><span data-i18n="participants.title"></span> <span class="count" id="participantCount">0</span></h2>
-        <button class="icon-btn" id="importBtn" data-edit="normal" data-i18n-title="participants.import">↥</button>
+        <button class="icon-btn" id="importBtn" data-edit="normal" data-perm="participant.add" data-i18n-title="participants.import">↥</button>
         <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
       </div>
       <div class="hint-line" data-i18n="participants.hint"></div>
@@ -454,7 +464,7 @@
         </div>
         <button class="mini wide" id="sortDirBtn" data-i18n-title="sort.dir">↑</button>
       </div>
-      <div class="add-row" data-edit="normal">
+      <div class="add-row" data-edit="normal" data-perm="participant.add">
         <input class="input" id="participantInput" type="text" data-i18n-placeholder="participants.placeholder" maxlength="60">
         <button class="btn" id="addParticipantBtn" data-i18n="participants.add"></button>
       </div>
@@ -501,7 +511,7 @@
     </div>
   </section>
 
-  <section>
+  <section data-perm="race.setSport">
     <h3 data-i18n="settings.sport"></h3>
     <select class="input" id="sportSelect" data-edit="normal"></select>
   </section>
@@ -510,20 +520,20 @@
     <h3 data-i18n="kinds.title"></h3>
     <p class="help" id="kindsHelp" style="margin:0 0 10px;"></p>
     <ul class="kind-list" id="kindList"></ul>
-    <div class="add-row kind-add" data-edit="normal">
+    <div class="add-row kind-add" data-edit="normal" data-perm="kind.add">
       <input class="input" id="kindNameInput" type="text" maxlength="40" autocomplete="off" data-i18n-placeholder="kinds.placeholder">
       <select class="input kind-role" id="kindRoleSelect" data-i18n-title="kinds.role"></select>
       <button class="btn" id="addKindBtn" data-i18n="kinds.add"></button>
     </div>
-    <div class="kind-suggest" id="kindSuggest" data-edit="normal"></div>
+    <div class="kind-suggest" id="kindSuggest" data-edit="normal" data-perm="kind.add"></div>
     <p class="help" data-i18n="kinds.roleHelp"></p>
   </section>
 
   <section id="worksetsSection" hidden>
     <h3 data-i18n="worksets.title"></h3>
-    <p class="help" data-i18n="worksets.help" style="margin:0 0 10px;"></p>
+    <p class="help" id="worksetsHelp" data-i18n="worksets.help" style="margin:0 0 10px;"></p>
     <ul class="kind-list" id="worksetList"></ul>
-    <button class="link-btn" id="addWorksetBtn" type="button" data-edit="critical" data-i18n="worksets.add"></button>
+    <button class="link-btn" id="addWorksetBtn" type="button" data-edit="critical" data-perm="workset.add" data-i18n="worksets.add"></button>
   </section>
 
 
@@ -591,7 +601,7 @@
     </section>
     <section>
       <h3 data-i18n="settings.sync"></h3>
-      <div class="action">
+      <div class="action" data-perm="race.merge">
         <button class="btn block" id="mergeBtn" data-i18n="settings.merge"></button>
         <p class="help" id="mergeHelp"></p>
       </div>
@@ -600,7 +610,7 @@
         <p class="help" data-i18n="settings.pullHint"></p>
       </div>
     </section>
-    <section>
+    <section data-perm="race.archive">
       <div id="archiveAction">
         <button class="btn danger block" id="archiveBtn" data-i18n="settings.archive"></button>
         <p class="help" data-i18n="settings.archiveHint"></p>
@@ -637,6 +647,15 @@
       <li><span class="keys" id="shortcutsRedoKeys"></span><span data-i18n="shortcuts.redo"></span></li>
       <li><span class="keys"><span class="kbd" id="shortcutsModKey">Ctrl</span></span><span data-i18n="shortcuts.hold"></span></li>
     </ul>
+  </div>
+</div>
+
+<!-- ---------- station chooser (this device's station was deleted) ---------- -->
+<div class="modal-backdrop" id="stationDialog" hidden>
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="stationDialogTitle" aria-describedby="stationDialogText">
+    <h3 id="stationDialogTitle" data-i18n="worksets.chooseTitle"></h3>
+    <p id="stationDialogText"></p>
+    <div class="station-picks" id="stationDialogPicks"></div>
   </div>
 </div>
 
@@ -876,6 +895,19 @@ const TEXTS = {
       'history.worksetRename': 'Station umbenennen',
       'history.worksetDelete': 'Station löschen',
       'history.worksetDefault': 'Standard-Station ändern',
+      'lock.forbidden': 'Das erlaubt dieser Code nicht.',
+      'err.revoked': 'Der Zugang mit diesem Code besteht nicht mehr.',
+      'revoked.title': 'Zugang entzogen',
+      'revoked.text': 'Die Station dieses Codes wurde gelöscht. {n} Zeit(en) wurden noch nicht übertragen und gehen verloren. Vorher als CSV exportieren?',
+      'revoked.export': 'Exportieren',
+      'revoked.discard': 'Verwerfen',
+      'worksets.other': '(andere Station)',
+      'worksets.chooseTitle': 'Station wählen',
+      'worksets.chooseText': '„{name}“ wurde gelöscht. An welcher Station arbeitet dieses Gerät weiter?',
+      'worksets.switched': '„{name}“ wurde gelöscht – dieses Gerät arbeitet jetzt an „{next}“.',
+      'worksets.chooseToRecord': 'Ohne Station kann dieses Gerät keine Zeiten erfassen. Station wählen:',
+      'worksets.code': 'Code {code}',
+      'worksets.copyLink': 'Link kopieren',
     },
     en: {
       'app.title': 'zeitnah',
@@ -1063,6 +1095,19 @@ const TEXTS = {
       'history.worksetRename': 'Rename station',
       'history.worksetDelete': 'Delete station',
       'history.worksetDefault': 'Change the default station',
+      'lock.forbidden': 'This code doesn’t allow that.',
+      'err.revoked': 'Access with this code has ended.',
+      'revoked.title': 'Access revoked',
+      'revoked.text': 'The station of this code was deleted. {n} time(s) haven’t been sent and will be lost. Export them as CSV first?',
+      'revoked.export': 'Export',
+      'revoked.discard': 'Discard',
+      'worksets.other': '(other station)',
+      'worksets.chooseTitle': 'Choose a station',
+      'worksets.chooseText': '“{name}” was deleted. Which station does this device carry on with?',
+      'worksets.switched': '“{name}” was deleted – this device now works on “{next}”.',
+      'worksets.chooseToRecord': 'Without a station this device can’t record times. Choose a station:',
+      'worksets.code': 'Code {code}',
+      'worksets.copyLink': 'Copy link',
     },
   },
 
@@ -2074,6 +2119,100 @@ const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 
   'workset.add', 'workset.setKind', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move']);
 
 // =====================================================================
+// Access rules
+// =====================================================================
+/*
+ * Mirror of App\Access\Permissions (PHP), line by line; tests/access-parity.mjs keeps both
+ * identical. A permission is a path of [name, id|null] segments (`workset[w1].ranking.add`);
+ * a rule grants a path pattern, `revoke:` in front takes it away (a revoke always wins).
+ * A segment without an id matches every id, `*` one segment or, last, everything after it.
+ * The server enforces the rules; the client only hides and blocks what would be refused.
+ */
+const FULL_ACCESS = ['*'];
+const RULE_SEGMENT_RE = /^([A-Za-z]+)(?:\[([A-Za-z0-9_-]{1,40})\])?$/;
+const parsedRules = new Map();
+function parseRule(path){
+  if(parsedRules.has(path)) return parsedRules.get(path);
+  let segments = [];
+  for(const segment of path.split('.')){
+    const m = RULE_SEGMENT_RE.exec(segment);
+    if(segment === '*') segments.push(['*', null]);
+    else if(m) segments.push([m[1], m[2] !== undefined ? m[2] : null]);
+    else{ segments = null; break; }
+  }
+  parsedRules.set(path, segments);
+  return segments;
+}
+function ruleMatches(rule, path){
+  const last = rule.length - 1;
+  for(let i = 0; i < rule.length; i++){
+    const [name, id] = rule[i];
+    if(path[i] === undefined) return false;
+    if(name === '*'){
+      if(i === last) return true;
+      continue;
+    }
+    if(path[i][0] !== name || (id !== null && path[i][1] !== id)) return false;
+  }
+  return rule.length === path.length;
+}
+function rulesAllow(rules, path){
+  let granted = false;
+  for(const rule of rules){
+    if(typeof rule !== 'string') continue;
+    const revoke = rule.startsWith('revoke:');
+    const parsed = parseRule(revoke ? rule.slice(7) : rule);
+    if(parsed === null || !ruleMatches(parsed, path)) continue;
+    if(revoke) return false;
+    granted = true;
+  }
+  return granted;
+}
+/** Whether the rules only reach particular worksets (see Permissions::restrictedToWorksets). */
+function restrictedToWorksets(rules){
+  if(rulesAllow(rules, [['workset', ''], ['view', null]])) return false;
+  return rules.some(rule => {
+    if(typeof rule !== 'string' || rule.startsWith('revoke:')) return false;
+    const parsed = parseRule(rule);
+    return parsed !== null && parsed[0][0] === 'workset' && parsed[0][1] !== null;
+  });
+}
+const worksetSegment = (id) => ['workset', typeof id === 'string' ? id : ''];
+/** Path prefix of a capture: `workset[w1].capture`, or `capture` without a workset. */
+function captureScope(worksetId){
+  return worksetId === null || worksetId === undefined ? [['capture', null]] : [worksetSegment(worksetId), ['capture', null]];
+}
+/** The permission an operation needs, or null when it needs none (see Permissions::operationPath). */
+function operationPath(s, op){
+  const type = typeof op.type === 'string' ? op.type : '';
+  const parts = type.split('.');
+  switch(type){
+    case 'race.rename': case 'race.setSport': case 'race.archive':
+    case 'participant.rename': case 'participant.delete':
+    case 'kind.add': case 'kind.update': case 'kind.delete':
+    case 'workset.add':
+      return [[parts[0], null], [parts[1], null]];
+    case 'participants.add':
+      return [['participant', null], ['add', null]];
+    case 'state.merge':
+      return [['race', null], ['merge', null]];
+    case 'workset.rename': case 'workset.delete': case 'workset.makeDefault': case 'workset.setKind':
+    case 'workset.ranking.add': case 'workset.ranking.remove': case 'workset.ranking.move':
+      return [worksetSegment(op.worksetId), ...parts.slice(1).map(p => [p, null])];
+    case 'capture.add': {
+      const c = op.capture && typeof op.capture === 'object' && !Array.isArray(op.capture) ? op.capture : {};
+      return [...captureScope(c.worksetId === undefined ? null : c.worksetId), ['add', null]];
+    }
+    case 'capture.assign': case 'capture.delete': case 'capture.setKind': {
+      const c = (s.captures || []).find(x => x.id === op.captureId);
+      return c ? [...captureScope(c.worksetId === undefined ? null : c.worksetId), [parts[1], null]] : null;
+    }
+    default:
+      return null;
+  }
+}
+
+// =====================================================================
 // Undo / redo (per device, in memory)
 // =====================================================================
 /*
@@ -2278,6 +2417,8 @@ class LocalBackend {
   blockReason(){ return null; }
   isReady(){ return true; }
   announceWorkset(){}
+  /** Local data is this device's own: everything is allowed. */
+  accessInfo(){ return {rules: FULL_ACCESS}; }
   dispatch(op){
     try{ applyOp(this.state, op); }catch(e){ console.warn('operation rejected locally', op, e); return null; }
     localStore.save(this.state);
@@ -2328,6 +2469,8 @@ class ServerBackend {
     this.confirmed = normalizeState(cache && cache.state);
     this.seq = cache && Number.isInteger(cache.seq) ? cache.seq : 0;
     this.pending = cache && Array.isArray(cache.pending) ? cache.pending : [];
+    // What this code may do and see: {code, rules, codes?} from the server.
+    this.access = cache && cache.access && Array.isArray(cache.access.rules) ? cache.access : null;
     this.hasSnapshot = !!cache;
     this.status = 'connecting';
     this.transport = null;       // 'ws' | 'poll' | null
@@ -2366,8 +2509,23 @@ class ServerBackend {
   }
   blockReason(op){
     if(this.view.archived) return 'lock.archived';
+    const path = operationPath(this.view, op);
+    if(path && !rulesAllow(this.accessInfo().rules, path)) return 'lock.forbidden';
     if(OFFLINE_OPS.has(op.type)) return null;
     return this.status === 'online' ? null : 'lock.offline';
+  }
+  /** Until the server said otherwise (no snapshot yet), nothing is hidden; it enforces anyway. */
+  accessInfo(){ return this.access || {code: this.code, rules: FULL_ACCESS}; }
+  /** Starts from a snapshot fetched while connecting, if nothing is cached yet. */
+  seed(snapshot){
+    if(!this.hasSnapshot && snapshot && Number.isInteger(snapshot.seq)) this.applySnapshot(snapshot.seq, snapshot.state, snapshot.access);
+  }
+  setAccess(access){
+    if(!access || !Array.isArray(access.rules)) return;
+    if(JSON.stringify(access) === JSON.stringify(this.access)) return;
+    this.access = access;
+    this.persist();
+    this.handlers.onAccess();
   }
   dispatch(op){
     op.opId = op.opId || uid();
@@ -2387,7 +2545,7 @@ class ServerBackend {
   }
 
   // ----- state bookkeeping -----
-  persist(){ writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending}); }
+  persist(){ writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending, access:this.access}); }
   recompute(notify = true){
     const view = clone(this.confirmed);
     for(const op of this.pending){ try{ applyOp(view, op); }catch(e){} }
@@ -2406,7 +2564,8 @@ class ServerBackend {
     if(!ok && op) this.handlers.onRejected(op, error);
     return !!op;
   }
-  applySnapshot(seq, state){
+  applySnapshot(seq, state, access){
+    if(access && Array.isArray(access.rules)) this.access = access;
     this.confirmed = normalizeState(state);
     this.seq = seq;
     this.hasSnapshot = true;
@@ -2419,10 +2578,16 @@ class ServerBackend {
     for(const e of [...events].sort((a, b) => a.seq - b.seq)){
       if(e.seq <= this.seq) continue;
       if(e.seq !== this.seq + 1){ this.resync(); break; }
-      try{ applyOp(this.confirmed, e.op); }catch(err){ console.warn('could not apply server event', e, err); }
+      // A merge this code may only see in parts: fetch the state afresh.
+      if(e.resync){ this.resync(); break; }
+      // Redacted: about something this code doesn't see. Only the sequence number moves on.
+      if(!e.redacted){
+        try{ applyOp(this.confirmed, e.op); }catch(err){ console.warn('could not apply server event', e, err); }
+      }
       this.seq = e.seq;
       changed = true;
-      if(e.op && e.op.opId) this.settle(e.op.opId, true);
+      const opId = e.redacted ? e.opId : e.op && e.op.opId;
+      if(opId) this.settle(opId, true);
     }
     if(changed){ this.persist(); this.recompute(); }
   }
@@ -2482,7 +2647,7 @@ class ServerBackend {
         this.wsFailures = 0;
         this.stopPolling();
         this.sent.clear();
-        this.applySnapshot(msg.seq, msg.state);
+        this.applySnapshot(msg.seq, msg.state, msg.access);
         this.send({type:'workset', worksetId:this.worksetId});
         this.setStatus('online');
         this.flush();
@@ -2493,9 +2658,10 @@ class ServerBackend {
         this.worksetClients = msg.worksets && typeof msg.worksets === 'object' ? msg.worksets : {};
         this.handlers.onStatus();
         break;
+      case 'access': this.setAccess({code:msg.code, rules:msg.rules, ...(msg.codes ? {codes:msg.codes} : {})}); break;
       case 'ack': this.settle(msg.opId, true); this.persist(); this.recompute(); break;
       case 'rejected': this.settle(msg.opId, false, msg.error); this.persist(); this.recompute(); break;
-      case 'error': if(msg.error === 'not_found') this.fatal('not_found'); break;
+      case 'error': if(msg.error === 'not_found' || msg.error === 'access_revoked') this.fatal(msg.error); break;
     }
   }
   onWsDown(){
@@ -2545,15 +2711,15 @@ class ServerBackend {
       await this.flushHttp();
       if(this.needSnapshot){
         const snap = await api(this.serverUrl, '/api/races/' + this.code);
-        this.applySnapshot(snap.seq, snap.state);
+        this.applySnapshot(snap.seq, snap.state, snap.access);
       }else{
         const res = await api(this.serverUrl, '/api/races/' + this.code + '/events?since=' + this.seq);
-        if(res.reset) this.applySnapshot(res.seq, res.state);
-        else this.applyEvents(res.events || []);
+        if(res.reset) this.applySnapshot(res.seq, res.state, res.access);
+        else{ this.applyEvents(res.events || []); this.setAccess(res.access); }
       }
       ok = true;
     }catch(e){
-      if(e.code === 'not_found'){ this.fatal('not_found'); return; }
+      if(e.code === 'not_found' || e.code === 'access_revoked'){ this.fatal(e.code); return; }
       this.sent.clear();
     }
     if(!this.polling || this.destroyed) return;
@@ -2607,15 +2773,46 @@ const backendHandlers = {
   // The local data was replaced (reset, another tab): the history no longer applies.
   onReload(){ clearHistory(); renderAll(); },
   onStatus(){ renderStatus(); renderSettings(); },
+  // What this code may do or see changed (worksets added or deleted, codes created).
+  onAccess(){ renderAll(); },
   onRejected(op, error){
     // The server state differs from what the history was recorded against.
     clearHistory();
-    toast(t('err.rejected', {error: error || '?'}));
+    if(error === 'access_revoked'){ onAccessRevoked(); return; }
+    toast(error === 'forbidden' ? t('lock.forbidden') : t('err.rejected', {error: error || '?'}));
   },
   onFatal(error){
     if(error === 'not_found'){ useLocal(); toast(t('err.gone')); }
+    else if(error === 'access_revoked') onAccessRevoked();
   },
 };
+
+/*
+ * The code no longer grants access (its stations were all deleted). Times not sent yet would
+ * be lost with the cache: offer them as CSV first. Then the connection's cache and station go,
+ * the device carries on locally; the race stays in the recent list (undoing the deletion
+ * elsewhere brings the access back).
+ */
+let revoking = false;
+async function onAccessRevoked(){
+  if(revoking || backend.kind !== 'server') return;
+  revoking = true;
+  const server = backend;
+  server.destroy();
+  try{
+    const unsent = server.pendingCaptureIds().size;
+    if(unsent){
+      const ok = await askConfirm({title:t('revoked.title'), text:t('revoked.text', {n: unsent}), ok:t('revoked.export'), cancel:t('revoked.discard')});
+      if(ok) await exportCsv();
+    }
+    removeKey(server.cacheKey);
+    removeKey(KEYS.worksetPrefix + server.serverUrl + '|' + server.code);
+    useLocal();
+    toast(t('err.revoked'));
+  }finally{
+    revoking = false;
+  }
+}
 
 function normalizeCode(code){ return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
 function normalizeServerUrl(value){
@@ -2647,11 +2844,13 @@ function recentConnections(){
  * connecting) — the stored one survives; without it the name given is the authoritative one,
  * so clearing a race's name clears it here too.
  */
-function rememberConnection(serverUrl, code, name, keepKnown = false){
+function rememberConnection(serverUrl, code, name, keepKnown = false, worksetName = null){
   const list = recentConnections();
   const known = list.find(e => e.serverUrl === serverUrl && e.code === code);
   const next = name || (keepKnown && known ? known.name : null) || null;
-  writeJson(KEYS.recent, [{serverUrl, code, name: next}, ...list.filter(e => e !== known)]);
+  // A code bound to a station names it, so several codes of one race can be told apart.
+  const station = worksetName || (keepKnown && known ? known.worksetName : null) || null;
+  writeJson(KEYS.recent, [{serverUrl, code, name: next, worksetName: station}, ...list.filter(e => e !== known)]);
 }
 /**
  * Removes a race from the list. Its cached data and station go too, unless changes are still
@@ -2682,12 +2881,13 @@ function useLocal(){
   setFragment(null);
   setBackend(new LocalBackend(backendHandlers));
 }
-function useServer(serverUrl, code){
+function useServer(serverUrl, code, snapshot = null){
   writeJson(KEYS.connection, {serverUrl, code});
   rememberConnection(serverUrl, code, null, true);
   rememberedName = null;   // the name of this race is asserted again on the next render
   setFragment(code);
   const next = new ServerBackend(serverUrl, code, backendHandlers);
+  next.seed(snapshot);
   setBackend(next);
   next.start();
   return next;
@@ -2705,16 +2905,19 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
   }catch(e){
     if(e.code === 'not_found' || interactive) throw e;
   }
+  // The server names the code to keep (the same one, for now).
+  if(snapshot && snapshot.access && typeof snapshot.access.code === 'string') code = snapshot.access.code;
   const local = localStore.load();
+  const mayMerge = !snapshot || !snapshot.access || rulesAllow(snapshot.access.rules, [['race', null], ['merge', null]]);
   let upload = false;
-  if(snapshot && snapshot.seq === 0 && hasData(local)){
+  if(snapshot && snapshot.seq === 0 && hasData(local) && mayMerge){
     upload = await askConfirm({
       title: t('init.title'),
       text: t('init.text', {code, participants: local.participants.length, captures: local.captures.length}),
       ok: t('init.yes'), cancel: t('init.no'),
     });
   }
-  const server = useServer(serverUrl, code);
+  const server = useServer(serverUrl, code, snapshot);
   toast(t('conn.connected', {code}));
   if(upload){
     const opId = server.dispatch({type:'state.merge', state:mergePayload(local)});
@@ -2727,6 +2930,7 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
 function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds, worksets:s.worksets, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
+  if(e && e.code === 'access_revoked') return t('err.revoked');
   if(e && e.code === 'network') return t('err.network');
   return t('err.generic', {msg: (e && (e.code || e.message)) || '?'});
 }
@@ -3023,7 +3227,7 @@ function cancelShortcutsHold(){ clearTimeout(shortcutsHoldTimer); shortcutsHoldT
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && !shortcutsEl.hidden){ e.preventDefault(); closeShortcuts(); return; }
   if(e.key !== 'Control' && e.key !== 'Meta'){ cancelShortcutsHold(); return; }
-  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden) return;
+  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden || !document.getElementById('stationDialog').hidden) return;
   // Not while typing: there Ctrl/Cmd starts an editing shortcut, not a lookup.
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
@@ -3073,6 +3277,24 @@ function timeSortKey(participantId, dir, elapsed = false){
   return elapsed ? captureFacts().get(c.id).elapsed : c.ts;
 }
 
+// ---------- access (what this device's code allows) ----------
+const accessRules = () => backend.accessInfo().rules;
+/** Whether the code allows a permission path (a rule-like string or segments). */
+function can(path){
+  return rulesAllow(accessRules(), typeof path === 'string' ? (parseRule(path) || []) : path);
+}
+/** A code bound to particular stations (it can't see or manage the others). */
+const restrictedAccess = () => restrictedToWorksets(accessRules());
+/** Recording needs `capture.add` on this device's station, or a plain one without a station. */
+function canRecord(){
+  const w = currentWorkset();
+  return can([...captureScope(w ? w.id : null), ['add', null]]);
+}
+/** Hides what the code doesn't allow (elements marked data-perm="<path>"). */
+function applyPermissions(){
+  document.querySelectorAll('[data-perm]').forEach(el => el.classList.toggle('perm-hidden', !can(el.dataset.perm)));
+}
+
 // ---------- this device's station (workset) ----------
 /*
  * A device works on one workset at a time. It is stored per connection (never synced) as
@@ -3107,7 +3329,8 @@ const stickyKind = () => { const w = currentWorkset(); return w ? w.captureKind 
 const worksetLabel = (w) => w.name || t('worksets.defaultName', {n: w.number});
 function worksetLabelById(id, s = S()){
   const w = findWorkset(s, id);
-  return w ? worksetLabel(w) : t('worksets.deleted');
+  // A code bound to stations doesn't see the others: an unknown one may just be out of sight.
+  return w ? worksetLabel(w) : t(restrictedAccess() ? 'worksets.other' : 'worksets.deleted');
 }
 /** Keeps the device's station explicit (see above). Runs before every render. */
 function syncDeviceWorkset(){
@@ -3128,10 +3351,43 @@ function syncDeviceWorkset(){
     removedLocally.delete(w.id);
     return;
   }
-  // The station is gone. Deleted elsewhere: the device carries on without one and says so.
+  // The station is gone.
   const own = removedLocally.delete(deviceWorkset);
-  storeDeviceWorkset(s.worksets.length ? null : undefined);
-  if(!own && s.worksets.length) worksetNotice = {name: deviceWorksetLabel};
+  if(!s.worksets.length){ storeDeviceWorkset(undefined); return; }
+  // A device that may record without a station carries on without one and says so.
+  if(own || can([['capture', null], ['add', null]])){
+    storeDeviceWorkset(null);
+    if(!own) worksetNotice = {name: deviceWorksetLabel};
+    return;
+  }
+  // Otherwise it needs another one right away: the only one left, or the one the user picks.
+  if(s.worksets.length === 1){
+    storeDeviceWorkset(s.worksets[0].id);
+    toast(t('worksets.switched', {name: deviceWorksetLabel, next: worksetLabel(s.worksets[0])}));
+    return;
+  }
+  storeDeviceWorkset(null);
+  chooseStation(deviceWorksetLabel);
+}
+/** Asks which station to continue on; it can't be dismissed without choosing. */
+const stationDialog = document.getElementById('stationDialog');
+function chooseStation(name){
+  document.getElementById('stationDialogText').textContent = t('worksets.chooseText', {name});
+  const picks = S().worksets.map(w => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn block';
+    b.textContent = worksetLabel(w);
+    b.addEventListener('click', () => {
+      stationDialog.hidden = true;
+      lockScroll(false);
+      setDeviceWorkset(w.id);
+    });
+    return b;
+  });
+  document.getElementById('stationDialogPicks').replaceChildren(...picks);
+  if(stationDialog.hidden){ lockScroll(true); stationDialog.hidden = false; }
+  if(picks[0]) picks[0].focus({preventScroll: true});
 }
 /** The user picks a station for this device (null: no station). */
 function setDeviceWorkset(id){
@@ -3303,8 +3559,25 @@ function renderClockCard(){
   if(!kindMenu.hidden) renderKindMenu();
   renderWorksetNotice();
 
+  // Without the permission to record here (a station code on "No station"): pick a station.
+  const recordable = canRecord();
+  captureBtn.hidden = !recordable;
+  document.getElementById('clockHints').hidden = !recordable;
+  const blocked = document.getElementById('recordBlocked');
+  blocked.hidden = recordable;
+  if(!recordable){
+    document.getElementById('recordBlockedPicks').replaceChildren(...s.worksets.map(w => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn small';
+      b.textContent = worksetLabel(w);
+      b.addEventListener('click', () => setDeviceWorkset(w.id));
+      return b;
+    }));
+  }
+
   const ranked = currentRanking().length > 0;
-  document.getElementById('captureFreeRow').hidden = !ranked;
+  document.getElementById('captureFreeRow').hidden = !ranked || !recordable;
   document.getElementById('hintDirect').hidden = !ranked;
   document.getElementById('hintFree').hidden = !ranked;
   // Space assigns the next participant only while somebody is approaching; with an empty
@@ -3358,10 +3631,16 @@ window.addEventListener('resize', () => { measureSafeTop(); updateClockStuck(); 
 let editingTitle = false;
 let rememberedName = null;   // avoids rewriting the recent list on every render
 function rememberName(name){
-  const key = backend.code + '|' + (name || '');
+  // A code bound to stations is listed with its station's name.
+  const restricted = restrictedAccess();
+  const w = restricted ? (currentWorkset() || S().worksets[0]) : null;
+  // Its stations just vanished (the code is being revoked): keep the name the list knows.
+  if(restricted && !w) return;
+  const station = w ? worksetLabel(w) : null;
+  const key = backend.code + '|' + (name || '') + '|' + (station || '');
   if(key === rememberedName) return;
   rememberedName = key;
-  rememberConnection(backend.serverUrl, backend.code, name);
+  rememberConnection(backend.serverUrl, backend.code, name, false, station);
 }
 function renderHeader(){
   const s = S();
@@ -3379,7 +3658,10 @@ function statusInfo(){
   let text = t(labels[status]);
   if(backend.kind === 'server' && status === 'online'){
     text += ' · ' + backend.code;
-    const clients = backend.clientCount();
+    // A station code shows its station and the devices on it; the race code the whole race.
+    const w = restrictedAccess() ? currentWorkset() : null;
+    if(w) text += ' · ' + worksetLabel(w);
+    const clients = w ? backend.worksetClientCount(w.id) : backend.clientCount();
     if(clients) text += ' (' + clients + ')';
   }
   const pending = backend.pendingCount();
@@ -3478,12 +3760,12 @@ function buildParticipantRow(participant, opts){
     button('▼', 'action.down', 'critical', () => moveInRanking(participant.id, 1));
     button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
   }else{
-    button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
+    if(can('participant.rename')) button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
     if(currentRanking().includes(participant.id)){
       button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
     }else{
       button('→', 'action.sort', 'critical', () => rank(participant.id));
-      button('✕', 'action.delete', 'normal', async () => {
+      if(can('participant.delete')) button('✕', 'action.delete', 'normal', async () => {
         const ok = await askConfirm({title:t('participants.deleteTitle'), text:t('participants.deleteText', {name:participant.name}), ok:t('action.delete'), danger:true});
         if(ok) perform({type:'participant.delete', participantId:participant.id});
       });
@@ -3828,6 +4110,7 @@ function renderKindMenu(){
   add.className = 'link-btn kind-new';
   add.setAttribute('role', 'menuitem');
   add.dataset.edit = 'normal';
+  add.hidden = !can('kind.add');
   add.textContent = t('kinds.new');
   add.addEventListener('click', () => {
     closeKindMenu();
@@ -3901,7 +4184,7 @@ const LIST_SHORTCUTS = {
   d: () => toggleSortDir(),
 };
 document.addEventListener('keydown', (e) => {
-  if(!dialogEl.hidden || !shortcutsEl.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
+  if(!dialogEl.hidden || !shortcutsEl.hidden || !stationDialog.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
@@ -4025,6 +4308,8 @@ function renderCaptures(){
 
     const side = document.createElement('span');
     side.className = 'cap-side';
+    // Captures of other stations may be listed without being editable (station codes).
+    const editable = (action) => can([...captureScope(c.worksetId), [action, null]]);
     if(unlocked){
       const kindSel = document.createElement('select');
       kindSel.className = 'assign kind-select ' + roleClass(c.kind);
@@ -4039,6 +4324,7 @@ function renderCaptures(){
         o.selected = k === c.kind;
         kindSel.appendChild(o);
       });
+      kindSel.disabled = !editable('setKind');
       kindSel.addEventListener('change', () => {
         if(!perform({type:'capture.setKind', captureId:c.id, kind:kindSel.value})) renderCaptures();
       });
@@ -4065,6 +4351,7 @@ function renderCaptures(){
       o.selected = true;
       sel.appendChild(o);
     }
+    sel.disabled = !editable('assign');
     sel.addEventListener('change', () => {
       if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
     });
@@ -4075,6 +4362,7 @@ function renderCaptures(){
     del.setAttribute('aria-label', del.title);
     del.dataset.edit = 'critical';
     del.addEventListener('click', () => perform({type:'capture.delete', captureId:c.id}));
+    del.hidden = !editable('delete');
     side.append(sel, del);
 
     li.append(rank, mid, side);
@@ -4090,7 +4378,9 @@ document.getElementById('capFilterSeg').addEventListener('click', (e) => {
 });
 
 // ---------- CSV export ----------
-document.getElementById('exportBtn').addEventListener('click', async () => {
+document.getElementById('exportBtn').addEventListener('click', () => exportCsv());
+/** Saves the captures of the current state as CSV (also offered before a revoked code's cache goes). */
+async function exportCsv(){
   const s = S();
   if(!s.captures.length){ toast(t('export.none')); return; }
   const asc = sortedCaptures(s);
@@ -4134,7 +4424,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   }catch(e){
     toast(t('export.failed'));
   }
-});
+}
 
 // ---------- race name ----------
 document.getElementById('renameRaceBtn').addEventListener('click', () => {
@@ -4167,6 +4457,7 @@ function renderAll(){
   factsCache = null;
   syncDeviceWorkset();
   applyI18n();
+  applyPermissions();
   renderPinClock();
   renderClockCard();
   renderHeader();
@@ -4255,6 +4546,10 @@ function kindSuggestions(){
 }
 function renderKinds(){
   const s = S();
+  // Nothing to manage here without any kind permission (e.g. a station code).
+  const section = document.getElementById('kindsSection');
+  section.hidden = !['kind.add', 'kind.update', 'kind.delete'].some(can);
+  if(section.hidden) return;
   document.getElementById('kindsHelp').textContent = t('kinds.help', {start: kindLabel('start'), split: kindLabel('split'), finish: kindLabel('finish')});
   if(!kindRoleSelect.options.length || kindRoleSelect.options[0].textContent !== t('kinds.role.split')){
     fillRoleSelect(kindRoleSelect, kindRoleSelect.value || 'marker');
@@ -4272,6 +4567,7 @@ function renderKinds(){
       name.type = 'text';
       name.maxLength = 40;
       name.value = k.name;
+      name.readOnly = !can('kind.update');
       name.setAttribute('aria-label', t('kinds.title'));
       const commit = () => {
         const value = cleanText(name.value);
@@ -4292,6 +4588,7 @@ function renderKinds(){
       role.title = t('kinds.role');
       role.setAttribute('aria-label', role.title);
       fillRoleSelect(role, k.role);
+      role.disabled = !can('kind.update');
       role.addEventListener('change', () => {
         const current = findKind(S(), k.id);
         if(current) perform({type:'kind.update', kindId:k.id, name:current.name, role:role.value});
@@ -4309,6 +4606,7 @@ function renderKinds(){
         document.getElementById('addKindBtn').focus({preventScroll: true});
         perform({type:'kind.delete', kindId:k.id});
       });
+      del.hidden = !can('kind.delete');
       li.append(name, role, del);
       return li;
     }));
@@ -4370,6 +4668,10 @@ function renderWorksets(){
     b.addEventListener('click', onClick);
     return b;
   };
+  const restricted = restrictedAccess();
+  const codes = backend.accessInfo().codes || [];
+  // Defaults and new devices are none of a station code's business.
+  document.getElementById('worksetsHelp').hidden = restricted;
   const miniButton = (label, title, onClick) => {
     const b = document.createElement('button');
     b.type = 'button';
@@ -4391,6 +4693,7 @@ function renderWorksets(){
     name.value = w.name || '';
     name.placeholder = t('worksets.defaultName', {n: w.number});
     name.dataset.edit = 'normal';
+    name.readOnly = !can([['workset', w.id], ['rename', null]]);
     name.setAttribute('aria-label', t('worksets.title'));
     name.addEventListener('change', () => {
       const current = findWorkset(S(), w.id);
@@ -4405,19 +4708,37 @@ function renderWorksets(){
       else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); name.value = w.name || ''; name.blur(); }
     });
     name.addEventListener('blur', () => renderWorksets());
-    const meta = document.createElement('span');
-    meta.className = 'ws-meta';
-    const devices = backend.worksetClientCount(w.id);
-    meta.textContent = [i === 0 ? t('worksets.default') : '', devices ? t('worksets.devices', {n: devices}) : ''].filter(Boolean).join(' · ');
-    li.append(pickButton(current === w, () => setDeviceWorkset(w.id)), name, meta);
-    if(i > 0) li.append(miniButton('★', t('worksets.makeDefault'), () => perform({type:'workset.makeDefault', worksetId:w.id})));
-    li.append(miniButton('✕', t('action.delete'), async () => {
+    li.append(pickButton(current === w, () => setDeviceWorkset(w.id)), name);
+    // Which station is the race's default only matters to those who see all of them.
+    if(i > 0 && !restricted && can([['workset', w.id], ['makeDefault', null]])){
+      li.append(miniButton('★', t('worksets.makeDefault'), () => perform({type:'workset.makeDefault', worksetId:w.id})));
+    }
+    if(can([['workset', w.id], ['delete', null]])) li.append(miniButton('✕', t('action.delete'), async () => {
       const ok = await askConfirm({title:t('worksets.deleteTitle'), text:t('worksets.deleteText', {name:worksetLabel(w)}), ok:t('action.delete'), danger:true});
       if(!ok) return;
       // The row goes away with the focused ✕; keep the focus in the drawer (Escape needs it).
       document.getElementById('addWorksetBtn').focus({preventScroll: true});
       perform({type:'workset.delete', worksetId:w.id});
     }));
+    // Second line: default, devices on it, and the station's own code to hand out.
+    const sub = document.createElement('div');
+    sub.className = 'ws-sub';
+    const devices = backend.worksetClientCount(w.id);
+    const meta = [i === 0 && !restricted ? t('worksets.default') : '', devices ? t('worksets.devices', {n: devices}) : ''].filter(Boolean);
+    if(meta.length) sub.append(meta.join(' · '));
+    const own = codes.find(c => c.source === 'workset' && c.sourceRef === w.id);
+    if(own){
+      const code = document.createElement('span');
+      code.className = 'ws-code';
+      code.textContent = t('worksets.code', {code: own.code});
+      const copy = document.createElement('button');
+      copy.type = 'button';
+      copy.className = 'link-btn';
+      copy.textContent = t('worksets.copyLink');
+      copy.addEventListener('click', () => copyText(raceLink(backend.serverUrl, own.code)));
+      sub.append(code, copy);
+    }
+    if(sub.childNodes.length) li.append(sub);
     return li;
   });
   if(s.worksets.length){
@@ -4547,11 +4868,11 @@ function renderRecent(){
     b.className = 'btn recent-item';
     const nm = document.createElement('span');
     nm.className = 'nm';
-    nm.textContent = entry.name || entry.code;
+    nm.textContent = (entry.name || entry.code) + (entry.worksetName ? ` (${entry.worksetName})` : '');
     const meta = document.createElement('span');
     meta.className = 'meta';
     // The code is redundant when it is the label; the host matters with several servers.
-    meta.textContent = [entry.name ? entry.code : '', hostOf(entry.serverUrl)].filter(Boolean).join(' · ');
+    meta.textContent = [entry.name || entry.worksetName ? entry.code : '', hostOf(entry.serverUrl)].filter(Boolean).join(' · ');
     b.append(nm, meta);
     b.addEventListener('click', () => {
       showConnectError('');
@@ -4628,14 +4949,17 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
 });
 
 document.getElementById('copyLinkBtn').addEventListener('click', async () => {
-  const link = document.getElementById('srvLink').href;
-  try{ await navigator.clipboard.writeText(link); toast(t('settings.copied')); }
-  catch(e){
+  if(!await copyText(document.getElementById('srvLink').href)){
     const range = document.createRange();
     range.selectNodeContents(document.getElementById('srvLink'));
     const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
   }
 });
+/** Copies a link to the clipboard; false where the browser doesn't allow it. */
+async function copyText(text){
+  try{ await navigator.clipboard.writeText(text); toast(t('settings.copied')); return true; }
+  catch(e){ toast(text); return false; }
+}
 
 document.getElementById('mergeBtn').addEventListener('click', async () => {
   const local = localStore.load();

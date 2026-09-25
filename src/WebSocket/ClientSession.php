@@ -2,6 +2,7 @@
 
 namespace App\WebSocket;
 
+use App\Access\Access;
 use Ratchet\RFC6455\Messaging\MessageBuffer;
 use React\Socket\ConnectionInterface;
 
@@ -10,8 +11,8 @@ final class ClientSession
 {
     public string $handshakeBuffer = '';
     public ?MessageBuffer $messages = null;
-    /** Race code this client is subscribed to. */
-    public ?string $code = null;
+    /** Access of the code this client subscribed with (null: not subscribed). */
+    public ?Access $access = null;
     /** Workset the device works on, as it announced it (only for the presence counts). */
     public ?string $worksetId = null;
     public float $lastSeen;

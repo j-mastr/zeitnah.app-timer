@@ -130,6 +130,46 @@ try {
   assert.equal(await b.isVisible('#worksetNotice'), false);
   step('stations: own list and kind; deleted elsewhere, a notice switches to another');
 
+  // Station codes: a device joining with one works on that station only.
+  await a.click('#settingsBtn');
+  const stationCode = (await a.textContent('#worksetList .ws-row >> nth=0 >> .ws-code')).replace(/^Code /, '');
+  await a.click('#addWorksetBtn');   // a second station, out of the station code's sight
+  await a.waitForSelector('#worksetList .ws-row >> nth=2');
+  await a.click('#drawerClose');
+  const ctxC = await browser.newContext({locale: 'en-US', viewport: {width: 1100, height: 900}});
+  const c = await ctxC.newPage();
+  c.on('pageerror', (e) => { throw e; });
+  await c.goto(BASE + '#r=' + stationCode);
+  await waitStatus(c, 'Connected to server');
+  assert.match(await c.textContent('#statusText'), new RegExp(stationCode + ' · Station 1'));
+  assert.deepEqual(await c.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  for (const sel of ['#renameRaceBtn', '#importBtn', '#participantInput']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
+  assert.equal(await c.locator('#participantList button[title="Rename"]').count(), 0);
+  await c.click('#settingsBtn');
+  assert.equal(await c.locator('#worksetList .ws-row').count(), 2, 'its station and "No station"');
+  for (const sel of ['#sportSelect', '#kindsSection', '#addWorksetBtn', '#archiveBtn', '#mergeBtn']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
+  await c.click('#drawerClose');
+  await c.click('h1');
+  await c.keyboard.press('Space');
+  await sleep(800);
+  assert.equal(await a.textContent('#capCount'), '4');
+  assert.equal(await c.textContent('#capCount'), '4');
+  // Its own capture can be changed, one without a station (the very first) can't.
+  assert.equal(await c.isDisabled('#capList .cap-row >> nth=0 >> select.assign:not(.kind-select)'), false);
+  assert.equal(await c.isDisabled('#capList .cap-row >> nth=3 >> select.assign:not(.kind-select)'), true);
+  step('a station code: its station only, nothing to manage, foreign times read-only');
+
+  // Deleting its station revokes the code: the device is back on its local data.
+  await a.click('#settingsBtn');
+  await a.click('#worksetList .ws-row >> nth=0 >> button:has-text("✕")');
+  await a.click('#dialogOk');
+  await a.click('#drawerClose');
+  await waitStatus(c, 'Stored in this browser');
+  await c.click('#settingsBtn');
+  assert.equal(await c.textContent('#recentList .recent-item >> nth=0 >> .nm'), stationCode + ' (Station 1)');
+  await c.close();
+  step('deleting the station revokes its code; the race stays in the recent list');
+
   await b.click('#renameRaceBtn');
   await b.fill('#raceTitle input', 'Smoke Test Race');
   await b.keyboard.press('Enter');
@@ -141,7 +181,7 @@ try {
   assert.equal(await a.isVisible('#archivedBanner'), true);
   await a.keyboard.press('Space');
   await sleep(300);
-  assert.equal(await a.textContent('#capCount'), '3');
+  assert.equal(await a.textContent('#capCount'), '4');
   step('rename and archive; archived race is read-only');
 
   await a.goto(BASE);

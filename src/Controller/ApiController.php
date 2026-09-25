@@ -2,6 +2,7 @@
 
 namespace App\Controller;
 
+use App\Race\AccessRevokedException;
 use App\Race\ClientConfig;
 use App\Race\RaceNotFoundException;
 use App\Race\RaceRepository;
@@ -12,7 +13,8 @@ use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * HTTP API. Also serves as the fallback transport when WebSockets are unavailable:
- * clients POST operations and poll for events.
+ * clients POST operations and poll for events. `{code}` is any access code of the race;
+ * its rules decide what the client may do and see.
  */
 #[Route('/api')]
 class ApiController
@@ -45,30 +47,15 @@ class ApiController
     #[Route('/races/{code}', methods: ['GET'])]
     public function snapshot(string $code): JsonResponse
     {
-        try {
-            return $this->json($this->races->snapshot($code));
-        } catch (RaceNotFoundException) {
-            return $this->notFound();
-        }
+        return $this->withAccess($code, fn ($access) => $this->races->snapshot($access));
     }
 
     #[Route('/races/{code}/events', methods: ['GET'])]
     public function events(string $code, Request $request): JsonResponse
     {
         $since = max(0, $request->query->getInt('since'));
-        try {
-            $snapshot = $this->races->snapshot($code);
-            if ($snapshot['seq'] - $since > self::MAX_EVENT_GAP || $since > $snapshot['seq']) {
-                return $this->json(['reset' => true] + $snapshot);
-            }
 
-            return $this->json([
-                'seq' => $snapshot['seq'],
-                'events' => $this->races->eventsSince($code, $since, self::MAX_EVENT_GAP),
-            ]);
-        } catch (RaceNotFoundException) {
-            return $this->notFound();
-        }
+        return $this->withAccess($code, fn ($access) => $this->races->poll($access, $since, self::MAX_EVENT_GAP));
     }
 
     #[Route('/races/{code}/ops', methods: ['POST'])]
@@ -84,16 +71,19 @@ class ApiController
             return $this->json(['error' => 'invalid_ops'], Response::HTTP_BAD_REQUEST);
         }
 
-        try {
-            return $this->json(['results' => $this->races->applyOperations($code, $ops)]);
-        } catch (RaceNotFoundException) {
-            return $this->notFound();
-        }
+        return $this->withAccess($code, fn ($access) => ['results' => $this->races->applyOperations($access, $ops)]);
     }
 
-    private function notFound(): JsonResponse
+    /** Runs $action with the access of $code; unknown codes are 404, revoked ones 403. */
+    private function withAccess(string $code, callable $action): JsonResponse
     {
-        return $this->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
+        try {
+            return $this->json($action($this->races->resolve($code)));
+        } catch (RaceNotFoundException) {
+            return $this->json(['error' => 'not_found'], Response::HTTP_NOT_FOUND);
+        } catch (AccessRevokedException) {
+            return $this->json(['error' => 'access_revoked'], Response::HTTP_FORBIDDEN);
+        }
     }
 
     private function json(array $data, int $status = Response::HTTP_OK): JsonResponse

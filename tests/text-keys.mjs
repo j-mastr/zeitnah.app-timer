@@ -22,7 +22,7 @@ const DYNAMIC_KEYS = [
   'action.drag', 'action.up', 'action.down', 'action.unsort', 'action.sort', 'action.rename', 'action.delete',
   'lock.offline', 'lock.archived', 'settings.transportWs', 'settings.transportPoll',
   'sport.generic', 'sport.sailing', 'sport.running', 'sport.swimming', 'sport.motor',
-  'kind.start', 'kind.split', 'kind.finish', 'kinds.role.split', 'kinds.role.marker',
+  'kind.start', 'kind.split', 'kind.finish', 'kinds.role.split', 'kinds.role.marker', 'worksets.deleted', 'worksets.other',
   ...['place', 'timestamp', 'time', 'participant', 'kind', 'elapsed', 'station'].map((col) => `export.col.${col}`),
 ];
 const used = new Set([
