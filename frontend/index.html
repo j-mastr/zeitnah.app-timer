@@ -317,11 +317,11 @@
       <div class="clock" id="clock">00:00:00<span class="cs">.00</span></div>
       <div class="date" id="dateLine"></div>
       <button class="capture-btn" id="captureBtn" data-edit="critical" data-i18n="clock.capture"></button>
-      <div><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
-      <div class="hint-line">
-        <span class="hint-pair"><span class="kbd">␣</span><span data-i18n="clock.hintNext"></span></span>
-        <span class="hint-pair"><span class="kbd">1–9</span><span data-i18n="clock.hintDirect"></span></span>
-        <span class="hint-pair"><span class="kbd">0</span><span data-i18n="clock.hintFree"></span></span>
+      <div id="captureFreeRow"><button class="link-btn" id="captureFreeBtn" data-edit="critical" data-i18n="clock.captureFree"></button></div>
+      <div class="hint-line" id="clockHints">
+        <span class="hint-pair"><span class="kbd">␣</span><span id="hintSpace"></span></span>
+        <span class="hint-pair" id="hintDirect"><span class="kbd">1–9</span><span data-i18n="clock.hintDirect"></span></span>
+        <span class="hint-pair" id="hintFree"><span class="kbd">0</span><span data-i18n="clock.hintFree"></span></span>
       </div>
     </div>
 
@@ -566,6 +566,7 @@ const TEXTS = {
       'clock.capture': 'ZEIT ERFASSEN',
       'clock.hintDirect': 'Position direkt erfassen',
       'clock.captureFree': 'Zeit ohne Zuordnung erfassen',
+      'clock.hintRecord': 'Zeit erfassen',
       'clock.pin': 'Uhr beim Scrollen oben festhalten',
       'clock.unpin': 'Uhr nicht mehr oben festhalten',
       'clock.hintFree': 'ohne Zuordnung erfassen',
@@ -676,6 +677,7 @@ const TEXTS = {
       'clock.capture': 'RECORD TIME',
       'clock.hintDirect': 'record a position directly',
       'clock.captureFree': 'Record a time without assigning it',
+      'clock.hintRecord': 'record a time',
       'clock.pin': 'Keep the clock at the top while scrolling',
       'clock.unpin': 'Stop keeping the clock at the top',
       'clock.hintFree': 'record without assigning',
@@ -2204,6 +2206,18 @@ function applyI18n(){
   lastDateText = '';
 }
 
+// Assigning a time only makes sense while somebody is approaching: with an empty ranking
+// the big button already records an unassigned time, so the link and the hints are noise.
+function renderClockCard(){
+  const ranked = S().ranking.length > 0;
+  document.getElementById('captureFreeRow').hidden = !ranked;
+  document.getElementById('hintDirect').hidden = !ranked;
+  document.getElementById('hintFree').hidden = !ranked;
+  // Space assigns the next participant only while somebody is approaching; with an empty
+  // ranking it plainly records a time. (Set here on every render, so no data-i18n.)
+  document.getElementById('hintSpace').textContent = ranked ? t('clock.hintNext') : t('clock.hintRecord');
+}
+
 const pinClockBtn = document.getElementById('pinClockBtn');
 function renderPinClock(){
   document.body.classList.toggle('pin-clock', !!prefs.pinClock);
@@ -2823,6 +2837,7 @@ document.getElementById('renameRaceBtn').addEventListener('click', () => {
 function renderAll(){
   applyI18n();
   renderPinClock();
+  renderClockCard();
   renderHeader();
   renderSorted();
   renderParticipants();

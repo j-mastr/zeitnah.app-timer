@@ -115,6 +115,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - A link-styled button under the big one ("Zeit ohne Zuordnung erfassen" / "Record a time
   without assigning it", `.link-btn`) and the key **0** (top row or numpad) record a capture
   that stays unassigned, whatever the ranking holds (`recordTime(null)`).
+- That link (`#captureFreeRow`) and the assignment hints (`#hintDirect`, `#hintFree`) are
+  shown **only while the ranking is not empty** (`renderClockCard()`): with nobody
+  approaching, the big button already records an unassigned time. The space hint stays, with
+  its text switching between `clock.hintNext` ("next participant approaching") and
+  `clock.hintRecord` ("record a time") — it is set on every render, so it carries no
+  `data-i18n`. The keys keep working either way, and the shortcuts dialog always lists all.
 - **Double-click / double-tap on a participant name** (in either list) records a time for that
   participant now; if the participant was in the ranking (at any position) it is removed from it.
 - **Keys 1–9** (top row or numpad) record a time for the participant at that position of the
