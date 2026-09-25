@@ -135,6 +135,7 @@
 
   @media (hover: hover){
     .link-btn:hover{color:var(--text);}
+    .foot-link:hover{color:var(--accent);}
     .mini:hover{color:var(--text); border-color:var(--muted);}
     .search-results .res:hover{background:var(--panel2);}
   }
@@ -170,6 +171,11 @@
   /* ---------- touch devices: roomier hit targets (~44 px, WCAG 2.5.5) ---------- */
   @media (hover: none) and (pointer: coarse){
     .link-btn{padding:10px 12px; font-size:14px;}
+    /* No hardware keyboard: the hints only take room. They live in the shortcuts dialog. */
+    .clock-card .hint-line{display:none;}
+    /* No modifier key to press here, so the footer link invites a tap instead. */
+    #footShortcutsKey{display:none;}
+    .footer-shortcuts .touch-only{display:inline;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -227,10 +233,18 @@
 
   /* ---------- dialog ---------- */
   .modal-backdrop{position:fixed; inset:0; background:var(--shade); z-index:80; display:flex; align-items:center; justify-content:center; padding:16px;}
-  .modal{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px; max-width:440px; width:100%;}
+  .modal{background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:18px; max-width:440px; width:100%; max-height:calc(100vh - 32px); overflow-y:auto;}
   .modal h3{margin:0 0 8px; font-size:16px;}
+  .shortcut-list{margin:0 0 16px; gap:10px;}
+  .shortcut-list li{display:flex; align-items:center; gap:10px; font-size:13px;}
+  .shortcut-list .keys{display:inline-flex; align-items:center; gap:4px; flex:0 0 84px;}
   .modal p{margin:0 0 16px; font-size:14px; line-height:1.5;}
   .modal-actions{display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;}
+
+  .site-footer{margin-top:28px; text-align:center; color:var(--muted); font-size:12px; line-height:1.8;}
+  .site-footer p{margin:0;}
+  .touch-only{display:none;}
+  .foot-link{background:none; border:none; padding:0; font:inherit; color:var(--text); text-decoration:underline; text-underline-offset:3px; cursor:pointer;}
 
   .toast{position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%); background:var(--panel); border:1px solid var(--border); color:var(--text); padding:10px 16px; border-radius:8px; font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s; z-index:90; max-width:90vw; text-align:center;}
   .toast.show{opacity:1;}
@@ -329,6 +343,16 @@
       </div>
     </div>
   </div>
+
+  <footer class="site-footer">
+    <p class="footer-shortcuts"><button class="foot-link" id="footShortcutsBtn">
+      <span id="footShortcutsKey"></span><span class="touch-only" data-i18n="footer.shortcutsTouch"></span>
+    </button></p>
+    <p>
+      <span data-i18n="footer.made"></span> ·
+      <a class="foot-link" href="https://github.com/j-mastr/zeitnah.app-timer" target="_blank" rel="noopener noreferrer" data-i18n="footer.star"></a>
+    </p>
+  </footer>
 </div>
 
 <!-- ---------- settings drawer ---------- -->
@@ -351,6 +375,7 @@
     <h3 data-i18n="settings.sport"></h3>
     <select class="input" id="sportSelect" data-edit="normal"></select>
   </section>
+
 
   <!-- local storage backend -->
   <div id="localSection">
@@ -429,7 +454,32 @@
       <p class="help" id="archivedInfo" data-i18n="archived.banner" style="margin:0;" hidden></p>
     </section>
   </div>
+
+  <div class="action"><button class="link-btn" id="showShortcutsBtn" data-i18n="shortcuts.show"></button></div>
 </aside>
+
+<!-- ---------- shortcuts dialog ---------- -->
+<div class="modal-backdrop" id="shortcuts" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+    <h3 id="shortcutsTitle" data-i18n="shortcuts.title"></h3>
+    <ul class="shortcut-list">
+      <li><span class="keys"><span class="kbd">␣</span></span><span data-i18n="clock.hintNext"></span></li>
+      <li><span class="keys"><span class="kbd">1</span>–<span class="kbd">9</span></span><span data-i18n="clock.hintDirect"></span></li>
+      <li><span class="keys"><span class="kbd">0</span></span><span data-i18n="clock.hintFree"></span></li>
+      <li><span class="keys"><span class="kbd">F</span></span><span data-i18n="shortcuts.focusSearch"></span></li>
+      <li><span class="keys"><span class="kbd">N</span></span><span data-i18n="shortcuts.focusAdd"></span></li>
+      <li><span class="keys"><span class="kbd">A</span></span><span data-i18n="shortcuts.filterAll"></span></li>
+      <li><span class="keys"><span class="kbd">O</span></span><span data-i18n="shortcuts.filterOpen"></span></li>
+      <li><span class="keys"><span class="kbd">H</span></span><span data-i18n="shortcuts.filterHide"></span></li>
+      <li><span class="keys"><span class="kbd">S</span></span><span data-i18n="shortcuts.sortField"></span></li>
+      <li><span class="keys"><span class="kbd">D</span></span><span data-i18n="shortcuts.sortDir"></span></li>
+      <li><span class="keys"><span class="kbd" id="shortcutsModKey">Ctrl</span></span><span data-i18n="shortcuts.hold"></span></li>
+    </ul>
+    <div class="modal-actions">
+      <button class="btn primary" id="shortcutsClose" data-i18n="dialog.close"></button>
+    </div>
+  </div>
+</div>
 
 <!-- ---------- confirmation dialog ---------- -->
 <div class="modal-backdrop" id="dialog" hidden>
@@ -540,6 +590,21 @@ const TEXTS = {
       'settings.pull': 'Server-Daten lokal übernehmen',
       'settings.archiveHint': 'Danach kann niemand mehr Änderungen vornehmen. Das lässt sich nicht rückgängig machen.',
       'dialog.cancel': 'Abbrechen',
+      'dialog.close': 'Schließen',
+      'shortcuts.title': 'Tastenkürzel',
+      'shortcuts.show': 'Tastenkürzel anzeigen',
+      'shortcuts.hold': 'diese Liste anzeigen (gedrückt halten)',
+      'shortcuts.focusSearch': 'zum Suchfeld für den Zieleinlauf',
+      'shortcuts.focusAdd': 'zum Eingabefeld der Gesamtliste',
+      'shortcuts.filterAll': 'Filter: alle anzeigen',
+      'shortcuts.filterOpen': 'Filter: ohne Zielzeit',
+      'shortcuts.filterHide': 'Filter: Zieleinlauf ausblenden',
+      'shortcuts.sortField': 'Sortierung wechseln',
+      'shortcuts.sortDir': 'Sortierrichtung umkehren',
+      'footer.shortcuts': 'Drücke {key}, um die Tastenkürzel anzuzeigen.',
+      'footer.shortcutsTouch': 'Tastenkürzel anzeigen',
+      'footer.made': 'Gemacht mit ❤️ und Claude in Hamburg',
+      'footer.star': 'Stern auf GitHub geben',
       'init.title': 'Lokale Daten übernehmen?',
       'init.yes': 'Hochladen',
       'init.no': 'Nein, leer starten',
@@ -634,6 +699,21 @@ const TEXTS = {
       'settings.pull': 'Copy server data to this browser',
       'settings.archiveHint': 'Nobody can make changes afterwards. This can’t be undone.',
       'dialog.cancel': 'Cancel',
+      'dialog.close': 'Close',
+      'shortcuts.title': 'Keyboard shortcuts',
+      'shortcuts.show': 'Show keyboard shortcuts',
+      'shortcuts.hold': 'show this list (hold)',
+      'shortcuts.focusSearch': 'jump to the search of the approaching list',
+      'shortcuts.focusAdd': 'jump to the add field of the overall list',
+      'shortcuts.filterAll': 'filter: show all',
+      'shortcuts.filterOpen': 'filter: no finish time',
+      'shortcuts.filterHide': 'filter: hide approaching',
+      'shortcuts.sortField': 'switch the sort order',
+      'shortcuts.sortDir': 'reverse the sort direction',
+      'footer.shortcuts': 'Press {key} to show the shortcuts.',
+      'footer.shortcutsTouch': 'Show shortcuts',
+      'footer.made': 'Made with ❤️ and Claude in Hamburg',
+      'footer.star': 'Star on GitHub',
       'init.title': 'Use local data?',
       'init.yes': 'Upload',
       'init.no': 'No, start empty',
@@ -1937,6 +2017,54 @@ function askConfirm({title, text, ok, cancel, danger = false}){
   });
 }
 
+// ---------- shortcuts dialog ----------
+// Opens from the settings link, or while Ctrl/Cmd is held down (it closes on release).
+const shortcutsEl = document.getElementById('shortcuts');
+const MOD_KEY = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
+let shortcutsHeld = false;      // opened by holding a key, so the release closes it again
+let shortcutsFocus = null;
+function openShortcuts(held){
+  if(!shortcutsEl.hidden) return;
+  shortcutsHeld = !!held;
+  shortcutsFocus = document.activeElement;
+  shortcutsEl.hidden = false;
+  if(!held) document.getElementById('shortcutsClose').focus();
+}
+function closeShortcuts(){
+  if(shortcutsEl.hidden) return;
+  shortcutsHeld = false;
+  shortcutsEl.hidden = true;
+  if(shortcutsFocus && shortcutsFocus.focus) shortcutsFocus.focus();
+  shortcutsFocus = null;
+}
+document.getElementById('showShortcutsBtn').addEventListener('click', () => openShortcuts(false));
+document.getElementById('footShortcutsBtn').addEventListener('click', () => openShortcuts(false));
+document.getElementById('shortcutsClose').addEventListener('click', closeShortcuts);
+shortcutsEl.addEventListener('click', (e) => { if(e.target === shortcutsEl) closeShortcuts(); });
+
+// Ctrl/Cmd opens the list only when it is held on its own: a combination like ⌘C presses
+// another key within the delay and cancels it.
+const SHORTCUTS_HOLD_MS = 1500;
+let shortcutsHoldTimer = null;
+function cancelShortcutsHold(){ clearTimeout(shortcutsHoldTimer); shortcutsHoldTimer = null; }
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && !shortcutsEl.hidden){ e.preventDefault(); closeShortcuts(); return; }
+  if(e.key !== 'Control' && e.key !== 'Meta'){ cancelShortcutsHold(); return; }
+  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden) return;
+  // Not while typing: there Ctrl/Cmd starts an editing shortcut, not a lookup.
+  const el = document.activeElement;
+  const tag = (el && el.tagName) || '';
+  if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
+  shortcutsHoldTimer = setTimeout(() => { shortcutsHoldTimer = null; openShortcuts(true); }, SHORTCUTS_HOLD_MS);
+});
+document.addEventListener('keyup', (e) => {
+  if(e.key !== 'Control' && e.key !== 'Meta') return;
+  cancelShortcutsHold();
+  if(shortcutsHeld) closeShortcuts();
+});
+// A key combination can take the focus away before the release arrives (⌘Tab).
+window.addEventListener('blur', () => { cancelShortcutsHold(); if(shortcutsHeld) closeShortcuts(); });
+
 // ---------- double-activate (dblclick / double-tap) ----------
 const lastTap = new WeakMap();
 function onDoubleActivate(el, cb){
@@ -1993,6 +2121,8 @@ function applyI18n(){
   document.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = t(el.dataset.i18nPlaceholder); });
   document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); el.setAttribute('aria-label', el.title); });
   document.querySelectorAll('#langSeg button').forEach(b => b.classList.toggle('active', b.dataset.lang === prefs.lang));
+  document.getElementById('shortcutsModKey').textContent = MOD_KEY;
+  document.getElementById('footShortcutsKey').textContent = t('footer.shortcuts', {key: MOD_KEY});
   lastDateText = '';
 }
 
@@ -2251,26 +2381,32 @@ function addParticipant(){
   if(perform({type:'participants.add', participants:[{id:uid(), name:name.slice(0, 60)}]})) participantInput.value = '';
 }
 document.getElementById('addParticipantBtn').addEventListener('click', addParticipant);
-participantInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); addParticipant(); } });
+participantInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); addParticipant(); }
+  // Escape leaves the field like it does in the ranking's quick search.
+  else if(e.key === 'Escape'){ participantInput.value = ''; participantInput.blur(); }
+});
+
+const SORT_FIELDS = ['manual', 'alpha', 'time'];
+function setFilter(which){
+  if(which === 'all'){ prefs.filterOpen = false; prefs.filterHideSorted = false; }
+  else if(which === 'open') prefs.filterOpen = !prefs.filterOpen;
+  else prefs.filterHideSorted = !prefs.filterHideSorted;
+  savePrefs(); renderParticipants();
+}
+function setSortField(field){ prefs.sortField = field; savePrefs(); renderParticipants(); }
+function cycleSortField(){ setSortField(SORT_FIELDS[(SORT_FIELDS.indexOf(prefs.sortField) + 1) % SORT_FIELDS.length]); }
+function toggleSortDir(){ prefs.sortDir = prefs.sortDir === 'asc' ? 'desc' : 'asc'; savePrefs(); renderParticipants(); }
 
 document.getElementById('filterSeg').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-f]');
-  if(!btn) return;
-  if(btn.dataset.f === 'all'){ prefs.filterOpen = false; prefs.filterHideSorted = false; }
-  else if(btn.dataset.f === 'open') prefs.filterOpen = !prefs.filterOpen;
-  else prefs.filterHideSorted = !prefs.filterHideSorted;
-  savePrefs(); renderParticipants();
+  if(btn) setFilter(btn.dataset.f);
 });
 document.getElementById('sortFieldSeg').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-sf]');
-  if(!btn) return;
-  prefs.sortField = btn.dataset.sf;
-  savePrefs(); renderParticipants();
+  if(btn) setSortField(btn.dataset.sf);
 });
-document.getElementById('sortDirBtn').addEventListener('click', () => {
-  prefs.sortDir = prefs.sortDir === 'asc' ? 'desc' : 'asc';
-  savePrefs(); renderParticipants();
-});
+document.getElementById('sortDirBtn').addEventListener('click', toggleSortDir);
 
 function renderParticipants(){
   const s = S();
@@ -2376,8 +2512,19 @@ document.getElementById('captureBtn').addEventListener('click', () => recordTime
 // Explicit null: record the time but leave it unassigned, whatever the ranking holds.
 document.getElementById('captureFreeBtn').addEventListener('click', () => recordTime(null));
 
+// Letters for the two input fields and the participant list's filters and sorting.
+// They are listed in the shortcuts dialog and stay the same in every language.
+const LIST_SHORTCUTS = {
+  f: () => { rankSearch.focus(); rankSearch.select(); },
+  n: () => { participantInput.focus(); participantInput.select(); },
+  a: () => setFilter('all'),
+  o: () => setFilter('open'),
+  h: () => setFilter('hide'),
+  s: () => cycleSortField(),
+  d: () => toggleSortDir(),
+};
 document.addEventListener('keydown', (e) => {
-  if(!dialogEl.hidden || drawer.classList.contains('open')) return;
+  if(!dialogEl.hidden || !shortcutsEl.hidden || drawer.classList.contains('open')) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
@@ -2390,6 +2537,10 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     recordTime(null);
     return;
+  }
+  if(!e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat){
+    const action = LIST_SHORTCUTS[e.key.toLowerCase()];
+    if(action){ e.preventDefault(); action(); return; }
   }
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
   if(m && !e.repeat){

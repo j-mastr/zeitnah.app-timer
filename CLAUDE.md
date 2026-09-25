@@ -132,7 +132,26 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Shortcuts are ignored while typing in inputs/selects, while a dialog or the settings
   panel is open.
 - Shortcut hints are shown as keycap pictograms; a key and its description never wrap
-  apart (`.hint-pair` is `nowrap`; line breaks happen between pairs).
+  apart (`.hint-pair` is `nowrap`; line breaks happen between pairs). On touch devices
+  (`hover: none` and `pointer: coarse`) the clock card's hint line is hidden — there is no
+  hardware keyboard to hint at.
+- **Letter keys** drive the participant list, same actions as the controls themselves
+  (`LIST_SHORTCUTS`, plain keys, no modifier — they stay the same in every language):
+  **F** focus the ranking's quick search · **N** focus the add-participant field ·
+  **A** / **O** / **H** the three filters · **S** cycle the sort field · **D** reverse it.
+- A **shortcuts dialog** (`#shortcuts`) lists them all. It opens from "Tastenkürzel anzeigen"
+  / "Show keyboard shortcuts" in the settings, from the footer link, and by holding
+  **Ctrl/Cmd** alone for `SHORTCUTS_HOLD_MS` (1.5 s) — pressing any other key within that
+  time cancels the hold, so ⌘C and friends never open it. It closes on release, on window
+  blur, on Escape, on the backdrop and on its Close button. Ctrl/Cmd does not open it while
+  an input has the focus, and the recording shortcuts are ignored while it is open.
+- **Footer** (`.site-footer`, below everything, dim text with `.foot-link` links): a link
+  that opens the dialog — "Press ⌘/Ctrl to show the shortcuts." with `MOD_KEY` picking the
+  label from the platform, or just "Tastenkürzel anzeigen" / "Show shortcuts" on touch
+  devices, where there is no modifier to press (both labels are in the markup, the media
+  query picks one) — and a line
+  "Made with ❤️ and Claude in Hamburg · Star on GitHub" linking to
+  https://github.com/j-mastr/zeitnah.app-timer.
 
 ### Finishes list ("Zieldurchläufe")
 - Newest first; each row shows place `#n` (by time ascending), time, delta to the
@@ -300,11 +319,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `env(safe-area-inset-*)` (including the sticky clock).
 
 ### Settings panel (slide-over from the right)
-- Language · Sport (select, `data-edit="normal"`) · local mode: status, race code +
+- Language · Sport (select, `data-edit="normal"`) · "Show keyboard shortcuts" link · local mode: status, race code +
   Connect, "Create a new race on the server", advanced settings (server URL), "Reset local
   data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
   settings, Disconnect, Sync data (upload / copy to browser), Archive (or archived notice).
+  A "Show keyboard shortcuts" link sits at the very bottom, below both backend sections.
 
 ## Architecture
 
