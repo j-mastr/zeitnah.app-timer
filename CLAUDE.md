@@ -26,7 +26,7 @@ user-facing text sets**; the code itself is sport-neutral. The sport is a per-ra
 | --- | --- |
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
-| `capture` (`{id, ts, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
+| `capture` (`{id, ts, tzOffset, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
 | `ranking` — the sorted queue of participants expected to cross next | Sortiert / sorted |
 
 The other sport sets (`generic`, `running`, `swimming`, `motor`) use the same concepts with
@@ -102,7 +102,13 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 ### Clock and recording times
 - Large clock `HH:MM:SS.cc` (centiseconds smaller), date below in the UI language.
   Uses the device clock (devices are expected to be NTP-synced; no server offset yet).
-- "Record time" button and **Space** record `Date.now()` as a capture.
+- "Record time" button and **Space** record a capture as a full timestamp: `ts` (`Date.now()`,
+  Unix milliseconds — the absolute instant, date included) plus `tzOffset`
+  (`-new Date().getTimezoneOffset()`, minutes east of UTC on the recording device).
+  Captures are always rendered in their own `tzOffset` (`fmtTime` / `fmtDate` /
+  `fmtDateLong` / `fmtIso`), so a race recorded elsewhere or before a DST change still shows
+  the wall-clock time it was taken at. `tzOffset` is `null` only for data from earlier
+  versions; those captures fall back to this device's zone.
   - If the sorted list is non-empty, the capture is assigned to its **first** participant and that
     participant leaves the sorted list. Otherwise the capture is stored unassigned.
 - **Double-click / double-tap on a participant name** (in either list) records a time for that
@@ -117,12 +123,17 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 
 ### Finishes list ("Zieldurchläufe")
 - Newest first; each row shows place `#n` (by time ascending), time, delta to the
-  previous capture ("First" for the first), a participant dropdown to assign/reassign
+  previous capture ("First" for the first), the date (spelled out only when the capture is
+  not from today; the full ISO timestamp is always in the row's `title`), a participant
+  dropdown to assign/reassign
   (including "(deleted participant)" if the participant was deleted) and a delete button.
 - Captures not yet confirmed by the server show a "⏳ not synced" marker.
 - Header count uses the same `.count` style as the other panels.
 - CSV export in ascending order; header and file name come from the texts
-  (sailing: `Platz;Uhrzeit;Boot` / `Place;Time;Boat`).
+  (sailing: `Platz;Zeitstempel;Uhrzeit;Boot` / `Place;Timestamp;Time;Boat`). The
+  *Zeitstempel/Timestamp* column is the full ISO 8601 timestamp with date and offset
+  (`2026-09-25T14:33:12.45+02:00`), the *Uhrzeit/Time* column the same instant as a readable
+  local time.
 
 ### Participants (overall list)
 - Add by name (sailing UI: sail number or boat name; max 60 chars; whitespace
@@ -179,6 +190,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 
 ### Storage backends
 - **Local (default):** state in `localStorage['zeitnah.local']`.
+  Captures are stored with `ts` **and** `tzOffset`, so the date and time zone survive a
+  reload and an export.
   Data of earlier versions is migrated once on load: `segel-zielzeit-v1` (one key incl.
   preferences) and `regatta-timer.*` keys, both with the old field names `boats`/`boatId`
   (`normalizeState()` accepts them) and no `sport` field — migrated data is tagged
@@ -274,7 +287,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `ranking.add` | `participantId` | appends if the participant exists and isn't ranked |
 | `ranking.remove` | `participantId` | |
 | `ranking.move` | `participantId, beforeId` (null = end) | no-op if not ranked |
-| `capture.add` | `capture: {id, ts, participantId}` | ignored if id exists; unknown participant → unassigned; removes the participant from the ranking |
+| `capture.add` | `capture: {id, ts, tzOffset, participantId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); ignored if id exists; unknown participant → unassigned; removes the participant from the ranking |
 | `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
 | `capture.delete` | `captureId` | |
 | `state.merge` | `state: {name, participants, ranking, captures}` | non-destructive merge (see above) |
@@ -282,7 +295,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,participantId}]}`.
+`{name, archived, sport, participants:[{id,name}], ranking:[participantId], captures:[{id,ts,tzOffset,participantId}]}`.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 

@@ -145,6 +145,7 @@
   .cap-row{display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
   .cap-time{font-family:'Space Mono',monospace; font-weight:700; font-size:16px; white-space:nowrap;}
   .cap-delta{color:var(--muted); font-size:11px; font-family:'Space Mono',monospace;}
+  .cap-date{color:var(--muted); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
   .pending-mark{color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
   .cap-side{display:flex; flex-direction:column; gap:6px; align-items:end;}
   select.assign{width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
@@ -622,7 +623,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Teilnehmer wählen —',
       'captures.deletedParticipant': '(gelöschter Teilnehmer)',
-      'export.header': 'Platz;Uhrzeit;Teilnehmer',
+      'export.header': 'Platz;Zeitstempel;Uhrzeit;Teilnehmer',
       'lock.archived': 'Das Rennen ist archiviert.',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Rennen zu arbeiten.',
       'settings.code': 'Rennen-Code',
@@ -668,7 +669,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Select participant —',
       'captures.deletedParticipant': '(deleted participant)',
-      'export.header': 'Place;Time;Participant',
+      'export.header': 'Place;Timestamp;Time;Participant',
       'lock.archived': 'This race is archived.',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
@@ -719,7 +720,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Boot wählen —',
       'captures.deletedParticipant': '(gelöschtes Boot)',
-      'export.header': 'Platz;Uhrzeit;Boot',
+      'export.header': 'Platz;Zeitstempel;Uhrzeit;Boot',
       'lock.archived': 'Die Regatta ist archiviert.',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten an derselben Regatta zu arbeiten.',
       'settings.code': 'Regatta-Code',
@@ -765,7 +766,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Select boat —',
       'captures.deletedParticipant': '(deleted boat)',
-      'export.header': 'Place;Time;Boat',
+      'export.header': 'Place;Timestamp;Time;Boat',
       'lock.archived': 'This regatta is archived.',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same regatta from several devices.',
       'settings.code': 'Regatta code',
@@ -815,7 +816,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Läufer wählen —',
       'captures.deletedParticipant': '(gelöschter Läufer)',
-      'export.header': 'Platz;Uhrzeit;Läufer',
+      'export.header': 'Platz;Zeitstempel;Uhrzeit;Läufer',
       'lock.archived': 'Der Lauf ist archiviert.',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Lauf zu arbeiten.',
       'settings.code': 'Lauf-Code',
@@ -861,7 +862,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Select runner —',
       'captures.deletedParticipant': '(deleted runner)',
-      'export.header': 'Place;Time;Runner',
+      'export.header': 'Place;Timestamp;Time;Runner',
       'lock.archived': 'This race is archived.',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
@@ -911,7 +912,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Schwimmer wählen —',
       'captures.deletedParticipant': '(gelöschter Schwimmer)',
-      'export.header': 'Platz;Uhrzeit;Schwimmer',
+      'export.header': 'Platz;Zeitstempel;Uhrzeit;Schwimmer',
       'lock.archived': 'Der Wettkampf ist archiviert.',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Wettkampf zu arbeiten.',
       'settings.code': 'Wettkampf-Code',
@@ -957,7 +958,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Select swimmer —',
       'captures.deletedParticipant': '(deleted swimmer)',
-      'export.header': 'Place;Time;Swimmer',
+      'export.header': 'Place;Timestamp;Time;Swimmer',
       'lock.archived': 'This meet is archived.',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same meet from several devices.',
       'settings.code': 'Meet code',
@@ -1007,7 +1008,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Fahrzeug wählen —',
       'captures.deletedParticipant': '(gelöschtes Fahrzeug)',
-      'export.header': 'Platz;Uhrzeit;Fahrzeug',
+      'export.header': 'Platz;Zeitstempel;Uhrzeit;Fahrzeug',
       'lock.archived': 'Das Rennen ist archiviert.',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Rennen zu arbeiten.',
       'settings.code': 'Rennen-Code',
@@ -1053,7 +1054,7 @@ const TEXTS = {
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Select vehicle —',
       'captures.deletedParticipant': '(deleted vehicle)',
-      'export.header': 'Place;Time;Vehicle',
+      'export.header': 'Place;Timestamp;Time;Vehicle',
       'lock.archived': 'This race is archived.',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
@@ -1189,7 +1190,7 @@ function normalizeState(s){
   const captures = Array.isArray(s.captures)
     ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts)).map(c => {
         const pid = c.participantId !== undefined ? c.participantId : c.boatId;
-        return {id:c.id, ts:Math.round(c.ts), participantId: typeof pid === 'string' ? pid : null};
+        return {id:c.id, ts:Math.round(c.ts), tzOffset:normTzOffset(c.tzOffset), participantId: typeof pid === 'string' ? pid : null};
       })
     : [];
   const sport = SPORTS.includes(s.sport) ? s.sport : 'generic';
@@ -1215,6 +1216,15 @@ function reqName(v, max, field){
   return s;
 }
 function reqTs(v){ if(!Number.isInteger(v) || v < 0 || v > 1e14) throw new OpError('invalid_ts'); return v; }
+/** Time zone of the recording device in minutes east of UTC; null when unknown (older clients). */
+function optTzOffset(v){
+  if(v === null || v === undefined) return null;
+  if(!Number.isInteger(v) || v < -900 || v > 900) throw new OpError('invalid_tz_offset');
+  return v;
+}
+function normTzOffset(v){ return Number.isInteger(v) && v >= -900 && v <= 900 ? v : null; }
+/** The device's current offset, stored with every capture it records. */
+function currentTzOffset(){ return -new Date().getTimezoneOffset(); }
 const findParticipant = (s, id) => s.participants.find(b => b.id === id);
 const findParticipantByName = (s, name) => s.participants.find(b => nameKey(b.name) === nameKey(name));
 const findCapture = (s, id) => s.captures.find(c => c.id === id);
@@ -1284,10 +1294,11 @@ function applyOp(s, op){
       if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
       const id = reqId(c.id, 'capture_id');
       const ts = reqTs(c.ts);
+      const tzOffset = optTzOffset(c.tzOffset);
       let participantId = optId(c.participantId, 'participant_id');
       if(findCapture(s, id)) return s;
       if(participantId !== null && !findParticipant(s, participantId)) participantId = null;
-      s.captures.push({id, ts, participantId});
+      s.captures.push({id, ts, tzOffset, participantId});
       if(participantId !== null) s.ranking = s.ranking.filter(x => x !== participantId);
       return s;
     }
@@ -1326,9 +1337,10 @@ function applyOp(s, op){
         if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
         const id = reqId(c.id, 'capture_id');
         const ts = reqTs(c.ts);
+        const tzOffset = optTzOffset(c.tzOffset);
         const bid = optId(c.participantId, 'participant_id');
         if(findCapture(s, id)) continue;
-        s.captures.push({id, ts, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null});
+        s.captures.push({id, ts, tzOffset, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null});
       }
       if(s.name === null && typeof src.name === 'string' && cleanText(src.name) !== '') s.name = reqName(src.name, 80, 'name');
       return s;
@@ -1763,7 +1775,37 @@ function two(n){ return String(n).padStart(2, '0'); }
 function fmtClockParts(d){
   return {main:`${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`, cs:String(d.getMilliseconds()).padStart(3, '0').slice(0, 2)};
 }
-function fmtTime(ts){ const p = fmtClockParts(new Date(ts)); return `${p.main}.${p.cs}`; }
+/**
+ * A capture is stored as the instant `ts` plus the `tzOffset` of the device that recorded
+ * it, so it is always rendered in the time zone it was taken in (falling back to this
+ * device's zone for data without an offset). `shifted()` moves the instant so that the
+ * UTC getters read the local wall clock of that zone.
+ */
+function captureZone(tzOffset){ return Number.isInteger(tzOffset) ? tzOffset : -new Date().getTimezoneOffset(); }
+function shifted(ts, tzOffset){ return new Date(ts + captureZone(tzOffset) * 60000); }
+function fmtTime(ts, tzOffset){
+  const d = shifted(ts, tzOffset);
+  return `${two(d.getUTCHours())}:${two(d.getUTCMinutes())}:${two(d.getUTCSeconds())}.${String(d.getUTCMilliseconds()).padStart(3, '0').slice(0, 2)}`;
+}
+/** YYYY-MM-DD in the capture's own time zone. */
+function fmtDate(ts, tzOffset){
+  const d = shifted(ts, tzOffset);
+  return `${d.getUTCFullYear()}-${two(d.getUTCMonth() + 1)}-${two(d.getUTCDate())}`;
+}
+/** The date as the user reads it, e.g. "25. September 2026". */
+function fmtDateLong(ts, tzOffset){
+  return shifted(ts, tzOffset).toLocaleDateString(locale(), {year:'numeric', month:'long', day:'numeric', timeZone:'UTC'});
+}
+/** Full ISO 8601 timestamp with date and time zone, e.g. 2026-09-25T14:33:12.45+02:00. */
+function fmtIso(ts, tzOffset){
+  const off = captureZone(tzOffset), sign = off < 0 ? '-' : '+', abs = Math.abs(off);
+  return `${fmtDate(ts, tzOffset)}T${fmtTime(ts, tzOffset)}${sign}${two(Math.floor(abs / 60))}:${two(abs % 60)}`;
+}
+/** True while the capture falls on the same local day as this device's current date. */
+function isToday(ts, tzOffset){
+  const now = new Date();
+  return fmtDate(ts, tzOffset) === `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+}
 function fmtDelta(ms){
   if(ms < 0) ms = 0;
   const totalCs = Math.floor(ms / 10), cs = totalCs % 100, totalSec = Math.floor(totalCs / 100);
@@ -1837,16 +1879,16 @@ const participantById = (id) => S().participants.find(b => b.id === id);
 function participantCaptureInfo(participantId){
   const list = S().captures.filter(c => c.participantId === participantId).sort((a, b) => b.ts - a.ts);
   if(!list.length) return null;
-  return {last:list[0].ts, first:list[list.length - 1].ts, count:list.length};
+  return {last:list[0], first:list[list.length - 1], count:list.length};
 }
 function metaText(participantId){
   const info = participantCaptureInfo(participantId);
-  return info ? fmtTime(info.last) + (info.count > 1 ? ` +${info.count - 1}` : '') : '';
+  return info ? fmtTime(info.last.ts, info.last.tzOffset) + (info.count > 1 ? ` +${info.count - 1}` : '') : '';
 }
 // "Finish time" sorting: ascending by first recorded time, descending by last recorded time.
 function timeSortKey(participantId, dir){
   const info = participantCaptureInfo(participantId);
-  return info ? (dir === 'desc' ? info.last : info.first) : null;
+  return info ? (dir === 'desc' ? info.last.ts : info.first.ts) : null;
 }
 
 // Fuzzy matching: prefix > substring > characters in order.
@@ -2217,10 +2259,10 @@ function recordTime(participantId){
   const s = S();
   // Without an explicit participant the capture goes to the first sorted participant (if any).
   const target = participantId !== undefined ? participantId : (s.ranking[0] || null);
-  const capture = {id:uid(), ts:Date.now(), participantId:target};
+  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target};
   if(perform({type:'capture.add', capture})){
     const participant = target ? participantById(target) : null;
-    toast(t('captures.recorded') + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts));
+    toast(t('captures.recorded') + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts, capture.tzOffset));
   }
 }
 document.getElementById('captureBtn').addEventListener('click', () => recordTime());
@@ -2266,7 +2308,15 @@ function renderCaptures(){
     const mid = document.createElement('span');
     const time = document.createElement('div');
     time.className = 'cap-time';
-    time.textContent = fmtTime(c.ts);
+    time.textContent = fmtTime(c.ts, c.tzOffset);
+    time.title = fmtIso(c.ts, c.tzOffset);
+    // The date is part of every capture; it is only spelled out when it isn't today's.
+    if(!isToday(c.ts, c.tzOffset)){
+      const day = document.createElement('span');
+      day.className = 'cap-date';
+      day.textContent = fmtDateLong(c.ts, c.tzOffset);
+      time.appendChild(day);
+    }
     if(pendingIds.has(c.id)){
       const mark = document.createElement('span');
       mark.className = 'pending-mark';
@@ -2326,7 +2376,7 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   let csv = t('export.header') + '\n';
   asc.forEach((c, i) => {
     const participant = participantById(c.participantId);
-    csv += `${i + 1};${fmtTime(c.ts)};${participant ? participant.name.replace(/;/g, ',') : ''}\n`;
+    csv += `${i + 1};${fmtIso(c.ts, c.tzOffset)};${fmtTime(c.ts, c.tzOffset)};${participant ? participant.name.replace(/;/g, ',') : ''}\n`;
   });
   const filename = t('export.filename') + '.csv';
   // Inside claude.ai the page must ask the host to save files; elsewhere a plain download works.

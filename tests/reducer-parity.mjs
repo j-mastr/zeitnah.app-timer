@@ -40,7 +40,7 @@ function randomOp(i) {
     case 'participant.rename': op.participantId = pick(participantIds); op.name = pick(names); break;
     case 'participant.delete': case 'ranking.add': case 'ranking.remove': op.participantId = pick(participantIds); break;
     case 'ranking.move': op.participantId = pick(participantIds); op.beforeId = pick([...participantIds, null]); break;
-    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), participantId: pick([...participantIds, null])}; break;
+    case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null])}; break;
     case 'capture.assign': op.captureId = pick(captureIds); op.participantId = pick([...participantIds, null]); break;
     case 'capture.delete': op.captureId = pick(captureIds); break;
     case 'state.merge':
@@ -48,7 +48,7 @@ function randomOp(i) {
         name: pick(['Local', null]),
         participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
         ranking: ['m' + i, pick(participantIds)],
-        captures: [{id: 'mc' + i, ts: 1790000000500, participantId: 'm' + i}, {id: pick(captureIds), ts: 5, participantId: null}],
+        captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), participantId: 'm' + i}, {id: pick(captureIds), ts: 5, participantId: null}],
       };
       break;
   }

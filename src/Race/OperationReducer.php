@@ -9,7 +9,12 @@ namespace App\Race;
  *
  * State shape:
  *   name: ?string, archived: bool, sport: string,
- *   participants: list<{id, name}>, ranking: list<participantId>, captures: list<{id, ts, participantId: ?string}>
+ *   participants: list<{id, name}>, ranking: list<participantId>, captures: list<{id, ts, tzOffset: ?int, participantId: ?string}>
+ *
+ * A capture timestamp is the pair `ts` (Unix milliseconds, the absolute instant including
+ * the date) and `tzOffset` (minutes east of UTC on the recording device, null when the
+ * recording client did not report one), so it can always be rendered as a full local
+ * timestamp with date and time zone.
  *
  * `sport` selects the UI text set (see TEXTS in frontend/index.html); the reducer only
  * validates it against SPORTS, it carries no other meaning server-side.
@@ -144,6 +149,7 @@ final class OperationReducer
                 }
                 $id = self::id($capture['id'] ?? null, 'capture_id');
                 $ts = self::timestamp($capture['ts'] ?? null);
+                $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
                 $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
                 if (null !== self::findCapture($state, $id)) {
                     return $state;
@@ -151,7 +157,7 @@ final class OperationReducer
                 if (null !== $participantId && null === self::findParticipant($state, $participantId)) {
                     $participantId = null;
                 }
-                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'participantId' => $participantId];
+                $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId];
                 if (null !== $participantId) {
                     $state['ranking'] = self::without($state['ranking'], $participantId);
                 }
@@ -228,11 +234,12 @@ final class OperationReducer
             }
             $id = self::id($capture['id'] ?? null, 'capture_id');
             $ts = self::timestamp($capture['ts'] ?? null);
+            $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
             $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
-            $state['captures'][] = ['id' => $id, 'ts' => $ts, 'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null];
+            $state['captures'][] = ['id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null];
         }
 
         $name = $source['name'] ?? null;
@@ -284,6 +291,19 @@ final class OperationReducer
     {
         if (!is_int($value) || $value < 0 || $value > 100_000_000_000_000) {
             throw new InvalidOperationException('invalid_ts');
+        }
+
+        return $value;
+    }
+
+    /** Time zone of the recording device in minutes east of UTC; null when unknown (older clients). */
+    private static function tzOffset(mixed $value): ?int
+    {
+        if (null === $value) {
+            return null;
+        }
+        if (!is_int($value) || $value < -900 || $value > 900) {
+            throw new InvalidOperationException('invalid_tz_offset');
         }
 
         return $value;
