@@ -8,7 +8,8 @@ them. Read it fully before making changes; update it when requirements change.
 
 A timekeeping app for the finish line of a race. A large clock shows the current time; a
 button (or the space bar) records the exact time of each finish-line crossing. Participants
-approaching the line together can be put into a "sorted" queue in the order they cross, so
+approaching the line together can be put into an "approaching the finish" queue in the order
+they cross, so
 recorded times are assigned to them automatically. Data lives in the browser by default;
 optionally several devices share one race through the server with real-time sync. The
 primary device is an iPad (touch), laptops with keyboards are also used.
@@ -27,7 +28,7 @@ user-facing text sets**; the code itself is sport-neutral. The sport is a per-ra
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
 | `capture` (`{id, ts, tzOffset, participantId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
-| `ranking` — the sorted queue of participants expected to cross next | Sortiert / sorted |
+| `ranking` — the queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
 
 The other sport sets (`generic`, `running`, `swimming`, `motor`) use the same concepts with
 their own vocabulary, e.g. `participant` is "Runner"/"Läufer" in `running`, "Swimmer"/
@@ -109,12 +110,12 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `fmtDateLong` / `fmtIso`), so a race recorded elsewhere or before a DST change still shows
   the wall-clock time it was taken at. `tzOffset` is `null` only for data from earlier
   versions; those captures fall back to this device's zone.
-  - If the sorted list is non-empty, the capture is assigned to its **first** participant and that
-    participant leaves the sorted list. Otherwise the capture is stored unassigned.
+  - If the ranking is non-empty, the capture is assigned to its **first** participant and that
+    participant leaves the ranking. Otherwise the capture is stored unassigned.
 - **Double-click / double-tap on a participant name** (in either list) records a time for that
-  participant now; if the participant was in the sorted list (at any position) it is removed from it.
+  participant now; if the participant was in the ranking (at any position) it is removed from it.
 - **Keys 1–9** (top row or numpad) record a time for the participant at that position of the
-  sorted list (same removal rule). The first nine sorted rows show their key as a small
+  ranking (same removal rule). The first nine ranking rows show their key as a small
   keycap badge.
 - Shortcuts are ignored while typing in inputs/selects, while a dialog or the settings
   panel is open.
@@ -143,24 +144,24 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   an optional header line matching the text `import.headerPattern` is skipped (sailing:
   `name`, `boot`, `boat`, `segelnummer`, `sail`…), existing names are skipped.
 - Each row shows the latest recorded time of the participant, with `+x` if it has more.
-- Filters are toggle buttons in one bar: **All**, **No finish time**, **Hide sorted**.
-  "No finish time" and "Hide sorted" can be active at the same time; clicking "All"
-  turns both off; activating either turns "All" off. By default sorted participants are shown
-  in the overall list too, marked with a "Sorted #n" badge and a ↩ button instead of →/✕.
+- Filters are toggle buttons in one bar: **All**, **No finish time**, **Hide approaching**.
+  "No finish time" and "Hide approaching" can be active at the same time; clicking "All"
+  turns both off; activating either turns "All" off. By default ranked participants are shown
+  in the overall list too, marked with an "Approaching #n" badge and a ↩ button instead of →/✕.
 - Sorting: **Order added / Name / Finish time** plus a direction toggle (↑/↓).
   Finish time ascending uses the participant's *first* recorded time, descending its *last*
   recorded time; participants without a time always come last. Name sort is locale-aware and
   numeric.
 - Filters, sort order and language are per-device preferences (never synced).
 
-### Sorted list ("Sortiert")
+### Ranking ("Im Zieleinlauf" / "Approaching the finish")
 - Holds the expected crossing order of participants approaching the line together.
 - Add with → in the overall list or via the **fuzzy quick search** (ranking: prefix >
   substring > characters in order; Enter takes the best match).
 - Reorder with ▲▼ buttons and drag & drop (drag handle ⠿; pointer events with document-level
   listeners so it works with touch and when the pointer leaves the handle).
 - Remove with ↩ (the participant stays in the overall list).
-- A participant is in the sorted list at most once.
+- A participant is in the ranking at most once.
 
 ### Race name
 - Shown instead of the default title (`header.defaultName`; sailing: "⛵ Zielzeiten" /
@@ -175,8 +176,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 
 ### Layout (responsive, purely width-based)
 - One breakpoint at **700 px viewport width**, independent of device type or orientation.
-- `< 700 px`: single column — clock (sticky at the top), sorted list, participants, finishes.
-- `≥ 700 px`: clock full width on top; left column (320 px) sorted list + participants; right
+- `< 700 px`: single column — clock (sticky at the top), ranking, participants, finishes.
+- `≥ 700 px`: clock full width on top; left column (320 px) ranking + participants; right
   column finishes. Content centred with `max-width: 1200px`.
 - **Touch devices** (`@media (hover: none) and (pointer: coarse)`): the row buttons (`.mini`),
   segmented filters, assign selects and search results grow to ~42 px hit targets (WCAG 2.5.5),
@@ -220,7 +221,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Settings → Sync data** (server mode):
   - *Upload local data*: merge local → server; the local data stays in this browser
     (reset it explicitly in local mode if you want it gone). Merging never deletes:
-    participants are matched by id or case-insensitive name, missing sorted participants appended,
+    participants are matched by id or case-insensitive name, missing ranked participants appended,
     captures added unless their id exists, name only set if the race has none.
   - *Copy server data to this browser*: overwrite local data with the race (never merge).
 - **Disconnect** switches back to local storage; the server race is untouched.
@@ -248,7 +249,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Archiving empties the ranking (the reducers do it, so both sides agree): nothing is
   approaching the line any more.
 - Clients show a banner, dim every `data-edit` element (`body.lock-all`) and refuse all
-  operations. `body.archived` hides the clock card and the sorted panel entirely and
+  operations. `body.archived` hides the clock card and the ranking panel entirely and
   re-lays the grid to participants + finishes. A local copy pulled from an archived race is
   editable again.
 - In local mode the settings show "Reset local data" instead of "Archive".

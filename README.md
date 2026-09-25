@@ -8,8 +8,8 @@ Record finish-line crossings of a race with a big on-screen clock, assign the ti
 participants, and — optionally — keep several devices in sync in real time.
 
 - **Big, glanceable clock** with a one-tap (or space bar) recorder for finish times.
-- **Sorted queue** for boats approaching the line together, so times are assigned to the
-  right participant automatically as they cross.
+- **"Approaching the finish" queue** for participants nearing the line together, so times are
+  assigned to the right participant automatically as they cross.
 - **Works offline** as an installable progressive web app; changes made without a
   connection are buffered and synced once it's back.
 - **Multi-device real-time sync** over a shared race code — one iPad at the line, a
