@@ -1,12 +1,12 @@
 # systemd unit for the WebSocket server (real-time sync between devices).
 #
 # Replace the values marked with CHANGE, then as root:
-#   cp deploy/finish-line-timer-ws.service /etc/systemd/system/
+#   cp deploy/zeitnah-ws.service.template /etc/systemd/system/zeitnah-ws.service
 #   systemctl daemon-reload
-#   systemctl enable --now finish-line-timer-ws
+#   systemctl enable --now zeitnah-ws
 # Status / logs:
-#   systemctl status finish-line-timer-ws
-#   journalctl -u finish-line-timer-ws -f
+#   systemctl status zeitnah-ws
+#   journalctl -u zeitnah-ws -f
 #
 # Also needed (see README): the nginx "location /ws" proxy directive pointing to the port
 # below, and WS_PUBLIC_URL=wss://<domain>/ws in .env.local.
@@ -14,7 +14,7 @@
 # with the new code.
 
 [Unit]
-Description=Finish line timer - WebSocket server
+Description=zeitnah.app - WebSocket server
 After=network-online.target
 Wants=network-online.target
 
@@ -24,7 +24,7 @@ Type=simple
 User=example_user
 Group=psacln
 # CHANGE: deployment directory of the project.
-WorkingDirectory=/var/www/vhosts/example.org/finish-line-timer
+WorkingDirectory=/var/www/vhosts/example.org/zeitnah
 # CHANGE: PHP version of the domain. Pick another port if several installations share
 # the server (the nginx proxy directive must use the same port).
 ExecStart=/opt/plesk/php/8.3/bin/php bin/console app:websocket-server --host=127.0.0.1 --port=8080

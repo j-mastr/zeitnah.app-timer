@@ -9,8 +9,8 @@
  * - The API and WebSocket traffic are never touched; offline changes are buffered by the
  *   app itself in localStorage.
  */
-const VERSION = 'v1';
-const PREFIX = 'finish-line-timer-';
+const VERSION = 'v2';
+const PREFIX = 'zeitnah-';
 const SHELL_CACHE = PREFIX + 'shell-' + VERSION;
 const FONT_CACHE = PREFIX + 'fonts-' + VERSION;
 

@@ -59,7 +59,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
    codes are English. User-facing text lives only in the `TEXTS` table of the frontend
    (German and English) — never hard-code UI strings, not even in the HTML markup.
    Only exception: name/description in `public/manifest.webmanifest` (the installed app's
-   name can't be localised per user; it is German and sport-neutral: "Zielzeiten").
+   name can't be localised per user; it is the product name, "zeitnah", not translated).
 2. **Sport-neutral code.** Identifiers, operation types, state fields, database tables,
    API routes, storage keys, CSS classes and comments use the vocabulary above — never
    sailing terms (boat, regatta, sail number, …). Sport-specific wording belongs in the
@@ -162,7 +162,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `data-i18n`, `data-i18n-placeholder`, `data-i18n-title`; dynamic text uses `t(key, vars)`.
 
 ### Storage backends
-- **Local (default):** state in `localStorage['race-timer.local']`.
+- **Local (default):** state in `localStorage['zeitnah.local']`.
   Data of earlier versions is migrated once on load: `segel-zielzeit-v1` (one key incl.
   preferences) and `regatta-timer.*` keys, both with the old field names `boats`/`boatId`
   (`normalizeState()` accepts them). Old server caches are dropped (rebuilt from the server).
@@ -174,7 +174,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   be overridden under "Advanced settings" (`prefs.serverUrl`); without a default the
   field is required.
 - The active connection `{serverUrl, code}` is stored in
-  `localStorage['race-timer.connection']` and resumed after a reload.
+  `localStorage['zeitnah.connection']` and resumed after a reload.
 - **URL fragment `#r=CODE`** connects automatically on load (and on `hashchange`); while
   connected the fragment always reflects the current code; it is removed on disconnect.
 - **Initialisation prompt:** when connecting fresh (by code, link or "new race") to a
@@ -195,7 +195,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   connection considered dead after 45 s of silence.
 - Optimistic updates: `view = confirmed server state + pending local ops`. Confirmed state,
   sequence number and pending ops are cached per server+code in
-  `localStorage['race-timer.cache:<serverUrl>|<code>']`, so buffered changes survive
+  `localStorage['zeitnah.cache:<serverUrl>|<code>']`, so buffered changes survive
   reloads.
 - Allowed while not connected (buffered, sent on reconnect): `capture.add`,
   `capture.assign`, `capture.delete`, `ranking.add`, `ranking.remove`, `ranking.move`

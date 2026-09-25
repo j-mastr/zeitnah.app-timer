@@ -1,7 +1,21 @@
-# Finish Line Timer
+# zeitnah.app
+
+A free, live version is running at **[zeitnah.app](https://zeitnah.app)** — no installation
+or account needed, works offline once loaded, and can be added to your home screen. Create
+a race, share its code with the other timekeeping devices, and go.
 
 Record finish-line crossings of a race with a big on-screen clock, assign the times to
 participants, and — optionally — keep several devices in sync in real time.
+
+- **Big, glanceable clock** with a one-tap (or space bar) recorder for finish times.
+- **Sorted queue** for boats approaching the line together, so times are assigned to the
+  right participant automatically as they cross.
+- **Works offline** as an installable progressive web app; changes made without a
+  connection are buffered and synced once it's back.
+- **Multi-device real-time sync** over a shared race code — one iPad at the line, a
+  laptop for corrections, both always in sync.
+- **CSV import/export** for participant lists and results.
+- **German and English**, sport-neutral under the hood so other sports can be added later.
 
 The user interface currently speaks the language of **sailing regattas** (boats, sail
 numbers, regatta codes) in German and English. The code itself is sport-neutral; other
@@ -54,14 +68,14 @@ Set values in `.env.local` (not committed) or as real environment variables:
 3. Run the WebSocket server permanently, e.g. with systemd:
 
    ```ini
-   # /etc/systemd/system/finish-line-timer-ws.service
+   # /etc/systemd/system/zeitnah-ws.service
    [Unit]
-   Description=Finish line timer WebSocket server
+   Description=zeitnah.app WebSocket server
    After=network.target
 
    [Service]
    User=www-data
-   WorkingDirectory=/var/www/finish-line-timer
+   WorkingDirectory=/var/www/zeitnah
    ExecStart=/usr/bin/php bin/console app:websocket-server --host=127.0.0.1
    Restart=always
 
@@ -75,7 +89,7 @@ Set values in `.env.local` (not committed) or as real environment variables:
    ```nginx
    server {
        server_name timing.example.org;
-       root /var/www/finish-line-timer/public;
+       root /var/www/zeitnah/public;
 
        location /ws {
            proxy_pass http://127.0.0.1:8080;

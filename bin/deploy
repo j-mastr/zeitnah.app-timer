@@ -3,12 +3,12 @@
 # Runs the steps needed after new code has been checked out, e.g. as Plesk Git
 # "additional deployment action":
 #
-#   (export PATH="/opt/plesk/php/8.3/bin:$PATH" && cd /var/www/vhosts/example.org/finish-line-timer && bash bin/deploy)
+#   (export PATH="/opt/plesk/php/8.3/bin:$PATH" && cd /var/www/vhosts/example.org/zeitnah && bash bin/deploy)
 #
 # 1. installs PHP dependencies (production only), which also clears the Symfony cache
 # 2. creates missing database tables
 # 3. restarts the WebSocket server of this installation, if one is running, so it loads
-#    the new code (systemd restarts it; see deploy/finish-line-timer-ws.service)
+#    the new code (systemd restarts it; see deploy/zeitnah-ws.service.template)
 #
 # Environment variables (optional):
 #   PHP_BIN       PHP binary to use                 (default: php from PATH)

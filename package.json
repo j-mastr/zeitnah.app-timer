@@ -1,6 +1,6 @@
 {
   "private": true,
-  "name": "finish-line-timer-tests",
+  "name": "zeitnah-tests",
   "description": "Development tooling only; the app itself has no JavaScript build step.",
   "type": "module",
   "scripts": {
