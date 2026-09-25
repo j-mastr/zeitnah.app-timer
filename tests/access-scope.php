@@ -57,6 +57,8 @@ foreach ([
     ['type' => 'workset.ranking.add', 'worksetId' => 'w2', 'participantId' => 'p2'], ['type' => 'workset.setKind', 'worksetId' => 'w2', 'kind' => 'start'],
     ['type' => 'capture.assign', 'captureId' => 'c2', 'participantId' => null], ['type' => 'capture.delete', 'captureId' => 'c3'],
     ['type' => 'capture.add', 'capture' => ['id' => 'c9', 'ts' => 9, 'participantId' => null]],
+    ['type' => 'capture.target.add', 'captureId' => 'c2', 'target' => ['type' => 'participant', 'id' => 'p1']],
+    ['type' => 'capture.target.remove', 'captureId' => 'c3', 'target' => ['type' => 'participant', 'id' => 'p1']],
 ] as $op) {
     check('forbidden' === $station->checkOperation($state, $op), 'a station code may not '.$op['type'].' '.json_encode($op));
 }
@@ -66,6 +68,9 @@ foreach ([
     ['type' => 'capture.add', 'capture' => ['id' => 'c9', 'ts' => 9, 'participantId' => null, 'worksetId' => 'w1']],
     ['type' => 'capture.assign', 'captureId' => 'c1', 'participantId' => 'p2'], ['type' => 'capture.delete', 'captureId' => 'c1'],
     ['type' => 'capture.delete', 'captureId' => 'gone'],
+    ['type' => 'capture.target.add', 'captureId' => 'c1', 'target' => ['type' => 'participant', 'id' => 'p2']],
+    ['type' => 'capture.target.remove', 'captureId' => 'c1', 'target' => ['type' => 'participant', 'id' => 'p1']],
+    ['type' => 'capture.add', 'capture' => ['id' => 'c9', 'ts' => 9, 'targets' => [['type' => 'participant', 'id' => 'p1']], 'worksetId' => 'w1']],
 ] as $op) {
     check(null === $station->checkOperation($state, $op), 'a station code may '.json_encode($op));
 }

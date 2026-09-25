@@ -8,20 +8,25 @@ namespace App\Race;
  * (applyOp in frontend/index.html) used for optimistic updates. Keep both in sync.
  *
  * State shape:
- *   name: ?string, archived: bool, sport: string,
+ *   schema: int (SCHEMA_VERSION), name: ?string, archived: bool, sport: string,
  *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
  *   worksets: list<{id, number: int, name: ?string, ranking: list<participantId>, captureKind: string}>,
- *   captures: list<{id, ts, tzOffset: ?int, participantId: ?string, kind: string, worksetId: ?string}>
+ *   captures: list<{id, ts, tzOffset: ?int, targets: list<{type: 'participant', id}>, kind: string, worksetId: ?string}>
  *
  * A capture timestamp is the pair `ts` (Unix milliseconds, the absolute instant including
  * the date) and `tzOffset` (minutes east of UTC on the recording device, null when the
  * recording client did not report one), so it can always be rendered as a full local
  * timestamp with date and time zone.
  *
+ * A capture concerns its `targets`: references `{type, id}` to what it applies to — for now
+ * participants only (groups follow, see docs/groups.md). None = unassigned, several = e.g. a
+ * protest involving several participants. Unknown participants are dropped when a capture is
+ * added; deleting a participant later keeps its reference on the captures.
+ *
  * Every capture has a `kind`: one of the built-in kinds (start, split, finish; the default
  * is finish) or the id of a custom kind in `kinds`. A custom kind has the role `split` (a
  * point the participants pass) or `marker` (an annotation such as a protest). A capture takes
- * its participant out of the ranking unless its kind is a marker; an unknown kind id (e.g. a
+ * its participants out of the ranking unless its kind is a marker; an unknown kind id (e.g. a
  * custom kind deleted concurrently) counts as a marker.
  *
  * A workset (a "station" in the UI) holds a ranking — the participants approaching, in their
@@ -29,7 +34,7 @@ namespace App\Race;
  * the first one in the list is the default. Each workset has a `number` fixed when it is
  * created (one more than the highest existing number), which names it until it is renamed.
  * A capture records the workset it was taken on (`worksetId`, null without one) and only takes
- * its participant out of that workset's ranking. Deleted worksets keep their id on captures.
+ * its participants out of that workset's ranking. Deleted worksets keep their id on captures.
  *
  * `sport` selects the UI text set (see TEXTS in frontend/index.html); the reducer only
  * validates it against SPORTS, it carries no other meaning server-side.
@@ -43,12 +48,28 @@ final class OperationReducer
     public const TYPES = [
         'race.rename', 'race.archive', 'race.setSport',
         'participants.add', 'participant.rename', 'participant.delete',
-        'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+        'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove',
         'kind.add', 'kind.update', 'kind.delete',
         'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
         'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
         'state.merge',
     ];
+
+    /**
+     * Version of the state shape and the operation semantics. Raise it (and add a migration
+     * step to MIGRATIONS and to the frontend's mirror) whenever a client of the previous version
+     * could no longer apply the events correctly: a new state shape, a new operation type,
+     * changed semantics. Clients of an older version are refused (`client_outdated`).
+     * Mirrors SCHEMA_VERSION in frontend/index.html.
+     */
+    public const SCHEMA_VERSION = 2;
+
+    /** Migration steps: version => method turning a state of that version into the next one. */
+    private const MIGRATIONS = [1 => 'toVersion2'];
+
+    /** Target types a capture may reference (groups follow, see docs/groups.md). */
+    public const TARGET_TYPES = ['participant'];
+    private const MAX_TARGETS = 500;
 
     // Mirrors SPORTS in frontend/index.html.
     public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
@@ -70,23 +91,55 @@ final class OperationReducer
     public static function emptyState(): array
     {
         return [
-            'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
+            'schema' => self::SCHEMA_VERSION, 'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
             'kinds' => [], 'worksets' => [], 'captures' => [],
         ];
     }
 
     /**
-     * Fills in the fields a state stored by an earlier version lacks (sport, kinds, worksets,
-     * the kind and workset of each capture), so the reducer can rely on them. The race-wide
-     * ranking and selected kind of earlier versions are dropped: a race starts without worksets.
+     * Whether a client announcing this schema version (`hello` / the `schema` request
+     * parameter; missing = 1, i.e. a client from before versioning) is too old for this server.
+     */
+    public static function isClientOutdated(mixed $schema): bool
+    {
+        $version = is_int($schema) || (is_string($schema) && ctype_digit($schema)) ? (int) $schema : 1;
+
+        return $version < self::SCHEMA_VERSION;
+    }
+
+    /**
+     * Brings a stored state up to SCHEMA_VERSION. A state without `schema` was stored before
+     * versioning (version 1): the fields it may lack (sport, kinds, worksets, the kind and
+     * workset of each capture) are filled in, and the race-wide ranking and selected kind of
+     * earlier versions are dropped (a race starts without worksets). Then the migration steps run.
      */
     public static function upgrade(array $state): array
     {
-        unset($state['ranking'], $state['captureKind']);
-        $state += self::emptyState();
-        foreach ($state['captures'] as $i => $capture) {
-            $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND, 'worksetId' => null];
+        if (!isset($state['schema'])) {
+            // Stored before versioning: version 1, possibly still lacking fields added before it.
+            unset($state['ranking'], $state['captureKind']);
+            $state = ['schema' => 1] + $state + self::emptyState();
+            foreach ($state['captures'] as $i => $capture) {
+                $state['captures'][$i] += ['tzOffset' => null, 'kind' => self::DEFAULT_KIND, 'worksetId' => null];
+            }
         }
+
+        return self::migrate($state);
+    }
+
+    /**
+     * Runs the migration steps from the state's schema version up to SCHEMA_VERSION.
+     *
+     * @throws \UnexpectedValueException for a state of a newer version than this code knows
+     */
+    public static function migrate(array $state): array
+    {
+        $version = $state['schema'] ?? 1;
+        if (!is_int($version) || $version < 1 || $version > self::SCHEMA_VERSION) {
+            throw new \UnexpectedValueException('Unsupported state schema version: '.json_encode($version));
+        }
+        $state = self::runMigrations($state, $version);
+        $state['schema'] = self::SCHEMA_VERSION;
 
         return $state;
     }
@@ -171,35 +224,70 @@ final class OperationReducer
                 $id = self::id($capture['id'] ?? null, 'capture_id');
                 $ts = self::timestamp($capture['ts'] ?? null);
                 $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
-                $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
+                $targets = self::captureTargets($capture);
                 $kind = self::captureKind($capture['kind'] ?? null);
                 $worksetId = self::optionalId($capture['worksetId'] ?? null, 'workset_id');
                 if (null !== self::findCapture($state, $id)) {
                     return $state;
                 }
-                if (null !== $participantId && null === self::findParticipant($state, $participantId)) {
-                    $participantId = null;
-                }
+                $targets = self::existingTargets($state, $targets);
                 $state['captures'][] = [
-                    'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'participantId' => $participantId, 'kind' => $kind, 'worksetId' => $worksetId,
+                    'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset, 'targets' => $targets, 'kind' => $kind, 'worksetId' => $worksetId,
                 ];
-                // A marker (e.g. a protest) annotates a participant without it passing the point.
+                // A marker (e.g. a protest) annotates participants without them passing the point.
                 // Only the capturing workset's ranking is affected.
                 $index = null === $worksetId ? null : self::findWorkset($state, $worksetId);
-                if (null !== $participantId && null !== $index && 'marker' !== self::kindRole($state, $kind)) {
-                    $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $participantId);
+                if (null !== $index && 'marker' !== self::kindRole($state, $kind)) {
+                    foreach ($targets as $target) {
+                        $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $target['id']);
+                    }
                 }
 
                 return $state;
 
             case 'capture.assign':
+                // Replaces all targets: with `targets` (unknown ones dropped), or with the single
+                // `participantId` of earlier versions (null = none; an unknown one changes nothing).
                 $captureId = self::id($op['captureId'] ?? null, 'capture_id');
+                if (isset($op['targets'])) {
+                    $targets = self::targetList($op['targets']);
+                    $index = self::findCapture($state, $captureId);
+                    if (null !== $index) {
+                        $state['captures'][$index]['targets'] = self::existingTargets($state, $targets);
+                    }
+
+                    return $state;
+                }
                 $participantId = self::optionalId($op['participantId'] ?? null, 'participant_id');
                 $index = self::findCapture($state, $captureId);
                 if (null === $index || (null !== $participantId && null === self::findParticipant($state, $participantId))) {
                     return $state;
                 }
-                $state['captures'][$index]['participantId'] = $participantId;
+                $state['captures'][$index]['targets'] = null === $participantId ? [] : [['type' => 'participant', 'id' => $participantId]];
+
+                return $state;
+
+            case 'capture.target.add':
+                $captureId = self::id($op['captureId'] ?? null, 'capture_id');
+                $target = self::target($op['target'] ?? null);
+                $index = self::findCapture($state, $captureId);
+                $targets = null === $index ? [] : $state['captures'][$index]['targets'];
+                if (null !== $index && null !== self::findParticipant($state, $target['id'])
+                    && !in_array($target, $targets, true) && count($targets) < self::MAX_TARGETS) {
+                    $state['captures'][$index]['targets'][] = $target;
+                }
+
+                return $state;
+
+            case 'capture.target.remove':
+                $captureId = self::id($op['captureId'] ?? null, 'capture_id');
+                $target = self::target($op['target'] ?? null);
+                $index = self::findCapture($state, $captureId);
+                if (null !== $index) {
+                    $state['captures'][$index]['targets'] = array_values(array_filter(
+                        $state['captures'][$index]['targets'], static fn ($t) => $t !== $target,
+                    ));
+                }
 
                 return $state;
 
@@ -358,6 +446,42 @@ final class OperationReducer
         }
     }
 
+    /** Version 2: a capture's single `participantId` becomes its list of `targets`. */
+    private static function toVersion2(array $state): array
+    {
+        foreach ($state['captures'] ?? [] as $i => $capture) {
+            if (!is_array($capture)) {
+                continue;
+            }
+            $participantId = $capture['participantId'] ?? null;
+            $migrated = [];
+            foreach ($capture as $key => $value) {
+                if ('participantId' === $key) {
+                    continue;
+                }
+                $migrated[$key] = $value;
+                if ('tzOffset' === $key && !array_key_exists('targets', $capture)) {
+                    $migrated['targets'] = is_string($participantId) ? [['type' => 'participant', 'id' => $participantId]] : [];
+                }
+            }
+            $migrated += ['targets' => is_string($participantId) ? [['type' => 'participant', 'id' => $participantId]] : []];
+            $state['captures'][$i] = $migrated;
+        }
+
+        return $state;
+    }
+
+    /** Applies the migration steps from $version up to SCHEMA_VERSION (see MIGRATIONS). */
+    private static function runMigrations(array $state, int $version): array
+    {
+        for (; $version < self::SCHEMA_VERSION; ++$version) {
+            $step = self::MIGRATIONS[$version];
+            $state = self::$step($state);
+        }
+
+        return $state;
+    }
+
     /**
      * Merges another state into this one without ever removing anything: participants are
      * matched by id or (case-insensitive) name, custom kinds and worksets likewise (worksets by
@@ -369,6 +493,12 @@ final class OperationReducer
         if (!is_array($source)) {
             throw new InvalidOperationException('invalid_state');
         }
+        // A state of an earlier schema version is migrated first (no version = 1).
+        $version = $source['schema'] ?? 1;
+        if (!is_int($version) || $version < 1 || $version > self::SCHEMA_VERSION) {
+            throw new InvalidOperationException('invalid_schema');
+        }
+        $source = self::runMigrations($source, $version);
         $participants = $source['participants'] ?? [];
         $kinds = $source['kinds'] ?? [];
         $worksets = $source['worksets'] ?? [];
@@ -440,15 +570,23 @@ final class OperationReducer
             $id = self::id($capture['id'] ?? null, 'capture_id');
             $ts = self::timestamp($capture['ts'] ?? null);
             $tzOffset = self::tzOffset($capture['tzOffset'] ?? null);
-            $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
+            $targets = self::targetList($capture['targets'] ?? []);
             $kind = self::captureKind($capture['kind'] ?? null);
             $worksetId = self::optionalId($capture['worksetId'] ?? null, 'workset_id');
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
+            // Participants are mapped to the ones they were matched with; unknown ones are dropped.
+            $mapped = [];
+            foreach ($targets as $target) {
+                $ref = ['type' => 'participant', 'id' => $idMap[$target['id']] ?? null];
+                if (null !== $ref['id'] && !in_array($ref, $mapped, true)) {
+                    $mapped[] = $ref;
+                }
+            }
             $state['captures'][] = [
                 'id' => $id, 'ts' => $ts, 'tzOffset' => $tzOffset,
-                'participantId' => null !== $participantId ? ($idMap[$participantId] ?? null) : null,
+                'targets' => $mapped,
                 'kind' => $kindMap[$kind] ?? $kind,
                 'worksetId' => null !== $worksetId ? ($worksetMap[$worksetId] ?? $worksetId) : null,
             ];
@@ -481,6 +619,57 @@ final class OperationReducer
     private static function key(string $name): string
     {
         return mb_strtolower(self::clean($name));
+    }
+
+    /**
+     * The targets of a capture in capture.add: its `targets`, or the single `participantId` of
+     * earlier versions when it has none.
+     *
+     * @return list<array{type: string, id: string}>
+     */
+    private static function captureTargets(array $capture): array
+    {
+        if (isset($capture['targets'])) {
+            return self::targetList($capture['targets']);
+        }
+        $participantId = self::optionalId($capture['participantId'] ?? null, 'participant_id');
+
+        return null === $participantId ? [] : [['type' => 'participant', 'id' => $participantId]];
+    }
+
+    /** @return list<array{type: string, id: string}> without duplicates, in their order */
+    private static function targetList(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value) || count($value) > self::MAX_TARGETS) {
+            throw new InvalidOperationException('invalid_capture_targets');
+        }
+        $targets = [];
+        foreach ($value as $item) {
+            $target = self::target($item);
+            if (!in_array($target, $targets, true)) {
+                $targets[] = $target;
+            }
+        }
+
+        return $targets;
+    }
+
+    /** @return array{type: string, id: string} */
+    private static function target(mixed $value): array
+    {
+        $type = is_array($value) ? ($value['type'] ?? null) : null;
+        $id = is_array($value) ? ($value['id'] ?? null) : null;
+        if (!in_array($type, self::TARGET_TYPES, true) || !is_string($id) || !preg_match(self::ID_PATTERN, $id)) {
+            throw new InvalidOperationException('invalid_capture_target');
+        }
+
+        return ['type' => $type, 'id' => $id];
+    }
+
+    /** The targets that exist in the state (lenient about references). */
+    private static function existingTargets(array $state, array $targets): array
+    {
+        return array_values(array_filter($targets, static fn ($t) => null !== self::findParticipant($state, $t['id'])));
     }
 
     private static function id(mixed $value, string $field): string

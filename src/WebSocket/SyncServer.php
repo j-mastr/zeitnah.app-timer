@@ -3,6 +3,7 @@
 namespace App\WebSocket;
 
 use App\Race\AccessRevokedException;
+use App\Race\OperationReducer;
 use App\Race\RaceNotFoundException;
 use App\Race\RaceRepository;
 use GuzzleHttp\Psr7\HttpFactory;
@@ -20,8 +21,9 @@ use React\Socket\ConnectionInterface;
  * Real-time synchronisation over WebSockets.
  *
  * Protocol (JSON text messages):
- *   client → server  {"type":"hello","code":"ABC123"}     subscribe to a race (with any of its access codes)
- *   server → client  {"type":"snapshot","code","seq","state","access"}
+ *   client → server  {"type":"hello","code":"ABC123","schema":N}  subscribe to a race (with any of its access
+ *                                                          codes); an older schema gets `client_outdated`
+ *   server → client  {"type":"snapshot","code","schema","seq","state","access"}
  *   client → server  {"type":"workset","worksetId"}         the workset this device works on (null: none)
  *   client → server  {"type":"ops","ops":[{opId,type,...}]}
  *   server → client  {"type":"events","events":[{seq,op}]}   pushed to every subscriber, filtered by its
@@ -194,7 +196,7 @@ final class SyncServer
 
         try {
             match ($message['type'] ?? null) {
-                'hello' => $this->onHello($session, (string) ($message['code'] ?? '')),
+                'hello' => $this->onHello($session, (string) ($message['code'] ?? ''), $message['schema'] ?? null),
                 'ops' => $this->onOperations($session, $message['ops'] ?? null),
                 'workset' => $this->onWorkset($session, $message['worksetId'] ?? null),
                 'ping' => $session->send(['type' => 'pong']),
@@ -206,8 +208,15 @@ final class SyncServer
         }
     }
 
-    private function onHello(ClientSession $session, string $code): void
+    private function onHello(ClientSession $session, string $code, mixed $schema): void
     {
+        if (OperationReducer::isClientOutdated($schema)) {
+            // Its view of the state would be wrong: no snapshot, no subscription, no operations.
+            $this->unsubscribe($session);
+            $session->send(['type' => 'error', 'error' => 'client_outdated', 'schema' => OperationReducer::SCHEMA_VERSION]);
+
+            return;
+        }
         try {
             $access = $this->races->resolve($code);
             $snapshot = $this->races->snapshot($access);

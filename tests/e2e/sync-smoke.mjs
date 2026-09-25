@@ -71,6 +71,9 @@ try {
   await sleep(800);
   assert.equal(await b.textContent('#capCount'), '2');
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  // Any assigned capture can take further participants ("+"); an unassigned one can't yet.
+  assert.equal(await b.locator('#capList .cap-row >> nth=0 >> select.add-target').count(), 1);
+  assert.equal(await b.locator('#capList .cap-row >> nth=1 >> select.add-target').count(), 0);
   step('space bar assigns the first sorted participant on all clients');
 
   // Capture kinds: custom kinds and the selected kind are race data; a one-shot kind stays on its device.
@@ -92,6 +95,15 @@ try {
   assert.equal(await b.textContent('#capCount'), '3');
   // A protest is a marker: the participant keeps its place in the approaching list.
   assert.deepEqual(await b.locator('#sortedList .nm').allTextContents(), ['FRA 44']);
+  // A marker can concern several participants: "+" adds one, the chips' ✕ removes one.
+  const protest = '#capList .cap-row >> nth=0';
+  await b.selectOption(`${protest} >> select.add-target`, {label: 'NED 7'});
+  await a.waitForFunction(() => document.querySelectorAll('#capList .cap-row:first-child .target-chip').length === 2);
+  assert.deepEqual(await a.locator(`${protest} >> .target-chip`).allTextContents(), ['FRA 44✕', 'NED 7✕']);
+  await a.click(`${protest} >> .target-chip:has-text("FRA 44") >> button`);
+  await b.waitForFunction(() => !document.querySelector('#capList .cap-row:first-child .target-chip'));
+  assert.equal(await b.locator(`${protest} >> select.assign:not(.kind-select):not(.add-target) >> option:checked`).textContent(), 'NED 7');
+  step('a marker concerns several participants; adding and removing them syncs');
   await b.selectOption('#capList .cap-row >> nth=0 >> select.kind-select', 'finish');
   await a.click('#kindSeg button[data-kind="finish"]');
   await sleep(800);

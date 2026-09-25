@@ -40,7 +40,7 @@ const state = {captures: [
 const types = ['race.rename', 'race.setSport', 'race.archive', 'participants.add', 'participant.rename', 'participant.delete',
   'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault',
   'workset.setKind', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
-  'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'bogus', 7];
+  'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove', 'bogus', 7];
 function randomOp() {
   const op = {type: pick(types)};
   if (rnd() < 0.9) op.worksetId = pick([...worksets, null, 5, 'x y']);

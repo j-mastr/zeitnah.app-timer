@@ -58,7 +58,8 @@ product owner before implementing.
 | --- | --- |
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
-| `capture` (`{id, ts, tzOffset, participantId, kind, worksetId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
+| `capture` (`{id, ts, tzOffset, targets, kind, worksetId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
+| capture `targets` — what a capture applies to: refs `{type:'participant', id}` (groups planned, `docs/groups.md`); none = unassigned, several = e.g. a protest | Boot(e) / boat(s) |
 | `ranking` — a workset's queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
 | capture `kind` — what a capture marks: built-in `start` / `split` / `finish` or a custom kind | Start / Tonnenrundung / Zieldurchlauf, Zeitart / event type |
 | custom kind (`{id, name, role}`, role `split` or `marker`) | e.g. Protest (a marker) |
@@ -96,9 +97,15 @@ tests/access-scope.php             What a restricted code sees and may do; revoc
 tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
 tests/undo-history.mjs             Undo/redo: random sequences undone and redone restore the states
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
+tests/e2e/schema-version.mjs       Playwright: outdated client, older server, newer local data
 tests/e2e/offline-start.mjs        PWA test: starts/stops its own PHP server, checks offline start
 tools/generate-icons.mjs           Renders public/icons/*.png from the SVG definition inside it
+docs/groups.md                     Design + progress: groups, capture targets, fields, schema versioning
 ```
+
+`docs/` holds design documents for features in progress. Keep the one you work on up to date
+(progress table, decisions, deviations); once a phase is built, its behaviour is documented
+here in `CLAUDE.md`, which stays the reference for what is implemented.
 
 ## Hard rules
 
@@ -137,6 +144,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
    `react/socket` directly.
 8. Never use `window.confirm/alert/prompt`; use `askConfirm()` (they are blocked in some
    embedded contexts and block the event loop).
+9. **Raise `SCHEMA_VERSION`** (PHP and JS, see Schema versioning) whenever a client of the
+   previous version could no longer apply the events correctly: a new state shape, a new
+   operation type, changed semantics. Add a migration step on both sides; never stop
+   accepting an older operation shape.
 
 ## Functional requirements
 
@@ -237,8 +248,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   adds a dashed ring and a note "Next time: Protest – then back to Finish." The toast names the
   kind. The ranking title follows the sticky kind's role (`sorted.titleStart`,
   `sorted.titleSplit`, else `sorted.title`).
-- **Elapsed time** of a finish = its time minus the participant's own latest start before it,
-  else the latest unassigned start before it. A staggered start is recorded as one unassigned
+- **Elapsed time** of a finish = its time minus the participant's own latest start before it
+  (a start whose targets include it), else the latest unassigned start before it; per
+  participant for a finish of several (`captureFacts()` → `elapsedBy`, `elapsedFor()`), shown in
+  the row only when it is the same for all of them. A staggered start is recorded as one unassigned
   start per group, so elapsed times of earlier groups drift — accepted for now; the analytics
   pipeline knows the groups and start times.
 
@@ -265,8 +278,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - **Compensating operations**, no reducer or server involvement: `perform()` asks
   `historyEntry(state, op)` for the operations that reverse `op` (e.g. `capture.add` →
   `capture.delete`; `participant.delete` → `participants.add` with the same id + back into the
-  ranking at its old position). Undoing a recorded time puts a participant that the capture took
-  out of the ranking back at its old position. Redo re-sends the original operation. Replayed
+  ranking at its old position). Undoing a recorded time puts the participants that the capture
+  took out of the ranking back at their old positions (`rerankTargetsOps()`, the last one first).
+  Changing a capture's targets is undone with `capture.assign` and the old `targets`. Redo re-sends the original operation. Replayed
   operations always get a fresh `opId`.
 - **Conflicts are refused with a toast** (`history.undoConflict` / `history.redoConflict`) and the
   entry is dropped, so the next step continues below it. Each entry lists the state `parts` it
@@ -288,8 +302,15 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   none for markers), time, delta to the previous capture of the same kind ("First" for the
   first; none for markers) plus the elapsed time for finishes with a start, the date (spelled out only when the capture is
   not from today; the full ISO timestamp is always in the row's `title`), a participant
-  dropdown to assign/reassign
+  dropdown to assign/reassign (`capture.assign`, replaces all participants)
   (including "(deleted participant)" if the participant was deleted) and a delete button.
+- **Several participants on one capture** (a protest, a recall, a dead heat), for every kind: a
+  row with a participant also has a small "+" select (`.add-target`, `capture.target.add`); a
+  capture with several shows them as chips (`.target-chip`) with ✕ (`capture.target.remove`)
+  plus the "+" instead of the dropdown (`buildTargetControls()`). An unassigned row has only the
+  dropdown. Split numbering
+  (`captureFacts().number`) only counts captures of exactly one participant. The CSV
+  participant column lists all of them, comma-separated.
 - Once kinds are unlocked, each row has a kind select before the participant select (its left
   border in the role colour; split kinds show their number). As soon as a capture isn't a finish
   the title becomes "Zeiten" / "Times", and with more than one kind among the captures a filter
@@ -413,7 +434,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - Every operation needs one path (`operationPath()`): `race.rename|setSport|archive`,
   `race.merge`, `participant.add|rename|delete`, `kind.add|update|delete`, `workset.add`,
   `workset[W].rename|delete|makeDefault|setKind`, `workset[W].ranking.add|remove|move`, and for
-  captures `workset[W].capture.add|assign|setKind|delete` (the capture's workset) or
+  captures `workset[W].capture.add|assign|setKind|delete` (the capture's workset; changing its
+  targets, `capture.target.add|remove`, needs `assign`) or
   `capture.…` for captures without one. Seeing uses `.view` paths (`race.view`,
   `participant.view`, `kind.view`, `workset[W].view`, `workset[W].capture.view`,
   `capture.view`); `access.view` lets a client see the race's codes.
@@ -571,15 +593,16 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   `localStorage['zeitnah.cache:<serverUrl>|<code>']`, so buffered changes survive
   reloads.
 - Allowed while not connected (buffered, sent on reconnect): `capture.add`,
-  `capture.assign`, `capture.delete`, `capture.setKind`, `workset.add`, `workset.setKind`,
+  `capture.assign`, `capture.delete`, `capture.setKind`, `capture.target.add`,
+  `capture.target.remove`, `workset.add`, `workset.setKind`,
   `workset.ranking.add`, `workset.ranking.remove`, `workset.ranking.move` (`OFFLINE_OPS` in the
   frontend). `workset.add` is among them so the first station can be created offline.
 - Everything else (rename race, add/import/rename/delete participants, custom kinds, rename /
   delete stations or change the default, merge, archive) is
   disabled until the connection is back: elements marked `data-edit="normal"` are dimmed
   via `body.lock-normal`, and `perform()` refuses with a toast.
-- Status (local / connecting / connected / connection lost, plus pending count and
-  "Archived") is shown in a pill next to the settings button; clicking it opens settings.
+- Status (local / connecting / connected / connection lost / update required, plus pending
+  count and "Archived") is shown in a pill next to the settings button; clicking it opens settings.
 - Over a WebSocket the pill also shows how many clients are on this race, after the code:
   "Server verbunden · ABC123 (5)". The count comes from the server's `presence` message
   (`backend.clientCount()`); while the HTTP fallback is in use it is unknown and omitted,
@@ -659,8 +682,10 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |
 | `participant.delete` | `participantId` | also removes it from every ranking; captures keep the id |
-| `capture.add` | `capture: {id, ts, tzOffset, participantId, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown participant → unassigned; removes the participant from that workset's ranking unless the kind is a marker |
-| `capture.assign` | `captureId, participantId` (nullable) | no-op if capture or participant is gone; ranking untouched |
+| `capture.add` | `capture: {id, ts, tzOffset, targets, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `targets` a list of ≤ 500 refs `{type:'participant', id}` (`invalid_capture_targets` / `invalid_capture_target`; duplicates dropped), missing/null = the legacy `participantId` (nullable); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown participants dropped; removes its participants from that workset's ranking unless the kind is a marker |
+| `capture.assign` | `captureId`, `targets` (list, replaces all; unknown ones dropped) or legacy `participantId` (nullable; unknown → no-op) | no-op if the capture is gone; ranking untouched |
+| `capture.target.add` | `captureId, target` | appends if capture and participant exist, it isn't there yet and there are < 500; ranking untouched |
+| `capture.target.remove` | `captureId, target` | |
 | `capture.delete` | `captureId` | |
 | `capture.setKind` | `captureId, kind` | same `kind` rules as `capture.add`; no-op if the capture is gone; ranking untouched |
 | `workset.add` | `workset: {id, name?, number?, ranking?, captureKind?}`, `beforeId?` | skips an existing id and a name taken case-insensitively; name ≤ 40 (`invalid_workset_name`, null/blank = unnamed); `number` defaults to the highest + 1 (else 1…1000000, `invalid_workset_number`); `ranking` (≤ 5000 ids, `invalid_ranking`, unknown participants dropped) and `captureKind` (unknown → `finish`) and `beforeId` (insert before it, else append) restore a deleted workset (undo) |
@@ -674,7 +699,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
 | `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
 | `kind.delete` | `kindId` | captures keep the id; resets every workset's `captureKind` that was this kind to `finish` |
-| `state.merge` | `state: {name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
+| `state.merge` | `state: {schema, name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `schema` (missing/null = 1; otherwise an integer 1…`SCHEMA_VERSION`, else `invalid_schema`) — an older state is migrated first; `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
 
 Every `workset.*` operation except `workset.add` requires `worksetId` (`invalid_workset_id`);
 there is no implicit default workset in operations.
@@ -682,13 +707,39 @@ there is no implicit default workset in operations.
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,participantId,kind,worksetId}]}`.
+`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
 States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
 and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
 former and drops the latter when the repository loads a race (a race starts without worksets),
 `normalizeState()` does the same on the client.
+`schema` is the state's version (see Schema versioning); states stored before versioning lack
+it and count as 1. Version 2 replaced the captures' `participantId` by `targets` (migration
+step 1 → 2 on both sides; old operation shapes with `participantId` are still accepted).
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
+
+### Schema versioning
+`SCHEMA_VERSION` (`OperationReducer::SCHEMA_VERSION`, mirrored in the frontend; the parity test
+checks they are equal) versions the state shape and the operation semantics. Background and
+rollout: `docs/groups.md`, "Schema versioning".
+- Every state carries `schema`: the server's race state, `zeitnah.local`, the caches.
+  `OperationReducer::upgrade()` (on every load) and `normalizeState()` bring a state up to date
+  through the migration steps (`MIGRATIONS` / `SCHEMA_MIGRATIONS`, version → step); a state
+  without `schema` is version 1 (stored before versioning), `state.merge` migrates its source.
+- Clients send their version: `schema` in `hello`, `?schema=N` on every `/api/races…` request
+  (added by `api()`); snapshots and `/api/config` carry the server's.
+- **Client older than the server:** `client_outdated` (WebSocket error, HTTP 409), no snapshot,
+  no subscription, no operations. The client (`ServerBackend.outdated()`) stops connecting,
+  status "Update required", a banner (`#outdatedBanner`) with a reload button; what works
+  offline (`OFFLINE_OPS`, so recording) is still buffered in the cache, everything else is
+  refused with `lock.outdated`. After the reload the current page sends the buffered ops.
+- **Server older than the client** (`isOlderServer()`, a snapshot without `schema` is 1): the
+  client goes back to local mode with a toast (`err.serverOutdated`); the cache stays.
+- **Browser data of a newer version** (`isNewerSchema()`): shown as well as possible, never
+  written (`localStore.tooNew`, `ServerBackend.cacheTooNew`), every operation, reset, upload and
+  "copy to this browser" refused, the banner asks for a reload. `outdatedReason()` on both
+  backends (`'client'` / `'storage'` / null) drives the banner.
+- Reducers accept older operation shapes forever, so ops buffered by an old page replay.
 
 ### Server storage
 - Table `race` (`code`, `seq`, `state` JSON = materialised state) and append-only
@@ -711,14 +762,15 @@ Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defa
 ### HTTP API (`ApiController`, CORS enabled)
 `GET /api/config`, `POST /api/races`, `GET /api/races/{code}`,
 `GET /api/races/{code}/events?since=N` (returns `{reset, seq, state}` when more than 500
-events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README. `{code}` is any access
+events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README. Race requests carry
+`?schema=N`; an older client gets 409 `client_outdated`. `{code}` is any access
 code; snapshots and events are projected/filtered for it and carry
 `access: {code, rules, codes?}`; unknown codes are 404 `not_found`, revoked ones 403
 `access_revoked`.
 
 ### WebSocket protocol (`SyncServer`)
 ```
-client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state","access"}
+client → {"type":"hello","code":"ABC123","schema"} server → {"type":"snapshot","code","schema","seq","state","access"}
 client → {"type":"workset","worksetId"}             (the device's station, null = none; only for presence)
 client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers, filtered per code)
                                                     server → {"type":"access","code","rules","codes"?} (after worksets were added/deleted)
@@ -726,7 +778,7 @@ client → {"type":"ops","ops":[...]}                 server → {"type":"events
                                                     server → {"type":"ack","opId"}  (duplicate, already applied)
                                                     server → {"type":"rejected","opId","error"}
 client → {"type":"ping"}                            server → {"type":"pong"}
-                                                    server → {"type":"error","error":"not_found"|"access_revoked"|...}
+                                                    server → {"type":"error","error":"not_found"|"access_revoked"|"client_outdated"|...}
 ```
 Subscribers are grouped by race (any of its codes). After a `workset.add`, `workset.delete` or
 `state.merge` event every subscriber's access is checked again: a revoked code gets
@@ -745,7 +797,7 @@ and drops connections idle for 75 s.
 - `LocalBackend` / `ServerBackend` share one interface: `getState()`, `getStatus()`,
   `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`,
   `clientCount()`, `worksetClientCount(id)`, `isReady()`, `announceWorkset(id)`,
-  `accessInfo()` (`{code, rules, codes?}`; local: everything), `destroy()`. `ServerBackend`
+  `accessInfo()` (`{code, rules, codes?}`; local: everything), `outdatedReason()`, `destroy()`. `ServerBackend`
   also caches its access and takes the snapshot fetched while connecting (`seed()`).
 - All UI mutations go through `perform(op | [ops])`, which checks `blockReason` first.
 - `ServerBackend`: `confirmed` + `seq` + `pending` → `view`. Server events are applied in
@@ -766,6 +818,7 @@ node tests/text-keys.mjs
 node tests/undo-history.mjs
 node tests/e2e/offline-start.mjs   # starts its own PHP server on port 8123
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # npm install first
+BASE_URL=http://127.0.0.1:8000/ node tests/e2e/schema-version.mjs
 ```
 
 `.env` defaults to `APP_ENV=prod`; use `.env.local` with `APP_ENV=dev`/`APP_DEBUG=1` for
@@ -774,7 +827,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 ### Checklist for adding an operation
 0. Check the feature against the product premises (local + synced, core untouched,
    discreet until used).
-1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`.
+1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`. A new type (or a
+   changed state shape) raises `SCHEMA_VERSION` on both sides — see Schema versioning.
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
 4. Mark its UI controls with `data-edit="normal"` or `"critical"`, and with `data-perm`.
@@ -789,7 +843,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 
 ## Known limitations / ideas not yet requested
 - Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
-  group) they are wrong for all but the last group. Groups are not modelled yet.
+  group) they are wrong for all but the last group. Groups are not modelled yet; the accepted
+  concept and the plan are in `docs/groups.md`.
 - No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
   create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't

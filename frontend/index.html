@@ -66,7 +66,7 @@
   .dot{width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0;}
   .dot.online{background:var(--ok);}
   .dot.connecting{background:var(--accent); animation:pulse 1.2s ease-in-out infinite;}
-  .dot.offline{background:var(--danger);}
+  .dot.offline, .dot.outdated{background:var(--danger);}
   @keyframes pulse{50%{opacity:.35;}}
   .settings-btn{display:inline-flex; align-items:center; gap:6px; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:0 12px; font-size:12px; cursor:pointer; font-family:inherit;}
   .history-btns{display:inline-flex; height:var(--bar-h); background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
@@ -138,6 +138,7 @@
   .kind-pick.active{background:var(--panel2); font-weight:600;}
   .kind-opt .link-btn{margin-top:0; font-size:12px; white-space:nowrap;}
   .kind-menu .kind-new{display:block; margin:4px 0 0; padding:8px 10px;}
+  .banner .link-btn{margin:0;}
   .link-btn{display:inline-block; margin-top:10px; background:none; border:none; padding:2px 6px; color:var(--muted); font-family:inherit; font-size:13px; text-decoration:underline; text-underline-offset:3px; cursor:pointer;}
   .link-btn:active{color:var(--text);}
   .hint-line{color:var(--muted); font-size:11px; margin-top:10px; display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;}
@@ -193,6 +194,7 @@
     .foot-link:hover{color:var(--accent);}
     .mini:hover{color:var(--text); border-color:var(--muted);}
     .search-results .res:hover{background:var(--panel2);}
+    .target-x:hover{color:var(--danger);}
   }
 
   ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
@@ -220,9 +222,14 @@
   .cap-delta:empty::before{content:'\00a0';}   /* a marker has no delta but keeps the row height */
   .cap-date{display:inline-block; white-space:nowrap; color:var(--muted); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
   .pending-mark{display:inline-block; white-space:nowrap; color:var(--accent); font-family:'IBM Plex Sans',system-ui,sans-serif; font-weight:400; font-size:11px; margin-left:6px;}
-  .cap-side{display:flex; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 240px; min-width:0;}
+  .cap-side{display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:6px; flex:1 1 240px; min-width:0;}
   select.assign{flex:1 1 0; min-width:0; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 10px; font-size:13px; font-family:inherit;}
   select.assign.kind-select{flex:0 0 40%; border-left-width:4px;}
+  /* Several participants on one capture (a protest, a recall): chips, and "+" to add one. */
+  select.assign.add-target{flex:0 0 auto; width:4.4em; font-weight:600;}
+  .target-chips{flex:1 1 10em; min-width:0; display:flex; flex-wrap:wrap; gap:4px;}
+  .target-chip{display:inline-flex; align-items:center; gap:2px; max-width:100%; overflow-wrap:break-word; background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:3px 2px 3px 8px; font-size:13px;}
+  .target-x{background:none; border:none; color:var(--muted); font-family:inherit; font-size:11px; padding:2px 5px; cursor:pointer;}
   select.kind-select.kind-start{border-left-color:var(--kind-start);}
   select.kind-select.kind-split{border-left-color:var(--kind-split);}
   select.kind-select.kind-marker{border-left-color:var(--kind-marker);}
@@ -265,6 +272,7 @@
     .seg button{padding:10px 14px; font-size:13px;}
     .btn.small{padding:11px 14px; font-size:14px;}
     select.assign{padding:11px 10px;}
+    .target-x{padding:10px 10px;}
     .search-results .res{padding:13px 12px;}
     .cap-side{gap:8px;}
     .kind-pick{padding:12px 10px; font-size:15px;}
@@ -400,6 +408,7 @@
   </header>
 
   <div class="banner" id="archivedBanner" data-i18n="archived.banner" hidden></div>
+  <div class="banner" id="outdatedBanner" role="alert" hidden><span id="outdatedText"></span> <button class="link-btn" id="outdatedReload" type="button" data-i18n="outdated.reload"></button></div>
 
   <div class="app">
     <div class="clock-card">
@@ -693,6 +702,36 @@
  */
 const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
 const DEFAULT_SPORT = 'generic';
+/*
+ * Version of the state shape and the operation semantics, shared with the server
+ * (OperationReducer::SCHEMA_VERSION). Raise it whenever a client of the previous version could
+ * no longer apply the events correctly, and add a step to SCHEMA_MIGRATIONS (mirrored in PHP).
+ * States without `schema` are version 1. See docs/groups.md, "Schema versioning".
+ */
+const SCHEMA_VERSION = 2;
+// Migration steps: version => function turning a raw state of that version into the next one.
+// They run on raw data (before normalizeState), so they must cope with legacy fields too.
+const SCHEMA_MIGRATIONS = {
+  // Version 2: a capture's single participantId (boatId in early versions) becomes `targets`.
+  1: (s) => Object.assign({}, s, {captures: Array.isArray(s.captures) ? s.captures.map(c => {
+    if(!c || typeof c !== 'object') return c;
+    const pid = c.participantId !== undefined ? c.participantId : c.boatId;
+    const out = {};
+    for(const [key, value] of Object.entries(c)){
+      if(key === 'participantId' || key === 'boatId') continue;
+      out[key] = value;
+      if(key === 'tzOffset' && !('targets' in c)) out.targets = typeof pid === 'string' ? [{type:'participant', id:pid}] : [];
+    }
+    if(!('targets' in out)) out.targets = typeof pid === 'string' ? [{type:'participant', id:pid}] : [];
+    return out;
+  }) : s.captures}),
+};
+/*
+ * Capture targets: references {type, id} to what a capture applies to. For now participants
+ * only (groups follow, see docs/groups.md). Mirrors OperationReducer::TARGET_TYPES.
+ */
+const TARGET_TYPES = ['participant'];
+const MAX_TARGETS = 500;
 // Entity ids, generated by the clients (uid()).
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 /*
@@ -719,6 +758,14 @@ const TEXTS = {
       'status.offline': 'Verbindung unterbrochen',
       'status.pending': '{n} ausstehend',
       'status.archived': 'Archiviert',
+      'status.outdated': 'Update nötig',
+      'captures.removeTarget': '{name} entfernen',
+      'lock.outdated': 'Nicht möglich mit dieser veralteten App-Version. Bitte die Seite neu laden.',
+      'outdated.client': 'Diese App-Version ist älter als die des Servers. Bitte neu laden, um weiterzuarbeiten – noch nicht gesendete Zeiten bleiben erhalten und werden danach übertragen.',
+      'outdated.storage': 'Die Daten in diesem Browser stammen von einer neueren App-Version. Bitte neu laden, um weiterzuarbeiten.',
+      'outdated.reload': 'Neu laden',
+      'err.clientOutdated': 'Diese App-Version ist veraltet. Bitte die Seite neu laden.',
+      'err.serverOutdated': 'Der Server ist älter als diese App-Version. Die Verbindung wurde getrennt; nicht gesendete Änderungen bleiben in diesem Browser.',
       'clock.capture': 'ZEIT ERFASSEN',
       'clock.hintDirect': 'Position direkt erfassen',
       'clock.captureFree': 'Zeit ohne Zuordnung erfassen',
@@ -921,6 +968,14 @@ const TEXTS = {
       'status.offline': 'Connection lost',
       'status.pending': '{n} pending',
       'status.archived': 'Archived',
+      'status.outdated': 'Update required',
+      'captures.removeTarget': 'Remove {name}',
+      'lock.outdated': 'Not possible with this outdated version of the app. Please reload the page.',
+      'outdated.client': 'This version of the app is older than the server’s. Please reload to carry on – times not sent yet are kept and sent afterwards.',
+      'outdated.storage': 'The data in this browser comes from a newer version of the app. Please reload to carry on.',
+      'outdated.reload': 'Reload',
+      'err.clientOutdated': 'This version of the app is outdated. Please reload the page.',
+      'err.serverOutdated': 'The server runs an older version than this app. You have been disconnected; changes not sent yet stay in this browser.',
       'clock.capture': 'RECORD TIME',
       'clock.hintDirect': 'record a position directly',
       'clock.captureFree': 'Record a time without assigning it',
@@ -1141,6 +1196,7 @@ const TEXTS = {
       'import.none': 'Keine neuen Teilnehmer gefunden.',
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Teilnehmer wählen —',
+      'captures.addTarget': 'Weiteren Teilnehmer hinzufügen',
       'captures.deletedParticipant': '(gelöschter Teilnehmer)',
       'export.col.participant': 'Teilnehmer',
       'lock.archived': 'Das Rennen ist archiviert.',
@@ -1195,6 +1251,7 @@ const TEXTS = {
       'import.none': 'No new participants found.',
       'import.headerPattern': '^(name|nummer|number|teilnehmer|participant)',
       'captures.chooseParticipant': '— Select participant —',
+      'captures.addTarget': 'Add another participant',
       'captures.deletedParticipant': '(deleted participant)',
       'export.col.participant': 'Participant',
       'lock.archived': 'This race is archived.',
@@ -1253,6 +1310,7 @@ const TEXTS = {
       // Case-insensitive pattern for a CSV header line that is skipped on import.
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Boot wählen —',
+      'captures.addTarget': 'Weiteres Boot hinzufügen',
       'captures.deletedParticipant': '(gelöschtes Boot)',
       'export.col.participant': 'Boot',
       'lock.archived': 'Die Regatta ist archiviert.',
@@ -1306,6 +1364,7 @@ const TEXTS = {
       'import.none': 'No new boats found.',
       'import.headerPattern': '^(name|boot|boat|segelnummer|sail)',
       'captures.chooseParticipant': '— Select boat —',
+      'captures.addTarget': 'Add another boat',
       'captures.deletedParticipant': '(deleted boat)',
       'export.col.participant': 'Boat',
       'lock.archived': 'This regatta is archived.',
@@ -1363,6 +1422,7 @@ const TEXTS = {
       'import.none': 'Keine neuen Läufer gefunden.',
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Läufer wählen —',
+      'captures.addTarget': 'Weiteren Läufer hinzufügen',
       'captures.deletedParticipant': '(gelöschter Läufer)',
       'export.col.participant': 'Läufer',
       'lock.archived': 'Der Lauf ist archiviert.',
@@ -1416,6 +1476,7 @@ const TEXTS = {
       'import.none': 'No new runners found.',
       'import.headerPattern': '^(name|startnummer|bib|läufer|runner)',
       'captures.chooseParticipant': '— Select runner —',
+      'captures.addTarget': 'Add another runner',
       'captures.deletedParticipant': '(deleted runner)',
       'export.col.participant': 'Runner',
       'lock.archived': 'This race is archived.',
@@ -1473,6 +1534,7 @@ const TEXTS = {
       'import.none': 'Keine neuen Schwimmer gefunden.',
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Schwimmer wählen —',
+      'captures.addTarget': 'Weiteren Schwimmer hinzufügen',
       'captures.deletedParticipant': '(gelöschter Schwimmer)',
       'export.col.participant': 'Schwimmer',
       'lock.archived': 'Der Wettkampf ist archiviert.',
@@ -1526,6 +1588,7 @@ const TEXTS = {
       'import.none': 'No new swimmers found.',
       'import.headerPattern': '^(name|bahn|lane|schwimmer|swimmer)',
       'captures.chooseParticipant': '— Select swimmer —',
+      'captures.addTarget': 'Add another swimmer',
       'captures.deletedParticipant': '(deleted swimmer)',
       'export.col.participant': 'Swimmer',
       'lock.archived': 'This meet is archived.',
@@ -1583,6 +1646,7 @@ const TEXTS = {
       'import.none': 'Keine neuen Fahrzeuge gefunden.',
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Fahrzeug wählen —',
+      'captures.addTarget': 'Weiteres Fahrzeug hinzufügen',
       'captures.deletedParticipant': '(gelöschtes Fahrzeug)',
       'export.col.participant': 'Fahrzeug',
       'lock.archived': 'Das Rennen ist archiviert.',
@@ -1636,6 +1700,7 @@ const TEXTS = {
       'import.none': 'No new vehicles found.',
       'import.headerPattern': '^(name|startnummer|number|fahrzeug|vehicle|car)',
       'captures.chooseParticipant': '— Select vehicle —',
+      'captures.addTarget': 'Add another vehicle',
       'captures.deletedParticipant': '(deleted vehicle)',
       'export.col.participant': 'Vehicle',
       'lock.archived': 'This race is archived.',
@@ -1770,15 +1835,29 @@ function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function emptyState(){
-  return {name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], worksets:[], captures:[]};
+  return {schema:SCHEMA_VERSION, name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], worksets:[], captures:[]};
+}
+/** Schema version of a raw state (stored, from the server or a merge); none = 1. */
+function schemaOf(s){ return s && s.schema !== undefined && s.schema !== null ? s.schema : 1; }
+/** Whether a raw state was written by a newer version of the app than this one. */
+function isNewerSchema(s){ const v = schemaOf(s); return !Number.isInteger(v) || v > SCHEMA_VERSION; }
+/** Runs the migration steps from `version` up to SCHEMA_VERSION (see SCHEMA_MIGRATIONS). */
+function runMigrations(s, version){
+  for(let v = version; v < SCHEMA_VERSION; v++) s = SCHEMA_MIGRATIONS[v](s);
+  return s;
 }
 
 /**
- * Sanitises a stored state. Also accepts the field names of earlier versions (boats, boatId);
- * their race-wide ranking and selected kind are dropped (a race starts without worksets).
+ * Sanitises a stored state and brings it up to SCHEMA_VERSION: the migration steps run on the
+ * raw state first. Also accepts the field names of earlier versions (boats, boatId); their
+ * race-wide ranking and selected kind are dropped (a race starts without worksets).
+ * A state of a newer version (isNewerSchema) is read as well as possible, for display only —
+ * callers must not write it back.
  */
 function normalizeState(s){
   if(!s || typeof s !== 'object') return emptyState();
+  // Nothing predates version 1 (the states stored before versioning).
+  if(!isNewerSchema(s)) s = runMigrations(s, Math.max(1, schemaOf(s)));
   const rawParticipants = Array.isArray(s.participants) ? s.participants : (Array.isArray(s.boats) ? s.boats : []);
   const participants = rawParticipants
     .filter(p => p && typeof p.id === 'string' && typeof p.name === 'string')
@@ -1786,10 +1865,14 @@ function normalizeState(s){
   const participantIds = new Set(participants.map(p => p.id));
   const captures = Array.isArray(s.captures)
     ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts)).map(c => {
-        const pid = c.participantId !== undefined ? c.participantId : c.boatId;
         const kind = typeof c.kind === 'string' && ID_RE.test(c.kind) ? c.kind : DEFAULT_KIND;
         const worksetId = typeof c.worksetId === 'string' && ID_RE.test(c.worksetId) ? c.worksetId : null;
-        return {id:c.id, ts:Math.round(c.ts), tzOffset:normTzOffset(c.tzOffset), participantId: typeof pid === 'string' ? pid : null, kind, worksetId};
+        const targets = [];
+        for(const r of Array.isArray(c.targets) ? c.targets : []){
+          if(r && TARGET_TYPES.includes(r.type) && typeof r.id === 'string' && ID_RE.test(r.id)
+            && !targets.some(x => x.type === r.type && x.id === r.id)) targets.push({type:r.type, id:r.id});
+        }
+        return {id:c.id, ts:Math.round(c.ts), tzOffset:normTzOffset(c.tzOffset), targets, kind, worksetId};
       })
     : [];
   const kinds = Array.isArray(s.kinds)
@@ -1809,7 +1892,7 @@ function normalizeState(s){
     });
   }
   const sport = SPORTS.includes(s.sport) ? s.sport : 'generic';
-  return {name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, worksets, captures};
+  return {schema:SCHEMA_VERSION, name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, worksets, captures};
 }
 function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.captures.length > 0; }
 
@@ -1823,6 +1906,25 @@ function cleanText(v){ return v.replace(/^\s+|\s+$/gu, '').replace(/\s+/gu, ' ')
 function nameKey(v){ return cleanText(v).toLowerCase(); }
 function reqId(v, field){ if(typeof v !== 'string' || !ID_RE.test(v)) throw new OpError('invalid_' + field); return v; }
 function optId(v, field){ return v === null || v === undefined ? null : reqId(v, field); }
+function reqTarget(v){
+  const type = v && typeof v === 'object' ? v.type : undefined, id = v && typeof v === 'object' ? v.id : undefined;
+  if(!TARGET_TYPES.includes(type) || typeof id !== 'string' || !ID_RE.test(id)) throw new OpError('invalid_capture_target');
+  return {type, id};
+}
+const sameTarget = (a, b) => a.type === b.type && a.id === b.id;
+/** A list of targets without duplicates, in their order. */
+function reqTargets(v){
+  if(!Array.isArray(v) || v.length > MAX_TARGETS) throw new OpError('invalid_capture_targets');
+  const out = [];
+  for(const item of v){ const t = reqTarget(item); if(!out.some(x => sameTarget(x, t))) out.push(t); }
+  return out;
+}
+/** The targets of a capture in capture.add: `targets`, or the single participantId of earlier versions. */
+function captureTargetsOf(c){
+  if(c.targets !== undefined && c.targets !== null) return reqTargets(c.targets);
+  const pid = optId(c.participantId, 'participant_id');
+  return pid === null ? [] : [{type:'participant', id:pid}];
+}
 function reqName(v, max, field){
   if(typeof v !== 'string') throw new OpError('invalid_' + field);
   const s = cleanText(v);
@@ -1933,24 +2035,46 @@ function applyOp(s, op){
       const id = reqId(c.id, 'capture_id');
       const ts = reqTs(c.ts);
       const tzOffset = optTzOffset(c.tzOffset);
-      let participantId = optId(c.participantId, 'participant_id');
+      let targets = captureTargetsOf(c);
       const kind = reqCaptureKind(c.kind);
       const worksetId = optId(c.worksetId, 'workset_id');
       if(findCapture(s, id)) return s;
-      if(participantId !== null && !findParticipant(s, participantId)) participantId = null;
-      s.captures.push({id, ts, tzOffset, participantId, kind, worksetId});
-      // A marker (e.g. a protest) annotates a participant without it passing the point.
+      targets = targets.filter(t => findParticipant(s, t.id));
+      s.captures.push({id, ts, tzOffset, targets, kind, worksetId});
+      // A marker (e.g. a protest) annotates participants without them passing the point.
       // Only the capturing workset's ranking is affected.
       const w = worksetId === null ? null : findWorkset(s, worksetId);
-      if(participantId !== null && w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => x !== participantId);
+      if(w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => !targets.some(t => t.id === x));
       return s;
     }
     case 'capture.assign': {
+      // Replaces all targets: with `targets` (unknown ones dropped), or with the single
+      // participantId of earlier versions (null = none; an unknown one changes nothing).
       const cid = reqId(op.captureId, 'capture_id');
+      if(op.targets !== undefined && op.targets !== null){
+        const targets = reqTargets(op.targets);
+        const c = findCapture(s, cid);
+        if(c) c.targets = targets.filter(t => findParticipant(s, t.id));
+        return s;
+      }
       const bid = optId(op.participantId, 'participant_id');
       const c = findCapture(s, cid);
       if(!c || (bid !== null && !findParticipant(s, bid))) return s;
-      c.participantId = bid;
+      c.targets = bid === null ? [] : [{type:'participant', id:bid}];
+      return s;
+    }
+    case 'capture.target.add': {
+      const cid = reqId(op.captureId, 'capture_id');
+      const target = reqTarget(op.target);
+      const c = findCapture(s, cid);
+      if(c && findParticipant(s, target.id) && !c.targets.some(x => sameTarget(x, target)) && c.targets.length < MAX_TARGETS) c.targets.push(target);
+      return s;
+    }
+    case 'capture.target.remove': {
+      const cid = reqId(op.captureId, 'capture_id');
+      const target = reqTarget(op.target);
+      const c = findCapture(s, cid);
+      if(c) c.targets = c.targets.filter(x => !sameTarget(x, target));
       return s;
     }
     case 'capture.delete': {
@@ -2052,8 +2176,12 @@ function applyOp(s, op){
       return s;
     }
     case 'state.merge': {
-      const src = op.state;
+      let src = op.state;
       if(!src || typeof src !== 'object') throw new OpError('invalid_state');
+      // A state of an earlier schema version is migrated first (no version = 1).
+      const version = schemaOf(src);
+      if(!Number.isInteger(version) || version < 1 || version > SCHEMA_VERSION) throw new OpError('invalid_schema');
+      src = runMigrations(src, version);
       const participants = src.participants || [], kinds = src.kinds || [], worksets = src.worksets || [], captures = src.captures || [];
       if(!Array.isArray(participants) || !Array.isArray(kinds) || !Array.isArray(worksets) || !Array.isArray(captures)
         || participants.length > 5000 || kinds.length > 500 || worksets.length > 500 || captures.length > 20000) throw new OpError('invalid_state');
@@ -2099,11 +2227,17 @@ function applyOp(s, op){
         const id = reqId(c.id, 'capture_id');
         const ts = reqTs(c.ts);
         const tzOffset = optTzOffset(c.tzOffset);
-        const bid = optId(c.participantId, 'participant_id');
+        const targets = reqTargets(c.targets === undefined || c.targets === null ? [] : c.targets);
         const kind = reqCaptureKind(c.kind);
         const wid = optId(c.worksetId, 'workset_id');
         if(findCapture(s, id)) continue;
-        s.captures.push({id, ts, tzOffset, participantId: bid !== null && idMap.has(bid) ? idMap.get(bid) : null,
+        // Participants are mapped to the ones they were matched with; unknown ones are dropped.
+        const mapped = [];
+        for(const t of targets){
+          const ref = {type:'participant', id: idMap.has(t.id) ? idMap.get(t.id) : null};
+          if(ref.id !== null && !mapped.some(x => sameTarget(x, ref))) mapped.push(ref);
+        }
+        s.captures.push({id, ts, tzOffset, targets: mapped,
           kind: kindMap.has(kind) ? kindMap.get(kind) : kind,
           worksetId: wid !== null && worksetMap.has(wid) ? worksetMap.get(wid) : wid});
       }
@@ -2121,7 +2255,7 @@ function applyOp(s, op){
 }
 
 // Operations that stay possible without a server connection: they are buffered and sent later.
-const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
+const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove',
   'workset.add', 'workset.setKind', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move']);
 
 // =====================================================================
@@ -2209,9 +2343,11 @@ function operationPath(s, op){
       const c = op.capture && typeof op.capture === 'object' && !Array.isArray(op.capture) ? op.capture : {};
       return [...captureScope(c.worksetId === undefined ? null : c.worksetId), ['add', null]];
     }
-    case 'capture.assign': case 'capture.delete': case 'capture.setKind': {
+    case 'capture.assign': case 'capture.delete': case 'capture.setKind':
+    case 'capture.target.add': case 'capture.target.remove': {
       const c = (s.captures || []).find(x => x.id === op.captureId);
-      return c ? [...captureScope(c.worksetId === undefined ? null : c.worksetId), [parts[1], null]] : null;
+      // Changing a capture's targets is assigning it.
+      return c ? [...captureScope(c.worksetId === undefined ? null : c.worksetId), [parts.length > 2 ? 'assign' : parts[1], null]] : null;
     }
     default:
       return null;
@@ -2251,7 +2387,7 @@ function footprint(s, parts){
       case 'participant': { const p = findParticipant(s, id); return p ? p.name : null; }
       case 'ranked': return w ? w.ranking.includes(id) : null;
       case 'next': return w && w.ranking.includes(id) ? (rankedNext(w, id) || '$end') : null;
-      case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.participantId, c.kind, c.worksetId] : null; }
+      case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.targets, c.kind, c.worksetId] : null; }
       case 'captureKind': return w ? w.captureKind : null;
       case 'kind': { const k = findKind(s, id); return k ? [k.name, k.role] : null; }
       case 'workset': {
@@ -2271,6 +2407,16 @@ function rerankOps(s, id, worksetId){
   if(!id || !w || !w.ranking.includes(id)) return [];
   return [{type:'workset.ranking.add', worksetId, participantId:id},
     {type:'workset.ranking.move', worksetId, participantId:id, beforeId:rankedNext(w, id)}];
+}
+/**
+ * Operations that put the participants among `targets` back into a workset's ranking at their
+ * positions in `s` — the last one first, so the neighbour each is moved before is back already.
+ */
+function rerankTargetsOps(s, targets, worksetId){
+  const w = worksetId ? findWorkset(s, worksetId) : null;
+  if(!w) return [];
+  return targets.filter(t => w.ranking.includes(t.id)).sort((a, b) => w.ranking.indexOf(b.id) - w.ranking.indexOf(a.id))
+    .flatMap(t => rerankOps(s, t.id, worksetId));
 }
 /** The parts for a participant's place in every workset's ranking. */
 const rankedParts = (s, id) => s.worksets.map(w => ['ranked', id, w.id]);
@@ -2322,11 +2468,12 @@ function historyEntry(s, op){
     case 'capture.add': {
       const c = op.capture;
       if(!c || typeof c.id !== 'string' || findCapture(s, c.id)) return null;
-      const pid = typeof c.participantId === 'string' ? c.participantId : null;
+      let targets;
+      try{ targets = captureTargetsOf(c); }catch(e){ return null; }
       const ws = typeof c.worksetId === 'string' ? c.worksetId : null;
-      // Recording a time for a ranked participant takes it out of the ranking: undo puts it back.
-      return entry([['capture', c.id], ...(pid && ws ? [['ranked', pid, ws]] : [])],
-        [{type:'capture.delete', captureId:c.id}, ...rerankOps(s, pid, ws)]);
+      // Recording a time for ranked participants takes them out of the ranking: undo puts them back.
+      return entry([['capture', c.id], ...(ws ? targets.map(t => ['ranked', t.id, ws]) : [])],
+        [{type:'capture.delete', captureId:c.id}, ...rerankTargetsOps(s, targets, ws)]);
     }
     case 'capture.setKind': {
       const c = findCapture(s, op.captureId);
@@ -2349,17 +2496,18 @@ function historyEntry(s, op){
       return entry([['kind', k.id], ...s.worksets.map(w => ['captureKind', null, w.id])],
         [{type:'kind.add', kind:{...k}}, ...s.worksets.filter(w => w.captureKind === k.id).map(w => ({type:'workset.setKind', worksetId:w.id, kind:k.id}))]);
     }
-    case 'capture.assign': {
+    case 'capture.assign': case 'capture.target.add': case 'capture.target.remove': {
       const c = findCapture(s, op.captureId);
-      return c ? entry([['capture', c.id]], [{type:'capture.assign', captureId:c.id, participantId:c.participantId}]) : null;
+      return c ? entry([['capture', c.id]], [{type:'capture.assign', captureId:c.id, targets:clone(c.targets)}]) : null;
     }
     case 'capture.delete': {
       const c = findCapture(s, op.captureId);
       if(!c) return null;
-      const pid = c.participantId, ws = c.worksetId;
-      // Adding the capture back would take its participant out of the ranking: keep it there.
-      return entry([['capture', c.id], ...(pid && ws ? [['ranked', pid, ws]] : [])],
-        [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, participantId:pid, kind:c.kind, worksetId:ws}}, ...rerankOps(s, pid, ws)]);
+      const ws = c.worksetId;
+      // Adding the capture back would take its participants out of the ranking: keep them there.
+      return entry([['capture', c.id], ...(ws ? c.targets.map(t => ['ranked', t.id, ws]) : [])],
+        [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, targets:clone(c.targets), kind:c.kind, worksetId:ws}},
+          ...rerankTargetsOps(s, c.targets, ws)]);
     }
     case 'workset.add': {
       const w = op.workset;
@@ -2401,10 +2549,19 @@ function footprintAfter(s, ops, parts){
 // =====================================================================
 // Backends
 // =====================================================================
+/*
+ * The local race. Data written by a newer version of the app (isNewerSchema) is shown as well
+ * as possible but never written back: `tooNew` blocks saving until the page is reloaded.
+ */
 const localStore = {
-  load(){ return normalizeState(readJson(KEYS.local)); },
-  save(state){ writeJson(KEYS.local, state); },
-  reset(){ writeJson(KEYS.local, emptyState()); },
+  tooNew: false,
+  load(){
+    const raw = readJson(KEYS.local);
+    this.tooNew = !!raw && isNewerSchema(raw);
+    return normalizeState(raw);
+  },
+  save(state){ if(!this.tooNew) writeJson(KEYS.local, state); },
+  reset(){ if(!this.tooNew) writeJson(KEYS.local, emptyState()); },
 };
 
 class LocalBackend {
@@ -2420,7 +2577,9 @@ class LocalBackend {
   clientCount(){ return null; }
   worksetClientCount(){ return null; }
   pendingCaptureIds(){ return new Set(); }
-  blockReason(){ return null; }
+  blockReason(){ return localStore.tooNew ? 'lock.outdated' : null; }
+  /** 'storage' while the local data comes from a newer version of the app. */
+  outdatedReason(){ return localStore.tooNew ? 'storage' : null; }
   isReady(){ return true; }
   announceWorkset(){}
   /** Local data is this device's own: everything is allowed. */
@@ -2439,6 +2598,8 @@ class ApiError extends Error {
   constructor(code, status){ super(code); this.code = code; this.status = status; }
 }
 async function api(serverUrl, path, options = {}){
+  // Race requests carry this client's schema version; an older one than the server's is refused.
+  if(path.startsWith('/api/races')) path += (path.includes('?') ? '&' : '?') + 'schema=' + SCHEMA_VERSION;
   let res;
   try{
     res = await fetch(serverUrl + path, {
@@ -2455,6 +2616,8 @@ async function api(serverUrl, path, options = {}){
   if(!res.ok) throw new ApiError((data && data.error) || ('http_' + res.status), res.status);
   return data;
 }
+/** Whether a snapshot comes from a server older than this client (servers before versioning send no `schema`). */
+function isOlderServer(snapshot){ const v = snapshot && snapshot.schema; return (Number.isInteger(v) ? v : 1) < SCHEMA_VERSION; }
 
 /**
  * Server backend with optimistic updates.
@@ -2472,6 +2635,9 @@ class ServerBackend {
     this.handlers = handlers;
     this.cacheKey = KEYS.cachePrefix + serverUrl + '|' + code;
     const cache = readJson(this.cacheKey);
+    // A cache written by a newer version of the app is shown but never written back or sent.
+    this.cacheTooNew = !!(cache && cache.state) && isNewerSchema(cache.state);
+    this.outdatedError = null;   // 'client_outdated' once the server refused this version
     this.confirmed = normalizeState(cache && cache.state);
     this.seq = cache && Number.isInteger(cache.seq) ? cache.seq : 0;
     this.pending = cache && Array.isArray(cache.pending) ? cache.pending : [];
@@ -2492,6 +2658,7 @@ class ServerBackend {
     this.httpBusy = false;
     this.needSnapshot = !this.hasSnapshot;
     this.destroyed = false;
+    if(this.cacheTooNew) this.status = 'outdated';
     this.recompute(false);
   }
 
@@ -2514,16 +2681,22 @@ class ServerBackend {
     return new Set(this.pending.filter(o => o.type === 'capture.add' && o.capture).map(o => o.capture.id));
   }
   blockReason(op){
+    if(this.cacheTooNew) return 'lock.outdated';
     if(this.view.archived) return 'lock.archived';
     const path = operationPath(this.view, op);
     if(path && !rulesAllow(this.accessInfo().rules, path)) return 'lock.forbidden';
+    // Refused as outdated: what works offline is still buffered and sent after the reload.
     if(OFFLINE_OPS.has(op.type)) return null;
+    if(this.status === 'outdated') return 'lock.outdated';
     return this.status === 'online' ? null : 'lock.offline';
   }
+  /** 'client' once the server refused this version, 'storage' for a cache of a newer one, else null. */
+  outdatedReason(){ return this.cacheTooNew ? 'storage' : this.outdatedError === 'client_outdated' ? 'client' : null; }
   /** Until the server said otherwise (no snapshot yet), nothing is hidden; it enforces anyway. */
   accessInfo(){ return this.access || {code: this.code, rules: FULL_ACCESS}; }
   /** Starts from a snapshot fetched while connecting, if nothing is cached yet. */
   seed(snapshot){
+    if(this.cacheTooNew || isOlderServer(snapshot)) return;
     if(!this.hasSnapshot && snapshot && Number.isInteger(snapshot.seq)) this.applySnapshot(snapshot.seq, snapshot.state, snapshot.access);
   }
   setAccess(access){
@@ -2543,7 +2716,7 @@ class ServerBackend {
   }
   /** Resolves true once the server has applied the operation, false if it was rejected. */
   waitFor(opId){ return new Promise(resolve => this.waiters.set(opId, resolve)); }
-  start(){ this.connect(); }
+  start(){ if(!this.cacheTooNew) this.connect(); }
   destroy(){
     this.destroyed = true;
     Object.values(this.timers).forEach(id => clearTimeout(id));
@@ -2551,7 +2724,7 @@ class ServerBackend {
   }
 
   // ----- state bookkeeping -----
-  persist(){ writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending, access:this.access}); }
+  persist(){ if(!this.cacheTooNew) writeJson(this.cacheKey, {seq:this.seq, state:this.confirmed, pending:this.pending, access:this.access}); }
   recompute(notify = true){
     const view = clone(this.confirmed);
     for(const op of this.pending){ try{ applyOp(view, op); }catch(e){} }
@@ -2598,10 +2771,24 @@ class ServerBackend {
     if(changed){ this.persist(); this.recompute(); }
   }
   resync(){
-    if(this.transport === 'ws' && this.ws && this.ws.readyState === 1) this.send({type:'hello', code:this.code});
+    if(this.transport === 'ws' && this.ws && this.ws.readyState === 1) this.send({type:'hello', code:this.code, schema:SCHEMA_VERSION});
     else this.needSnapshot = true;
   }
   fatal(error){ if(!this.destroyed) this.handlers.onFatal(error); }
+  /**
+   * The server refused this version (`client_outdated`) or is older than it (`server_outdated`):
+   * the connection stops for good, the cache with the pending operations stays, so a reload
+   * (or a newer server) delivers them.
+   */
+  outdated(error){
+    if(this.destroyed) return;
+    this.destroy();
+    this.transport = null;
+    this.clients = null;
+    this.outdatedError = error;
+    this.setStatus('outdated');
+    this.handlers.onOutdated(error);
+  }
   later(name, fn, ms){ clearTimeout(this.timers[name]); this.timers[name] = setTimeout(fn, ms); }
 
   // ----- connection -----
@@ -2631,7 +2818,7 @@ class ServerBackend {
     this.later('wsOpen', () => { if(ws.readyState !== 1) ws.close(); }, 6000);
     ws.onopen = () => {
       clearTimeout(this.timers.wsOpen);
-      this.send({type:'hello', code:this.code});
+      this.send({type:'hello', code:this.code, schema:SCHEMA_VERSION});
       this.startHeartbeat();
     };
     ws.onmessage = (event) => {
@@ -2649,6 +2836,7 @@ class ServerBackend {
   onWsMessage(msg){
     switch(msg.type){
       case 'snapshot':
+        if(isOlderServer(msg)){ this.outdated('server_outdated'); break; }
         this.transport = 'ws';
         this.wsFailures = 0;
         this.stopPolling();
@@ -2667,7 +2855,10 @@ class ServerBackend {
       case 'access': this.setAccess({code:msg.code, rules:msg.rules, ...(msg.codes ? {codes:msg.codes} : {})}); break;
       case 'ack': this.settle(msg.opId, true); this.persist(); this.recompute(); break;
       case 'rejected': this.settle(msg.opId, false, msg.error); this.persist(); this.recompute(); break;
-      case 'error': if(msg.error === 'not_found' || msg.error === 'access_revoked') this.fatal(msg.error); break;
+      case 'error':
+        if(msg.error === 'not_found' || msg.error === 'access_revoked') this.fatal(msg.error);
+        else if(msg.error === 'client_outdated') this.outdated(msg.error);
+        break;
     }
   }
   onWsDown(){
@@ -2717,15 +2908,18 @@ class ServerBackend {
       await this.flushHttp();
       if(this.needSnapshot){
         const snap = await api(this.serverUrl, '/api/races/' + this.code);
+        if(isOlderServer(snap)){ this.outdated('server_outdated'); return; }
         this.applySnapshot(snap.seq, snap.state, snap.access);
       }else{
         const res = await api(this.serverUrl, '/api/races/' + this.code + '/events?since=' + this.seq);
+        if(res.reset && isOlderServer(res)){ this.outdated('server_outdated'); return; }
         if(res.reset) this.applySnapshot(res.seq, res.state, res.access);
         else{ this.applyEvents(res.events || []); this.setAccess(res.access); }
       }
       ok = true;
     }catch(e){
       if(e.code === 'not_found' || e.code === 'access_revoked'){ this.fatal(e.code); return; }
+      if(e.code === 'client_outdated'){ this.outdated(e.code); return; }
       this.sent.clear();
     }
     if(!this.polling || this.destroyed) return;
@@ -2790,6 +2984,13 @@ const backendHandlers = {
   onFatal(error){
     if(error === 'not_found'){ useLocal(); toast(t('err.gone')); }
     else if(error === 'access_revoked') onAccessRevoked();
+  },
+  // Versions don't match (docs/groups.md, "Schema versioning"). An outdated client stays on
+  // the race with the reload notice; with an older server the device carries on locally (the
+  // cache with its pending operations stays for a later connection).
+  onOutdated(error){
+    if(error === 'server_outdated'){ useLocal(); toast(t('err.serverOutdated')); }
+    else renderAll();
   },
 };
 
@@ -2913,12 +3114,13 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
   }catch(e){
     if(e.code === 'not_found' || interactive) throw e;
   }
+  if(snapshot && isOlderServer(snapshot)) throw new ApiError('server_outdated', 0);
   // The server names the code to keep (the same one, for now).
   if(snapshot && snapshot.access && typeof snapshot.access.code === 'string') code = snapshot.access.code;
   const local = localStore.load();
   const mayMerge = !snapshot || !snapshot.access || rulesAllow(snapshot.access.rules, [['race', null], ['merge', null]]);
   let upload = false;
-  if(snapshot && snapshot.seq === 0 && hasData(local) && mayMerge){
+  if(snapshot && snapshot.seq === 0 && hasData(local) && mayMerge && !localStore.tooNew){
     upload = await askConfirm({
       title: t('init.title'),
       text: t('init.text', {code, participants: local.participants.length, captures: local.captures.length}),
@@ -2935,10 +3137,12 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds, worksets:s.worksets, captures:s.captures}; }
+function mergePayload(s){ return {schema:SCHEMA_VERSION, name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds, worksets:s.worksets, captures:s.captures}; }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
   if(e && e.code === 'access_revoked') return t('err.revoked');
+  if(e && e.code === 'client_outdated') return t('err.clientOutdated');
+  if(e && e.code === 'server_outdated') return t('err.serverOutdated');
   if(e && e.code === 'network') return t('err.network');
   return t('err.generic', {msg: (e && (e.code || e.message)) || '?'});
 }
@@ -3016,6 +3220,8 @@ const HISTORY_LABELS = {
   'workset.makeDefault': () => t('history.worksetDefault'),
   'capture.add': () => t('history.captureAdd'),
   'capture.assign': () => t('history.captureAssign'),
+  'capture.target.add': () => t('history.captureAssign'),
+  'capture.target.remove': () => t('history.captureAssign'),
   'capture.delete': () => t('history.captureDelete'),
   'capture.setKind': () => t('history.captureKind'),
   'workset.setKind': () => t('history.worksetKind'),
@@ -3262,17 +3468,19 @@ function onDoubleActivate(el, cb){
 
 // ---------- participant helpers ----------
 const participantById = (id) => S().participants.find(b => b.id === id);
+/** The ids of the participants a capture applies to (its participant targets). */
+const captureParticipantIds = (c) => c.targets.filter(x => x.type === 'participant').map(x => x.id);
 /** The participant's finishes (captures of the finish kind), or null without any. */
 function participantCaptureInfo(participantId){
   const s = S();
-  const list = s.captures.filter(c => c.participantId === participantId && kindRole(s, c.kind) === 'finish').sort((a, b) => b.ts - a.ts);
+  const list = s.captures.filter(c => captureParticipantIds(c).includes(participantId) && kindRole(s, c.kind) === 'finish').sort((a, b) => b.ts - a.ts);
   if(!list.length) return null;
   return {last:list[0], first:list[list.length - 1], count:list.length};
 }
 function metaText(participantId){
   const info = participantCaptureInfo(participantId);
   if(!info) return '';
-  const elapsed = captureFacts().get(info.last.id).elapsed;
+  const elapsed = elapsedFor(info.last, participantId);
   return fmtTime(info.last.ts, info.last.tzOffset) + (info.count > 1 ? ` +${info.count - 1}` : '')
     + (elapsed !== null ? ' · ' + t('captures.elapsed', {time: fmtDelta(elapsed)}) : '');
 }
@@ -3282,7 +3490,7 @@ function timeSortKey(participantId, dir, elapsed = false){
   const info = participantCaptureInfo(participantId);
   if(!info) return null;
   const c = dir === 'desc' ? info.last : info.first;
-  return elapsed ? captureFacts().get(c.id).elapsed : c.ts;
+  return elapsed ? elapsedFor(c, participantId) : c.ts;
 }
 
 // ---------- access (what this device's code allows) ----------
@@ -3465,8 +3673,10 @@ function cycleKind(once){
 /*
  * Derived facts per capture, computed once per render: its role, its place among the
  * captures of the same kind, the previous capture of that kind, the number of a split-role
- * capture among the participant's captures of that kind, and the elapsed time of a finish
- * (since the participant's own start, else the latest unassigned start before it).
+ * capture among the participant's captures of that kind (only for a capture of exactly one
+ * participant), and the elapsed time of a finish per participant (`elapsedBy`: since its own
+ * latest start, else the latest unassigned start before it) — `elapsed` is that time when it
+ * is the same for all of them (or the unassigned start's for an unassigned finish), else null.
  */
 let factsCache = null;
 function captureFacts(){
@@ -3480,21 +3690,29 @@ function captureFacts(){
     count.set(c.kind, place);
     const prev = last.get(c.kind) || null;
     last.set(c.kind, c);
-    let number = null, elapsed = null;
-    if(role === 'split' && c.participantId){
-      const key = c.kind + '|' + c.participantId;
+    const pids = captureParticipantIds(c);
+    let number = null, elapsed = null, elapsedBy = null;
+    if(role === 'split' && pids.length === 1){
+      const key = c.kind + '|' + pids[0];
       number = (numbers.get(key) || 0) + 1;
       numbers.set(key, number);
     }
     if(role === 'start'){
-      if(c.participantId) ownStart.set(c.participantId, c); else freeStart = c;
+      if(pids.length) pids.forEach(p => ownStart.set(p, c)); else freeStart = c;
     }else if(role === 'finish'){
-      const start = (c.participantId && ownStart.get(c.participantId)) || freeStart;
-      if(start) elapsed = c.ts - start.ts;
+      const elapsedOf = (p) => { const start = (p && ownStart.get(p)) || freeStart; return start ? c.ts - start.ts : null; };
+      elapsedBy = new Map(pids.map(p => [p, elapsedOf(p)]));
+      const values = pids.length ? [...elapsedBy.values()] : [elapsedOf(null)];
+      elapsed = values.every(v => v === values[0]) ? values[0] : null;
     }
-    facts.set(c.id, {role, place, prev, number, elapsed});
+    facts.set(c.id, {role, place, prev, number, elapsed, elapsedBy});
   }
   return (factsCache = facts);
+}
+/** The elapsed time of a finish for one of its participants. */
+function elapsedFor(c, participantId){
+  const f = captureFacts().get(c.id);
+  return f.elapsedBy && f.elapsedBy.has(participantId) ? f.elapsedBy.get(participantId) : f.elapsed;
 }
 function sortedCaptures(s){ return [...s.captures].sort((a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1)); }
 /** Label of a capture's kind, with its number for split-role kinds ("Mark rounding 2"). */
@@ -3655,6 +3873,9 @@ function renderHeader(){
   if(!editingTitle) document.getElementById('raceTitle').textContent = s.name || t('header.defaultName');
   document.title = s.name ? `${s.name} · ${t('app.title')}` : t('app.title');
   document.getElementById('archivedBanner').hidden = !s.archived;
+  const outdated = backend.outdatedReason();
+  document.getElementById('outdatedBanner').hidden = !outdated;
+  if(outdated) document.getElementById('outdatedText').textContent = outdated === 'client' ? t('outdated.client') : t('outdated.storage');
   if(backend.kind === 'server') rememberName(s.name);
   // Archived races are read-only: the clock and the sorted list have nothing left to do.
   document.body.classList.toggle('archived', !!s.archived);
@@ -3662,7 +3883,7 @@ function renderHeader(){
 
 function statusInfo(){
   const status = backend.getStatus();
-  const labels = {local:'status.local', connecting:'status.connecting', online:'status.online', offline:'status.offline'};
+  const labels = {local:'status.local', connecting:'status.connecting', online:'status.online', offline:'status.offline', outdated:'status.outdated'};
   let text = t(labels[status]);
   if(backend.kind === 'server' && status === 'online'){
     text += ' · ' + backend.code;
@@ -4086,7 +4307,7 @@ function recordTime(participantId){
   // Without an explicit participant the capture goes to the first sorted participant (if any).
   const target = participantId !== undefined ? participantId : ((w && w.ranking[0]) || null);
   const kind = effectiveKind();
-  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), participantId:target, kind, worksetId: w ? w.id : null};
+  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), targets: target ? [{type:'participant', id:target}] : [], kind, worksetId: w ? w.id : null};
   if(perform({type:'capture.add', capture})){
     // A one-shot kind applies to this capture only.
     if(nextKind){ nextKind = null; renderAll(); }
@@ -4350,31 +4571,7 @@ function renderCaptures(){
       });
       side.appendChild(kindSel);
     }
-    const sel = document.createElement('select');
-    sel.className = 'assign';
-    sel.dataset.edit = 'critical';
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = t('captures.chooseParticipant');
-    sel.appendChild(none);
-    s.participants.forEach(b => {
-      const o = document.createElement('option');
-      o.value = b.id;
-      o.textContent = b.name;
-      o.selected = c.participantId === b.id;
-      sel.appendChild(o);
-    });
-    if(c.participantId && !participantById(c.participantId)){
-      const o = document.createElement('option');
-      o.value = c.participantId;
-      o.textContent = t('captures.deletedParticipant');
-      o.selected = true;
-      sel.appendChild(o);
-    }
-    sel.disabled = !editable('assign');
-    sel.addEventListener('change', () => {
-      if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
-    });
+    const targets = buildTargetControls(s, c, editable('assign'));
     const del = document.createElement('button');
     del.className = 'mini';
     del.textContent = '✕';
@@ -4383,11 +4580,75 @@ function renderCaptures(){
     del.dataset.edit = 'critical';
     del.addEventListener('click', () => perform({type:'capture.delete', captureId:c.id}));
     del.hidden = !editable('delete');
-    side.append(sel, del);
+    side.append(...targets, del);
 
     li.append(rank, mid, side);
     capList.appendChild(li);
   });
+}
+/*
+ * A capture's participants. One (or none): a select that replaces the assignment, as always.
+ * Several — a protest, a recall, a dead heat — are chips with ✕ each. Once a capture has a
+ * participant, a small "+" select adds another one, whatever the kind.
+ */
+function buildTargetControls(s, c, editable){
+  const pids = captureParticipantIds(c);
+  const nameOf = (id) => { const p = participantById(id); return p ? p.name : t('captures.deletedParticipant'); };
+  const option = (value, text, selected = false) => {
+    const o = document.createElement('option');
+    o.value = value;
+    o.textContent = text;
+    o.selected = selected;
+    return o;
+  };
+  const out = [];
+  if(pids.length > 1){
+    const chips = document.createElement('span');
+    chips.className = 'target-chips';
+    pids.forEach(id => {
+      const chip = document.createElement('span');
+      chip.className = 'target-chip';
+      chip.textContent = nameOf(id);
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'target-x';
+      x.textContent = '✕';
+      x.title = t('captures.removeTarget', {name: nameOf(id)});
+      x.setAttribute('aria-label', x.title);
+      x.dataset.edit = 'critical';
+      x.hidden = !editable;
+      x.addEventListener('click', () => perform({type:'capture.target.remove', captureId:c.id, target:{type:'participant', id}}));
+      chip.appendChild(x);
+      chips.appendChild(chip);
+    });
+    out.push(chips);
+  }else{
+    const sel = document.createElement('select');
+    sel.className = 'assign';
+    sel.dataset.edit = 'critical';
+    sel.appendChild(option('', t('captures.chooseParticipant')));
+    s.participants.forEach(b => sel.appendChild(option(b.id, b.name, pids[0] === b.id)));
+    if(pids.length && !participantById(pids[0])) sel.appendChild(option(pids[0], t('captures.deletedParticipant'), true));
+    sel.disabled = !editable;
+    sel.addEventListener('change', () => {
+      if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
+    });
+    out.push(sel);
+  }
+  if(editable && pids.length > 0){
+    const add = document.createElement('select');
+    add.className = 'assign add-target';
+    add.dataset.edit = 'critical';
+    add.title = t('captures.addTarget');
+    add.setAttribute('aria-label', add.title);
+    add.appendChild(option('', '+'));
+    s.participants.filter(b => !pids.includes(b.id)).forEach(b => add.appendChild(option(b.id, b.name)));
+    add.addEventListener('change', () => {
+      if(!add.value || !perform({type:'capture.target.add', captureId:c.id, target:{type:'participant', id:add.value}})) renderCaptures();
+    });
+    out.push(add);
+  }
+  return out;
 }
 document.getElementById('capFilterSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-kind]');
@@ -4414,7 +4675,7 @@ async function exportCsv(){
     ['place', (c, f, i) => typed ? (f.role === 'marker' ? '' : f.place) : i + 1],
     ['timestamp', (c) => fmtIso(c.ts, c.tzOffset)],
     ['time', (c) => fmtTime(c.ts, c.tzOffset)],
-    ['participant', (c) => { const p = participantById(c.participantId); return p ? cell(p.name) : ''; }],
+    ['participant', (c) => cell(captureParticipantIds(c).map(participantById).filter(Boolean).map(p => p.name).join(', '))],
     ...(typed ? [['kind', (c) => cell(captureKindText(c))], ['elapsed', (c, f) => f.elapsed !== null ? fmtDelta(f.elapsed) : '']] : []),
     ...(stations ? [['station', (c) => c.worksetId ? cell(worksetLabelById(c.worksetId, s)) : '']] : []),
   ];
@@ -4844,9 +5105,10 @@ function renderSettings(){
   const archived = S().archived;
   const local = localStore.load();
   const mergeBtn = document.getElementById('mergeBtn');
-  mergeBtn.disabled = !online || archived || !hasData(local);
+  // Local data of a newer app version is neither uploaded nor overwritten.
+  mergeBtn.disabled = !online || archived || !hasData(local) || localStore.tooNew;
   document.getElementById('mergeHelp').textContent = hasData(local) ? t('settings.mergeHint') : t('settings.mergeEmpty');
-  document.getElementById('pullBtn').disabled = !backend.hasSnapshot;
+  document.getElementById('pullBtn').disabled = !backend.hasSnapshot || localStore.tooNew;
   document.getElementById('archiveAction').hidden = archived;
   document.getElementById('archiveBtn').disabled = !online;
   document.getElementById('archivedInfo').hidden = !archived;
@@ -4973,6 +5235,8 @@ document.getElementById('createBtn').addEventListener('click', () => {
 document.getElementById('resetLocalBtn').addEventListener('click', async () => {
   const ok = await askConfirm({title:t('reset.title'), text:t('reset.text'), ok:t('reset.ok'), danger:true});
   if(!ok) return;
+  localStore.load();
+  if(localStore.tooNew){ toast(t('lock.outdated')); return; }
   localStore.reset();
   removeKey(KEYS.worksetPrefix + 'local');
   if(backend.kind === 'local'){ loadDeviceWorkset(); backend.reload(); }
@@ -4999,6 +5263,7 @@ async function copyText(text){
 
 document.getElementById('mergeBtn').addEventListener('click', async () => {
   const local = localStore.load();
+  if(localStore.tooNew){ toast(t('lock.outdated')); return; }
   const ok = await askConfirm({
     title:t('merge.title'),
     text:t('merge.text', {participants:local.participants.length, captures:local.captures.length, code:backend.code}),
@@ -5015,6 +5280,8 @@ document.getElementById('mergeBtn').addEventListener('click', async () => {
 document.getElementById('pullBtn').addEventListener('click', async () => {
   const ok = await askConfirm({title:t('pull.title'), text:t('pull.text', {code:backend.code}), ok:t('pull.ok'), danger:true});
   if(!ok || backend.kind !== 'server') return;
+  localStore.load();
+  if(localStore.tooNew){ toast(t('lock.outdated')); return; }
   const copy = clone(S());
   copy.archived = false;
   localStore.save(copy);
@@ -5061,6 +5328,7 @@ window.addEventListener('hashchange', () => {
   const code = parseFragment();
   if(code && !(backend.kind === 'server' && backend.code === code)) followLink(code);
 });
+document.getElementById('outdatedReload').addEventListener('click', () => location.reload());
 // Another tab changed the local data: pick it up.
 window.addEventListener('storage', (e) => {
   if(e.key === KEYS.local && backend.kind === 'local') backend.reload();
