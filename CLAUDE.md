@@ -178,6 +178,10 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - `< 700 px`: single column — clock (sticky at the top), sorted list, participants, finishes.
 - `≥ 700 px`: clock full width on top; left column (320 px) sorted list + participants; right
   column finishes. Content centred with `max-width: 1200px`.
+- **Touch devices** (`@media (hover: none) and (pointer: coarse)`): the row buttons (`.mini`),
+  segmented filters, assign selects and search results grow to ~42 px hit targets (WCAG 2.5.5),
+  and the fixed left column widens to 360 px to keep the participant names readable. `:hover`
+  styles only apply under `@media (hover: hover)` so touch taps don't leave sticky hover states.
 - Dark navy theme with amber accent, light theme via `prefers-color-scheme`; colours are
   CSS tokens on `:root`. Numbers use Space Mono, text IBM Plex Sans. Touch targets and
   safe-area insets matter (iPad).

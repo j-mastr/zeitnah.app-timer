@@ -123,8 +123,13 @@
   .search-wrap{position:relative; margin-bottom:10px;}
   .search-results{position:absolute; top:100%; left:0; right:0; background:var(--panel); border:1px solid var(--border); border-radius:8px; margin-top:4px; max-height:220px; overflow:auto; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,.3);}
   .search-results .res{padding:9px 12px; font-size:13px; cursor:pointer;}
-  .search-results .res:hover{background:var(--panel2);}
+
   .search-empty{padding:9px 12px; font-size:12px; color:var(--muted);}
+
+  @media (hover: hover){
+    .mini:hover{color:var(--text); border-color:var(--muted);}
+    .search-results .res:hover{background:var(--panel2);}
+  }
 
   ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
 
@@ -137,8 +142,9 @@
   .participant-main .nm{font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .participant-main .meta{font-size:11px; color:var(--muted); font-family:'Space Mono',monospace; margin-top:2px;}
   .ops{display:flex; gap:4px; flex-shrink:0;}
-  .mini{background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0; font-family:inherit;}
-  .mini:hover{color:var(--text); border-color:var(--muted);}
+  .mini{display:inline-flex; align-items:center; justify-content:center; background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; width:26px; height:26px; padding:0; cursor:pointer; font-size:13px; line-height:1; flex-shrink:0; font-family:inherit; touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
+  .mini.wide{width:auto; padding:6px 9px;}
+  .mini:active{color:var(--text); border-color:var(--muted); background:var(--panel);}
   .edit-input{background:var(--panel); border:1px solid var(--accent); color:var(--text); border-radius:6px; padding:5px 7px; font-size:14px; font-family:inherit; width:100%;}
   .empty{color:var(--muted); font-size:13px; padding:8px 2px;}
 
@@ -152,6 +158,25 @@
   .rank{color:var(--muted); font-size:12px; font-family:'Space Mono',monospace; width:26px; text-align:right;}
   .footer-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
   .footer-actions input[type=file]{display:none;}
+
+  /* ---------- touch devices: roomier hit targets (~44 px, WCAG 2.5.5) ---------- */
+  @media (hover: none) and (pointer: coarse){
+    .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
+    .mini.wide{width:auto; min-width:42px; padding:0 13px;}
+    .ops{gap:6px;}
+    .participant-row, .sorted-row{gap:6px; padding:7px 8px;}
+    .drag-handle{font-size:20px; padding:9px 7px;}
+    .participant-main{padding:2px 0;}
+    .seg button{padding:10px 14px; font-size:13px;}
+    .btn.small{padding:11px 14px; font-size:14px;}
+    select.assign{padding:11px 10px; font-size:14px;}
+    .search-results .res{padding:13px 12px;}
+    .cap-side{gap:8px;}
+    /* The wider buttons need more room in the fixed left column. */
+    @media (min-width:700px){
+      .app{grid-template-columns:360px 1fr;}
+    }
+  }
 
   /* Actions that need a live server connection (normal) or are blocked in archived races (all). */
   body.lock-normal [data-edit="normal"], body.lock-all [data-edit]{opacity:.4; pointer-events:none;}
@@ -260,7 +285,7 @@
           <button data-sf="alpha" data-i18n="sort.alpha"></button>
           <button data-sf="time" data-i18n="sort.time"></button>
         </div>
-        <button class="mini" id="sortDirBtn" data-i18n-title="sort.dir" style="width:auto; padding:6px 9px;">↑</button>
+        <button class="mini wide" id="sortDirBtn" data-i18n-title="sort.dir">↑</button>
       </div>
       <div class="add-row" data-edit="normal">
         <input class="input" id="participantInput" type="text" data-i18n-placeholder="participants.placeholder" maxlength="60">
