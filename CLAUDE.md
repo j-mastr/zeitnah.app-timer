@@ -83,11 +83,16 @@ src/Race/Database.php           PDO wrapper, driver-aware transactions, schema D
 src/Race/OperationReducer.php   AUTHORITATIVE operation semantics (mirrored in JS!)
 src/Race/RaceRepository.php  Race store: create, snapshot, event log, applyOperations
 src/Race/ClientConfig.php       serverUrl / wsUrl for browsers
+src/Access/Permissions.php      Permission rules and the path each operation needs (mirrored in JS!)
+src/Access/Access.php           One code's access: checks, projected state, filtered events, revocation
+src/Access/AccessCodeRepository.php  Access codes: resolve, create, one per workset
 src/Command/InstallCommand.php     app:install – creates tables (idempotent)
 src/Command/WebSocketServerCommand.php  app:websocket-server
 src/WebSocket/SyncServer.php       WebSocket protocol, subscriptions, broadcasting
 src/WebSocket/ClientSession.php    Per-connection state
 tests/reducer-parity.mjs|.php      JS vs PHP reducer equivalence test
+tests/access-parity.mjs|.php       JS vs PHP permission rules equivalence test
+tests/access-scope.php             What a restricted code sees and may do; revocation
 tests/text-keys.mjs                Text sets complete in every language, all used keys resolve
 tests/undo-history.mjs             Undo/redo: random sequences undone and redone restore the states
 tests/e2e/sync-smoke.mjs           Playwright smoke test with two browser clients
@@ -378,6 +383,66 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   station, e.g. after copying server data. A single local station is created silently.
 - Every capture stores the `worksetId` of the device that recorded it (null without a station);
   it only leaves that station's ranking. The UI can't change it afterwards.
+- Every station has its **own code** (see Access codes). The settings row shows it with a
+  "Copy link" button to the direct link `<serverUrl>/#r=<code>`, for devices whose code lets
+  them see the race's codes.
+
+### Access codes and permissions
+- Clients connect with an **access code**; the race code is one of them (everything allowed),
+  and every workset gets one when it is created (`source` 'workset', `source_ref` = its id),
+  which lets a device join straight into that station. All codes share one namespace and the
+  race code format. Codes live on the server only (table `access_code`), never in the race
+  state; local mode has none.
+- A code carries **rules** (`App\Access\Permissions`, mirrored in the frontend's "Access
+  rules" section): a rule grants a permission path pattern, `revoke:` takes one away again and
+  always wins. Paths are segments with optional entity ids: `race.rename`, `participant.add`,
+  `workset[w1].ranking.add`, `workset[w1].capture.assign`; a segment without an id matches any
+  id, `*` one segment or, as the last one, everything after it (`*` alone = everything,
+  `race.*`, `workset[w1].*`). `race.*, revoke:race.setSport` allows every race operation except
+  changing the sport. Rules like `race[id].archive` already parse, for containers above a race
+  later (a race series); today a code targets one race and race paths carry no id.
+- Every operation needs one path (`operationPath()`): `race.rename|setSport|archive`,
+  `race.merge`, `participant.add|rename|delete`, `kind.add|update|delete`, `workset.add`,
+  `workset[W].rename|delete|makeDefault|setKind`, `workset[W].ranking.add|remove|move`, and for
+  captures `workset[W].capture.add|assign|setKind|delete` (the capture's workset) or
+  `capture.…` for captures without one. Seeing uses `.view` paths (`race.view`,
+  `participant.view`, `kind.view`, `workset[W].view`, `workset[W].capture.view`,
+  `capture.view`); `access.view` lets a client see the race's codes.
+- A **station code**'s rules: `race.view, participant.view, kind.view, capture.view,
+  workset.capture.view, workset[W].view, workset[W].setKind, workset[W].ranking.*,
+  workset[W].capture.*` — work on that station, list every capture, edit only its own station's
+  captures; no renaming the race, no participant, sport, event type or station management, no
+  merge, no archive, and no other station in sight.
+- The server **enforces** everything: `RaceRepository::applyOperations()` rejects an operation
+  the code doesn't allow with `forbidden`; snapshots are projected (`Access::project()`: other
+  stations and captures out of sight removed) and events filtered (`Access::filterEvent()`: an
+  event about something out of sight arrives as `{seq, opId, redacted}`, a merge as
+  `{seq, opId, resync}`, upon which the client fetches a snapshot). The client mirrors the rules
+  only to hide and block: `blockReason()` returns `lock.forbidden`, and elements marked
+  `data-perm="<path>"` are hidden (`applyPermissions()`, `.perm-hidden`); rows built in code
+  check `can(path)`. A code restricted to stations (`restrictedToWorksets()`) also hides the
+  race's default station and the station help, and its pill shows the station and the devices
+  on it: "Server verbunden · CODE · Station 2 (3)".
+- Recording needs `capture.add` on the device's station (or plain `capture.add` without one):
+  a station code on "No station" doesn't see the record button, the free-capture link and the
+  hints, but a hint offering its stations (`#recordBlocked`).
+- **Its station deleted:** a device that may record without a station switches to "No
+  station" and shows the dismissible notice; otherwise, with one station left in its scope it
+  switches to it (toast), with several a modal (`#stationDialog`, `chooseStation()`) asks which
+  one — it can't be dismissed without choosing.
+- **Revocation:** rules are never rewritten. A code restricted to stations none of which
+  exists any more is revoked (`Access::isRevokedIn()`, computed from the state); undoing the
+  deletion brings the access back. `revoked_at` is for explicit revocation (not in the UI yet).
+  A revoked code gets `access_revoked` (WebSocket error, HTTP 403, or as an operation's
+  rejection); the client (`onAccessRevoked()`) offers unsent times as CSV
+  (`revoked.*` texts), then drops the connection's cache and station and returns to local mode.
+  The race stays in the recent connections list; connecting again fails with `err.revoked`
+  until the station is back.
+- Prepared, not built: codes created by hand (other `source` values) with other rules
+  (read-only, particular permissions, a set of stations), codes for containers above a race
+  (`target_type`), expiring and one-time codes (extra checks in `resolve()`; the client already
+  stores the code the server returns in `access.code`, so a one-time code can later be swapped
+  for a device-bound one).
 
 ### Race name
 - Shown instead of the default title (`header.defaultName`; sailing: "⛵ Zielzeiten" /
@@ -447,9 +512,9 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   (`normalizeState()` accepts them) and no `sport` field — migrated data is tagged
   `sport:'sailing'` since that was the only sport those versions supported. Old server
   caches are dropped (rebuilt from the server).
-- **Server:** connect by race code or create a new race (the server generates a
-  random 6-character code from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; codes are
-  case-insensitive, non-alphanumerics ignored).
+- **Server:** connect by race code (or any other access code, see Access codes) or create a
+  new race (the server generates a random 6-character code from
+  `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`; codes are case-insensitive, non-alphanumerics ignored).
 - The server URL defaults to the server that delivered the page: the backend replaces the
   placeholder `/*SERVER_CONFIG*/null` in `index.html` with `{"serverUrl": "..."}`. It can
   be overridden under "Advanced settings" (`prefs.serverUrl`); without a default the
@@ -457,7 +522,8 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
 - The active connection `{serverUrl, code}` is stored in
   `localStorage['zeitnah.connection']` and resumed after a reload.
 - **Recent connections** (`localStorage['zeitnah.recent']`, per device, never synced): every
-  race this browser connected to, newest first, as `{serverUrl, code, name}`; the settings show
+  race this browser connected to, newest first, as `{serverUrl, code, name, worksetName}`
+  (`worksetName` for a code bound to a station, shown as "Race (Station 2)"); the settings show
   the latest `RECENT_MAX` = 3. Each row has a ✕ (no confirmation) that removes the entry, so the
   next one moves up; it also deletes the race's cache and stored station unless changes are
   still waiting to be sent (then the cache stays, so reconnecting delivers them). Written on every connect and updated with the race name once it
@@ -471,7 +537,7 @@ tools/generate-icons.mjs           Renders public/icons/*.png from the SVG defin
   connected the fragment always reflects the current code; it is removed on disconnect.
 - **Initialisation prompt:** when connecting fresh (by code, link or "new race") to a
   race that is still empty on the server (`seq === 0`) while this browser has local
-  data, ask whether to upload it. Yes → send `state.merge`. No, or race already has
+  data and the code allows `race.merge`, ask whether to upload it. Yes → send `state.merge`. No, or race already has
   data → connect. The local data is always kept in the browser, whatever the answer.
   Not asked when resuming a stored connection.
 - **Settings → Sync data** (server mode):
@@ -617,10 +683,16 @@ Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defa
 - Table `race` (`code`, `seq`, `state` JSON = materialised state) and append-only
   `race_event` (`seq`, `op_id`, `op` JSON) with unique `(race_id, seq)` and
   `(race_id, op_id)`.
+- Table `access_code` (`code` unique, `target_type` 'race', `target_id`, `rules` JSON,
+  `source` 'race' | 'workset', `source_ref`, `created_at`, `revoked_at`), unique
+  `(target_type, target_id, source, source_ref)`. `app:install` creates it and gives every
+  existing race its race code as a full-access row (idempotent). `race.code` stays as the race
+  code, but lookups go through `access_code` (`AccessCodeRepository::resolve()`).
 - `RaceRepository::applyOperations()` per op: transaction (SQLite `BEGIN IMMEDIATE`,
-  `FOR UPDATE` elsewhere) → duplicate `opId`? → archived? → reduce → insert event with
-  `seq+1` → update state guarded by the old `seq`; retries on conflicts/busy database.
-  Results: `applied` / `duplicate` / `rejected` (+ error).
+  `FOR UPDATE` elsewhere) → duplicate `opId`? → archived? → code revoked? → allowed? → reduce
+  → insert event with `seq+1` → update state guarded by the old `seq` → codes for new worksets
+  (`workset.add`, `state.merge`); retries on conflicts/busy database.
+  Results: `applied` / `duplicate` / `rejected` (+ error, e.g. `forbidden`, `access_revoked`).
 - Plain PDO, no Doctrine. Schema lives in `Database::installSchema()` with DDL for SQLite,
   MySQL and PostgreSQL; `app:install` is idempotent. There is no migration tool yet —
   schema changes need an explicit, idempotent upgrade path.
@@ -628,19 +700,27 @@ Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defa
 ### HTTP API (`ApiController`, CORS enabled)
 `GET /api/config`, `POST /api/races`, `GET /api/races/{code}`,
 `GET /api/races/{code}/events?since=N` (returns `{reset, seq, state}` when more than 500
-events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README.
+events behind), `POST /api/races/{code}/ops` (≤ 200 ops). See README. `{code}` is any access
+code; snapshots and events are projected/filtered for it and carry
+`access: {code, rules, codes?}`; unknown codes are 404 `not_found`, revoked ones 403
+`access_revoked`.
 
 ### WebSocket protocol (`SyncServer`)
 ```
-client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state"}
+client → {"type":"hello","code":"ABC123"}           server → {"type":"snapshot","code","seq","state","access"}
 client → {"type":"workset","worksetId"}             (the device's station, null = none; only for presence)
-client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers)
+client → {"type":"ops","ops":[...]}                 server → {"type":"events","events":[{seq,op}]} (to all subscribers, filtered per code)
+                                                    server → {"type":"access","code","rules","codes"?} (after worksets were added/deleted)
                                                     server → {"type":"presence","code","clients","worksets":{id:n}} (to all subscribers)
                                                     server → {"type":"ack","opId"}  (duplicate, already applied)
                                                     server → {"type":"rejected","opId","error"}
 client → {"type":"ping"}                            server → {"type":"pong"}
-                                                    server → {"type":"error","error":"not_found"|...}
+                                                    server → {"type":"error","error":"not_found"|"access_revoked"|...}
 ```
+Subscribers are grouped by race (any of its codes). After a `workset.add`, `workset.delete` or
+`state.merge` event every subscriber's access is checked again: a revoked code gets
+`access_revoked` and is unsubscribed, the others get `access` (with fresh codes if they may
+see them).
 `presence` is sent to a race's subscribers whenever one joins, leaves or switches its station
 (`worksets` counts the devices per station); `clients` counts
 only the WebSocket connections of *this* process, so it is a lower bound when several
@@ -653,7 +733,9 @@ and drops connections idle for 75 s.
 ### Client (`frontend/index.html`)
 - `LocalBackend` / `ServerBackend` share one interface: `getState()`, `getStatus()`,
   `dispatch(op)`, `blockReason(op)`, `pendingCount()`, `pendingCaptureIds()`,
-  `clientCount()`, `worksetClientCount(id)`, `isReady()`, `announceWorkset(id)`, `destroy()`.
+  `clientCount()`, `worksetClientCount(id)`, `isReady()`, `announceWorkset(id)`,
+  `accessInfo()` (`{code, rules, codes?}`; local: everything), `destroy()`. `ServerBackend`
+  also caches its access and takes the snapshot fetched while connecting (`seed()`).
 - All UI mutations go through `perform(op | [ops])`, which checks `blockReason` first.
 - `ServerBackend`: `confirmed` + `seq` + `pending` → `view`. Server events are applied in
   `seq` order (gap → resync with a snapshot); an event whose `op.opId` matches a pending op
@@ -667,6 +749,8 @@ composer install && php bin/console app:install
 php -S 127.0.0.1:8000 -t public          # PHP_CLI_SERVER_WORKERS=4 helps with polling clients
 php bin/console app:websocket-server -v
 node tests/reducer-parity.mjs
+node tests/access-parity.mjs
+php tests/access-scope.php
 node tests/text-keys.mjs
 node tests/undo-history.mjs
 node tests/e2e/offline-start.mjs   # starts its own PHP server on port 8123
@@ -682,7 +766,9 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 1. Add the type to `OperationReducer::TYPES` and implement it in `apply()`.
 2. Mirror it in `applyOp()` in the frontend (same validation order and error codes).
 3. Decide whether it belongs to `OFFLINE_OPS` (buffered while disconnected).
-4. Mark its UI controls with `data-edit="normal"` or `"critical"`.
+4. Mark its UI controls with `data-edit="normal"` or `"critical"`, and with `data-perm`.
+4a. Give it a permission path in `Permissions::operationPath()` and the JS mirror (extend
+   `tests/access-parity.mjs`), and decide in `Access::filterEvent()` who may see its events.
 5. Make it undoable: a case in `historyEntry()` (compensating ops + the `parts` it touches) and
    a label in `HISTORY_LABELS`, extend `tests/undo-history.mjs` — or add it to
    `HISTORY_BARRIER_OPS` if it can't be undone.
@@ -693,8 +779,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 ## Known limitations / ideas not yet requested
 - Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
   group) they are wrong for all but the last group. Groups are not modelled yet.
-- Stations are not access-controlled yet: every device may see and manage all of them.
-- No authentication: anyone who knows a race code can read and edit it.
+- No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
+  create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
   run service workers; the app still works, but a reload then needs the server.
 - Times come from each device's clock; a server time offset could align devices.

@@ -17,7 +17,8 @@ participants, and — optionally — keep several devices in sync in real time.
 - **Multi-device real-time sync** over a shared race code — one iPad at the line, a
   laptop for corrections, both always in sync.
 - **Several stations per race** (e.g. start line, gate, finish line), each with its own
-  approaching queue and event type; every recorded time remembers its station.
+  approaching queue and event type; every recorded time remembers its station. Each station
+  has its own code, so a device can join straight into it — and sees nothing else to manage.
 - **CSV import/export** for participant lists and results.
 - **German and English**, sport-neutral under the hood so other sports can be added later.
 
@@ -123,6 +124,8 @@ Serve the site over HTTPS so the offline start (service worker) works on the dev
 
 ```bash
 node tests/reducer-parity.mjs        # JS and PHP reducers must behave identically
+node tests/access-parity.mjs         # JS and PHP permission rules must agree
+php tests/access-scope.php           # what a station code may see and do
 node tests/text-keys.mjs             # all UI texts exist in every language and text set
 node tests/undo-history.mjs          # undo/redo restores the states it claims to
 npm install && npx playwright install chromium
@@ -136,8 +139,15 @@ node tests/e2e/offline-start.mjs     # PWA offline start; starts its own server 
 | --- | --- |
 | `GET /api/config` | `{serverUrl, wsUrl, serverTime}` |
 | `POST /api/races` | Creates a race with a random 6-character code → `{code, seq, state}` |
-| `GET /api/races/{code}` | Snapshot `{code, seq, state}` (codes are case-insensitive) |
-| `GET /api/races/{code}/events?since=N` | `{seq, events: [{seq, op}]}`, or `{reset: true, seq, state}` if far behind |
+| `GET /api/races/{code}` | Snapshot `{code, seq, state, access}` (codes are case-insensitive) |
+| `GET /api/races/{code}/events?since=N` | `{seq, events: [{seq, op}], access}`, or `{reset: true, seq, state, access}` if far behind |
 | `POST /api/races/{code}/ops` | Body `{ops: [...]}` → `{results: [{opId, status: applied\|duplicate\|rejected, error?}]}` |
 
-The WebSocket protocol and the operation types are documented in `CLAUDE.md`.
+`{code}` is any access code of a race: the race code (everything allowed) or a station's
+code. Snapshots and events only contain what the code may see, operations it doesn't allow
+are rejected with `forbidden`, and a revoked code gets `403 {"error": "access_revoked"}`.
+
+After updating an existing installation, run `php bin/console app:install` (creates the
+access code table and registers the existing race codes) and `php bin/console cache:clear`.
+
+The WebSocket protocol, the operation types and the permission rules are documented in `CLAUDE.md`.
