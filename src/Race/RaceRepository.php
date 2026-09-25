@@ -59,7 +59,7 @@ class RaceRepository
     {
         $row = $this->findRow($code);
 
-        return ['code' => $row['code'], 'seq' => (int) $row['seq'], 'state' => self::decode($row['state'])];
+        return ['code' => $row['code'], 'seq' => (int) $row['seq'], 'state' => OperationReducer::upgrade(self::decode($row['state']))];
     }
 
     /**
@@ -157,7 +157,7 @@ class RaceRepository
                     return ['opId' => $opId, 'status' => 'duplicate'];
                 }
 
-                $state = self::decode($row['state']);
+                $state = OperationReducer::upgrade(self::decode($row['state']));
                 if ($state['archived'] ?? false) {
                     $this->db->rollback();
 

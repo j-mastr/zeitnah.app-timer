@@ -18,9 +18,11 @@ const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
 const start = script.indexOf('function uid()');
 const end = script.indexOf('// Backends');
 if (start < 0 || end < 0) throw new Error('Could not locate the reducer and history in frontend/index.html');
-const sportsMatch = script.match(/const SPORTS = (\[[^\]]*\]);/);
-const defaultSportMatch = script.match(/const DEFAULT_SPORT = ('[^']*');/);
-const preamble = `const SPORTS = ${sportsMatch[1]}; const DEFAULT_SPORT = ${defaultSportMatch[1]};`;
+// The constants the reducer needs (SPORTS, ID_RE, the kinds) precede the text table.
+const constStart = script.indexOf('const SPORTS');
+const constEnd = script.indexOf('const TEXTS');
+if (constStart < 0 || constEnd < 0) throw new Error('Could not locate the constants in frontend/index.html');
+const preamble = script.slice(constStart, constEnd);
 const {applyOp, emptyState, historyEntry, footprint, footprintAfter} = new Function(
   preamble + script.slice(start, script.lastIndexOf('\n', end)) + '\n; return {applyOp, emptyState, historyEntry, footprint, footprintAfter};')();
 
@@ -32,10 +34,13 @@ const clone = (v) => JSON.parse(JSON.stringify(v));
 const participantIds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
 const captureIds = ['c1', 'c2', 'c3', 'c4', 'c5'];
 const names = ['GER 1', 'ger 1', 'NED 7', 'FRA 12', 'Ö-Team', 'ITA 3'];
+const kindIds = ['k1', 'k2', 'k3'];
+const captureKinds = ['start', 'split', 'finish', ...kindIds];
 
 function randomOp(i) {
   const type = pick(['race.rename', 'race.setSport', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
-    'ranking.add', 'ranking.add', 'ranking.remove', 'ranking.move', 'ranking.move', 'capture.add', 'capture.add', 'capture.assign', 'capture.delete']);
+    'ranking.add', 'ranking.add', 'ranking.remove', 'ranking.move', 'ranking.move', 'capture.add', 'capture.add', 'capture.assign', 'capture.delete',
+    'capture.setKind', 'workset.setKind', 'kind.add', 'kind.add', 'kind.update', 'kind.delete']);
   switch (type) {
     case 'race.rename': return {type, name: pick(['Kieler Woche', null, 'Cup'])};
     case 'race.setSport': return {type, sport: pick(['generic', 'sailing', 'running'])};
@@ -45,14 +50,19 @@ function randomOp(i) {
     case 'participant.delete': case 'ranking.add': case 'ranking.remove': return {type, participantId: pick(participantIds)};
     case 'ranking.move': return {type, participantId: pick(participantIds), beforeId: pick([...participantIds, null])};
     case 'capture.add':
-      return {type, capture: {id: pick(captureIds), ts: 1790000000000 + i, tzOffset: pick([120, null]), participantId: pick([...participantIds, null])}};
+      return {type, capture: {id: pick(captureIds), ts: 1790000000000 + i, tzOffset: pick([120, null]), participantId: pick([...participantIds, null]), kind: pick(captureKinds)}};
     case 'capture.assign': return {type, captureId: pick(captureIds), participantId: pick([...participantIds, null])};
     case 'capture.delete': return {type, captureId: pick(captureIds)};
+    case 'capture.setKind': return {type, captureId: pick(captureIds), kind: pick(captureKinds)};
+    case 'workset.setKind': return {type, kind: pick(captureKinds)};
+    case 'kind.add': return {type, kind: {id: pick(kindIds), name: pick(['Protest', 'protest', 'Gate', 'Pit']), role: pick(['split', 'marker'])}};
+    case 'kind.update': return {type, kindId: pick(kindIds), name: pick(['Protest', 'Gate', 'Pit']) + ' ' + i, role: pick(['split', 'marker'])};
+    case 'kind.delete': return {type, kindId: pick(kindIds)};
   }
 }
 
 const byId = (a, b) => (a.id < b.id ? -1 : 1);
-const canonical = (s) => JSON.stringify({...s, participants: [...s.participants].sort(byId), captures: [...s.captures].sort(byId)});
+const canonical = (s) => JSON.stringify({...s, participants: [...s.participants].sort(byId), kinds: [...s.kinds].sort(byId), captures: [...s.captures].sort(byId)});
 const replay = (s, ops) => { for (const op of ops) applyOp(s, clone(op)); return s; };
 
 const cases = parseInt(process.argv[2] || '300', 10);
@@ -129,6 +139,35 @@ for (let n = 0; n < cases; n++) {
   replay(s, entry.undo);
   assert.deepEqual(s.ranking, ['a', 'b', 'c']);
   assert.equal(s.captures.length, 0);
+}
+{
+  // A marker (e.g. a protest) leaves the participant in the ranking; undo keeps it there.
+  const s = replay(emptyState(), [
+    {type: 'participants.add', participants: [{id: 'a', name: 'A'}, {id: 'b', name: 'B'}]},
+    {type: 'ranking.add', participantId: 'a'}, {type: 'ranking.add', participantId: 'b'},
+    {type: 'kind.add', kind: {id: 'p', name: 'Protest', role: 'marker'}},
+  ]);
+  const op = {type: 'capture.add', capture: {id: 'k', ts: 1, tzOffset: 0, participantId: 'a', kind: 'p'}};
+  const entry = historyEntry(s, op);
+  applyOp(s, op);
+  assert.deepEqual(s.ranking, ['a', 'b']);
+  replay(s, entry.undo);
+  assert.deepEqual(s.ranking, ['a', 'b']);
+  assert.equal(s.captures.length, 0);
+}
+{
+  // Undoing the deletion of the selected kind selects it again.
+  const s = replay(emptyState(), [
+    {type: 'kind.add', kind: {id: 'p', name: 'Protest', role: 'marker'}},
+    {type: 'workset.setKind', kind: 'p'},
+  ]);
+  const op = {type: 'kind.delete', kindId: 'p'};
+  const entry = historyEntry(s, op);
+  applyOp(s, op);
+  assert.equal(s.captureKind, 'finish');
+  replay(s, entry.undo);
+  assert.equal(s.captureKind, 'p');
+  assert.deepEqual(s.kinds, [{id: 'p', name: 'Protest', role: 'marker'}]);
 }
 
 console.log(`Undo history OK: ${cases} sequences, ${recorded} recorded steps undone and redone, ${irreversible} refused as irreversible.`);
