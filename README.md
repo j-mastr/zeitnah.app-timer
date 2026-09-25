@@ -120,6 +120,7 @@ Serve the site over HTTPS so the offline start (service worker) works on the dev
 ```bash
 node tests/reducer-parity.mjs        # JS and PHP reducers must behave identically
 node tests/text-keys.mjs             # all UI texts exist in every language and text set
+node tests/undo-history.mjs          # undo/redo restores the states it claims to
 npm install && npx playwright install chromium
 BASE_URL=http://127.0.0.1:8000/ node tests/e2e/sync-smoke.mjs   # needs running servers
 node tests/e2e/offline-start.mjs     # PWA offline start; starts its own server on port 8123

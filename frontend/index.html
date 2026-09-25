@@ -61,6 +61,11 @@
   .dot.offline{background:var(--danger);}
   @keyframes pulse{50%{opacity:.35;}}
   .settings-btn{display:inline-flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--border); color:var(--text); border-radius:999px; padding:7px 12px; font-size:12px; cursor:pointer; font-family:inherit;}
+  .history-btns{display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:999px; overflow:hidden;}
+  .history-btn{background:none; border:0; color:var(--text); padding:5px 12px; font-size:16px; line-height:1; cursor:pointer; font-family:inherit;}
+  .history-btn + .history-btn{border-left:1px solid var(--border);}
+  .history-btn:disabled{opacity:.35; cursor:default;}
+  body.archived .history-btns{display:none;}
   .banner{background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:10px 14px; font-size:13px; margin-bottom:14px;}
 
   /* ---------- app grid: default (narrow window) ---------- */
@@ -200,6 +205,7 @@
     #footShortcutsKey{display:none;}
     .footer-shortcuts .touch-only{display:inline;}
     .icon-btn{padding:9px 11px; font-size:22px;}
+    .history-btn{min-width:48px; min-height:42px; font-size:19px;}
     .mini{width:42px; height:42px; font-size:17px; border-radius:9px;}
     .mini.wide{width:auto; min-width:42px; padding:0 13px;}
     .ops{gap:6px;}
@@ -304,6 +310,10 @@
       <div class="sub" data-i18n="header.subtitle"></div>
     </div>
     <div class="top-actions">
+      <div class="history-btns">
+        <button class="history-btn" id="undoBtn" type="button" data-edit="critical" disabled>↶</button>
+        <button class="history-btn" id="redoBtn" type="button" data-edit="critical" disabled>↷</button>
+      </div>
       <button class="status-pill" id="statusPill" type="button"><span class="dot" id="statusDot"></span><span id="statusText"></span></button>
       <button class="settings-btn" id="settingsBtn" type="button">⚙ <span data-i18n="settings.title"></span></button>
     </div>
@@ -516,6 +526,8 @@
       <li><span class="keys"><span class="kbd">H</span></span><span data-i18n="shortcuts.filterHide"></span></li>
       <li><span class="keys"><span class="kbd">S</span></span><span data-i18n="shortcuts.sortField"></span></li>
       <li><span class="keys"><span class="kbd">D</span></span><span data-i18n="shortcuts.sortDir"></span></li>
+      <li><span class="keys" id="shortcutsUndoKeys"></span><span data-i18n="shortcuts.undo"></span></li>
+      <li><span class="keys" id="shortcutsRedoKeys"></span><span data-i18n="shortcuts.redo"></span></li>
       <li><span class="keys"><span class="kbd" id="shortcutsModKey">Ctrl</span></span><span data-i18n="shortcuts.hold"></span></li>
     </ul>
   </div>
@@ -665,6 +677,21 @@ const TEXTS = {
       'err.noServer': 'Bitte zuerst die Server-URL angeben (erweiterte Einstellungen).',
       'err.generic': 'Fehler: {msg}',
       'err.rejected': 'Der Server hat eine Änderung abgelehnt ({error}).',
+      'history.undo': 'Rückgängig: {action}',
+      'history.redo': 'Wiederholen: {action}',
+      'history.undoNone': 'Nichts zum Rückgängigmachen',
+      'history.redoNone': 'Nichts zum Wiederholen',
+      'history.undone': 'Rückgängig gemacht: {action}',
+      'history.redone': 'Wiederholt: {action}',
+      'history.undoConflict': '„{action}“ lässt sich nicht mehr rückgängig machen – inzwischen hat sich zu viel geändert.',
+      'history.redoConflict': '„{action}“ lässt sich nicht mehr wiederholen – inzwischen hat sich zu viel geändert.',
+      'history.captureAdd': 'Zeit erfassen',
+      'history.captureAssign': 'Zeit zuordnen',
+      'history.captureDelete': 'Zeit löschen',
+      'history.rankingMove': 'Zieleinlauf umsortieren',
+      'history.sport': 'Sportart ändern',
+      'shortcuts.undo': 'letzte Änderung rückgängig machen',
+      'shortcuts.redo': 'rückgängig gemachte Änderung wiederholen',
     },
     en: {
       'app.title': 'zeitnah',
@@ -776,6 +803,21 @@ const TEXTS = {
       'err.noServer': 'Please enter the server URL first (advanced settings).',
       'err.generic': 'Error: {msg}',
       'err.rejected': 'The server rejected a change ({error}).',
+      'history.undo': 'Undo: {action}',
+      'history.redo': 'Redo: {action}',
+      'history.undoNone': 'Nothing to undo',
+      'history.redoNone': 'Nothing to redo',
+      'history.undone': 'Undone: {action}',
+      'history.redone': 'Redone: {action}',
+      'history.undoConflict': '“{action}” can’t be undone any more – too much has changed since.',
+      'history.redoConflict': '“{action}” can’t be redone any more – too much has changed since.',
+      'history.captureAdd': 'Record time',
+      'history.captureAssign': 'Assign time',
+      'history.captureDelete': 'Delete time',
+      'history.rankingMove': 'Reorder the approaching list',
+      'history.sport': 'Change sport',
+      'shortcuts.undo': 'undo the last change',
+      'shortcuts.redo': 'redo the undone change',
     },
   },
 
@@ -806,6 +848,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(gelöschter Teilnehmer)',
       'export.header': 'Platz;Zeitstempel;Uhrzeit;Teilnehmer',
       'lock.archived': 'Das Rennen ist archiviert.',
+      'history.participantsAdd': 'Teilnehmer hinzufügen',
+      'history.participantRename': 'Teilnehmer umbenennen',
+      'history.participantDelete': 'Teilnehmer löschen',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Rennen zu arbeiten.',
       'settings.code': 'Rennen-Code',
       'settings.create': 'Neues Rennen auf dem Server erstellen',
@@ -852,6 +897,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(deleted participant)',
       'export.header': 'Place;Timestamp;Time;Participant',
       'lock.archived': 'This race is archived.',
+      'history.participantsAdd': 'Add participant(s)',
+      'history.participantRename': 'Rename participant',
+      'history.participantDelete': 'Delete participant',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
       'settings.create': 'Create a new race on the server',
@@ -903,6 +951,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(gelöschtes Boot)',
       'export.header': 'Platz;Zeitstempel;Uhrzeit;Boot',
       'lock.archived': 'Die Regatta ist archiviert.',
+      'history.participantsAdd': 'Boot(e) hinzufügen',
+      'history.participantRename': 'Boot umbenennen',
+      'history.participantDelete': 'Boot löschen',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten an derselben Regatta zu arbeiten.',
       'settings.code': 'Regatta-Code',
       'settings.create': 'Neue Regatta auf dem Server erstellen',
@@ -949,6 +1000,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(deleted boat)',
       'export.header': 'Place;Timestamp;Time;Boat',
       'lock.archived': 'This regatta is archived.',
+      'history.participantsAdd': 'Add boat(s)',
+      'history.participantRename': 'Rename boat',
+      'history.participantDelete': 'Delete boat',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same regatta from several devices.',
       'settings.code': 'Regatta code',
       'settings.create': 'Create a new regatta on the server',
@@ -999,6 +1053,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(gelöschter Läufer)',
       'export.header': 'Platz;Zeitstempel;Uhrzeit;Läufer',
       'lock.archived': 'Der Lauf ist archiviert.',
+      'history.participantsAdd': 'Läufer hinzufügen',
+      'history.participantRename': 'Läufer umbenennen',
+      'history.participantDelete': 'Läufer löschen',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Lauf zu arbeiten.',
       'settings.code': 'Lauf-Code',
       'settings.create': 'Neuen Lauf auf dem Server erstellen',
@@ -1045,6 +1102,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(deleted runner)',
       'export.header': 'Place;Timestamp;Time;Runner',
       'lock.archived': 'This race is archived.',
+      'history.participantsAdd': 'Add runner(s)',
+      'history.participantRename': 'Rename runner',
+      'history.participantDelete': 'Delete runner',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
       'settings.create': 'Create a new race on the server',
@@ -1095,6 +1155,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(gelöschter Schwimmer)',
       'export.header': 'Platz;Zeitstempel;Uhrzeit;Schwimmer',
       'lock.archived': 'Der Wettkampf ist archiviert.',
+      'history.participantsAdd': 'Schwimmer hinzufügen',
+      'history.participantRename': 'Schwimmer umbenennen',
+      'history.participantDelete': 'Schwimmer löschen',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Wettkampf zu arbeiten.',
       'settings.code': 'Wettkampf-Code',
       'settings.create': 'Neuen Wettkampf auf dem Server erstellen',
@@ -1141,6 +1204,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(deleted swimmer)',
       'export.header': 'Place;Timestamp;Time;Swimmer',
       'lock.archived': 'This meet is archived.',
+      'history.participantsAdd': 'Add swimmer(s)',
+      'history.participantRename': 'Rename swimmer',
+      'history.participantDelete': 'Delete swimmer',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same meet from several devices.',
       'settings.code': 'Meet code',
       'settings.create': 'Create a new meet on the server',
@@ -1191,6 +1257,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(gelöschtes Fahrzeug)',
       'export.header': 'Platz;Zeitstempel;Uhrzeit;Fahrzeug',
       'lock.archived': 'Das Rennen ist archiviert.',
+      'history.participantsAdd': 'Fahrzeug(e) hinzufügen',
+      'history.participantRename': 'Fahrzeug umbenennen',
+      'history.participantDelete': 'Fahrzeug löschen',
       'settings.localInfo': 'Die Daten werden nur in diesem Browser gespeichert. Verbinde dich mit einem Server, um mit mehreren Geräten am selben Rennen zu arbeiten.',
       'settings.code': 'Rennen-Code',
       'settings.create': 'Neues Rennen auf dem Server erstellen',
@@ -1237,6 +1306,9 @@ const TEXTS = {
       'captures.deletedParticipant': '(deleted vehicle)',
       'export.header': 'Place;Timestamp;Time;Vehicle',
       'lock.archived': 'This race is archived.',
+      'history.participantsAdd': 'Add vehicle(s)',
+      'history.participantRename': 'Rename vehicle',
+      'history.participantDelete': 'Delete vehicle',
       'settings.localInfo': 'Data is stored in this browser only. Connect to a server to work on the same race from several devices.',
       'settings.code': 'Race code',
       'settings.create': 'Create a new race on the server',
@@ -1543,6 +1615,114 @@ function applyOp(s, op){
 const OFFLINE_OPS = new Set(['capture.add', 'capture.assign', 'capture.delete', 'ranking.add', 'ranking.remove', 'ranking.move']);
 
 // =====================================================================
+// Undo / redo (per device, in memory)
+// =====================================================================
+/*
+ * Undo sends compensating operations: before an operation is dispatched, historyEntry()
+ * derives from the current state the operations that reverse it. They are ordinary
+ * operations, synced like any other, so neither reducer knows about undo.
+ * An entry names the parts of the state its operation touches (`parts`); the history keeps
+ * their footprint before and after. Undo requires the current footprint to still be the
+ * "after" one (nobody changed those parts since) and checks on a copy that its operations
+ * lead back to the "before" one; redo works the other way round.
+ */
+// Operations that can't be undone; they clear the history instead.
+const HISTORY_BARRIER_OPS = new Set(['race.archive', 'state.merge']);
+
+function rankedNext(s, id){
+  const i = s.ranking.indexOf(id);
+  return i < 0 ? null : (s.ranking[i + 1] || null);
+}
+function footprint(s, parts){
+  return JSON.stringify(parts.map(([kind, id]) => {
+    switch(kind){
+      case 'name': return s.name;
+      case 'sport': return s.sport;
+      case 'participant': { const p = findParticipant(s, id); return p ? p.name : null; }
+      case 'ranked': return s.ranking.includes(id);
+      case 'next': return s.ranking.includes(id) ? (rankedNext(s, id) || '$end') : null;
+      case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.participantId] : null; }
+    }
+  }));
+}
+/** Operations that put a participant back into the ranking at the position it has in `s`. */
+function rerankOps(s, id){
+  if(!id || !s.ranking.includes(id)) return [];
+  return [{type:'ranking.add', participantId:id}, {type:'ranking.move', participantId:id, beforeId:rankedNext(s, id)}];
+}
+/**
+ * The history entry for `op` applied to state `s`: {type, parts, undo:[ops], redo:[ops]},
+ * or null when the operation has nothing to undo (unknown references, invalid input).
+ */
+function historyEntry(s, op){
+  const entry = (parts, undo) => ({type:op.type, parts, undo, redo:[op]});
+  switch(op.type){
+    case 'race.rename':
+      return entry([['name']], [{type:'race.rename', name:s.name}]);
+    case 'race.setSport':
+      return entry([['sport']], [{type:'race.setSport', sport:s.sport}]);
+    case 'participants.add': {
+      let next;
+      try{ next = applyOp(clone(s), op); }catch(e){ return null; }
+      const added = next.participants.filter(p => !findParticipant(s, p.id));
+      if(!added.length) return null;
+      return {
+        type:op.type,
+        parts: added.flatMap(p => [['participant', p.id], ['ranked', p.id]]),
+        undo: added.map(p => ({type:'participant.delete', participantId:p.id})),
+        // Only what was really added: the rest were duplicates the first time too.
+        redo: [{type:'participants.add', participants: added.map(p => ({id:p.id, name:p.name}))}],
+      };
+    }
+    case 'participant.rename': {
+      const p = findParticipant(s, op.participantId);
+      return p ? entry([['participant', p.id]], [{type:'participant.rename', participantId:p.id, name:p.name}]) : null;
+    }
+    case 'participant.delete': {
+      const p = findParticipant(s, op.participantId);
+      if(!p) return null;
+      return entry([['participant', p.id], ['ranked', p.id]],
+        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...rerankOps(s, p.id)]);
+    }
+    case 'ranking.add':
+      return entry([['ranked', op.participantId]], [{type:'ranking.remove', participantId:op.participantId}]);
+    case 'ranking.remove':
+      return entry([['ranked', op.participantId]], rerankOps(s, op.participantId));
+    case 'ranking.move':
+      return entry([['next', op.participantId]],
+        [{type:'ranking.move', participantId:op.participantId, beforeId:rankedNext(s, op.participantId)}]);
+    case 'capture.add': {
+      const c = op.capture;
+      if(!c || typeof c.id !== 'string' || findCapture(s, c.id)) return null;
+      const pid = typeof c.participantId === 'string' ? c.participantId : null;
+      // Recording a time for a ranked participant takes it out of the ranking: undo puts it back.
+      return entry([['capture', c.id], ...(pid ? [['ranked', pid]] : [])],
+        [{type:'capture.delete', captureId:c.id}, ...rerankOps(s, pid)]);
+    }
+    case 'capture.assign': {
+      const c = findCapture(s, op.captureId);
+      return c ? entry([['capture', c.id]], [{type:'capture.assign', captureId:c.id, participantId:c.participantId}]) : null;
+    }
+    case 'capture.delete': {
+      const c = findCapture(s, op.captureId);
+      if(!c) return null;
+      const pid = c.participantId;
+      // Adding the capture back would take its participant out of the ranking: keep it there.
+      return entry([['capture', c.id], ...(pid ? [['ranked', pid]] : [])],
+        [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, participantId:pid}}, ...rerankOps(s, pid)]);
+    }
+    default:
+      return null;
+  }
+}
+/** Footprint of `parts` after applying `ops` to a copy of `s`. */
+function footprintAfter(s, ops, parts){
+  const copy = clone(s);
+  for(const op of ops){ try{ applyOp(copy, op); }catch(e){} }
+  return footprint(copy, parts);
+}
+
+// =====================================================================
 // Backends
 // =====================================================================
 const localStore = {
@@ -1570,7 +1750,7 @@ class LocalBackend {
     this.handlers.onChange();
     return null;
   }
-  reload(){ this.state = localStore.load(); this.handlers.onChange(); }
+  reload(){ this.state = localStore.load(); this.handlers.onReload(); }
   destroy(){}
 }
 
@@ -1875,8 +2055,14 @@ const S = () => backend.getState();
 
 const backendHandlers = {
   onChange(){ renderAll(); },
+  // The local data was replaced (reset, another tab): the history no longer applies.
+  onReload(){ clearHistory(); renderAll(); },
   onStatus(){ renderStatus(); renderSettings(); },
-  onRejected(op, error){ toast(t('err.rejected', {error: error || '?'})); },
+  onRejected(op, error){
+    // The server state differs from what the history was recorded against.
+    clearHistory();
+    toast(t('err.rejected', {error: error || '?'}));
+  },
   onFatal(error){
     if(error === 'not_found'){ useLocal(); toast(t('err.gone')); }
   },
@@ -1921,6 +2107,8 @@ function rememberConnection(serverUrl, code, name, keepKnown = false){
 function setBackend(next){
   if(backend) backend.destroy();
   backend = next;
+  undoStack = [];
+  redoStack = [];
   renderAll();
   renderStatus();
   renderSettings();
@@ -1983,8 +2171,95 @@ function errorMessage(e, code){
 function perform(op){
   const reason = backend.blockReason(op);
   if(reason){ toast(t(reason)); return null; }
-  return backend.dispatch(op) || true;
+  if(HISTORY_BARRIER_OPS.has(op.type)){
+    clearHistory();
+    return backend.dispatch(op) || true;
+  }
+  const entry = historyEntry(S(), op);
+  const before = entry && footprint(S(), entry.parts);
+  const result = backend.dispatch(op) || true;
+  const after = entry && footprint(S(), entry.parts);
+  // Operations that changed nothing (duplicates, unknown references) aren't recorded.
+  if(entry && after !== before){
+    undoStack.push({...entry, before, after});
+    if(undoStack.length > HISTORY_LIMIT) undoStack.shift();
+    redoStack = [];
+    renderHistory();
+  }
+  return result;
 }
+
+// ---------- undo / redo ----------
+const HISTORY_LIMIT = 50;
+let undoStack = [];
+let redoStack = [];
+function clearHistory(){
+  undoStack = [];
+  redoStack = [];
+  renderHistory();
+}
+const HISTORY_LABELS = {
+  'race.rename': () => t('header.rename'),
+  'race.setSport': () => t('history.sport'),
+  'participants.add': () => t('history.participantsAdd'),
+  'participant.rename': () => t('history.participantRename'),
+  'participant.delete': () => t('history.participantDelete'),
+  'ranking.add': () => t('action.sort'),
+  'ranking.remove': () => t('action.unsort'),
+  'ranking.move': () => t('history.rankingMove'),
+  'capture.add': () => t('history.captureAdd'),
+  'capture.assign': () => t('history.captureAssign'),
+  'capture.delete': () => t('history.captureDelete'),
+};
+const historyLabel = (entry) => HISTORY_LABELS[entry.type]();
+
+/**
+ * Undoes (redo = false) or redoes the latest entry. An entry whose parts were changed
+ * elsewhere in the meantime is refused with a toast and dropped, so the next step can
+ * go on with the one below it.
+ */
+function stepHistory(redo){
+  const from = redo ? redoStack : undoStack;
+  const to = redo ? undoStack : redoStack;
+  const entry = from[from.length - 1];
+  if(!entry) return;
+  const ops = redo ? entry.redo : entry.undo;
+  const reason = ops.map(op => backend.blockReason(op)).find(Boolean);
+  if(reason){ toast(t(reason)); return; }
+  const expected = redo ? entry.before : entry.after;
+  const target = redo ? entry.after : entry.before;
+  from.pop();
+  if(footprint(S(), entry.parts) !== expected || footprintAfter(S(), ops, entry.parts) !== target){
+    const action = historyLabel(entry);
+    toast(redo ? t('history.redoConflict', {action}) : t('history.undoConflict', {action}));
+    renderHistory();
+    return;
+  }
+  to.push(entry);
+  // Fresh copies: a dispatched operation gets its opId attached, and a resent opId
+  // would be taken for a duplicate.
+  for(const op of ops){
+    const copy = clone(op);
+    delete copy.opId;
+    backend.dispatch(copy);
+  }
+  renderHistory();
+  const action = historyLabel(entry);
+  toast(redo ? t('history.redone', {action}) : t('history.undone', {action}));
+}
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
+function renderHistory(){
+  const undo = undoStack[undoStack.length - 1], redo = redoStack[redoStack.length - 1];
+  undoBtn.disabled = !undo;
+  redoBtn.disabled = !redo;
+  undoBtn.title = (undo ? t('history.undo', {action: historyLabel(undo)}) : t('history.undoNone')) + ` (${keyCombo(UNDO_KEYS)})`;
+  redoBtn.title = (redo ? t('history.redo', {action: historyLabel(redo)}) : t('history.redoNone')) + ` (${keyCombo(REDO_KEYS)})`;
+  undoBtn.setAttribute('aria-label', undoBtn.title);
+  redoBtn.setAttribute('aria-label', redoBtn.title);
+}
+undoBtn.addEventListener('click', () => stepHistory(false));
+redoBtn.addEventListener('click', () => stepHistory(true));
 
 // =====================================================================
 // Formatting helpers
@@ -2106,7 +2381,15 @@ function lockScroll(on){
 // ---------- shortcuts dialog ----------
 // Opens from the settings link, or while Ctrl/Cmd is held down (it closes on release).
 const shortcutsEl = document.getElementById('shortcuts');
-const MOD_KEY = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '') ? '⌘' : 'Ctrl';
+const APPLE = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+const MOD_KEY = APPLE ? '⌘' : 'Ctrl';
+// Platform conventions: ⌘Z / ⇧⌘Z on Apple devices, Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) elsewhere.
+const UNDO_KEYS = [MOD_KEY, 'Z'];
+const REDO_KEYS = APPLE ? ['⇧', '⌘', 'Z'] : ['Ctrl', 'Y'];
+const keyCombo = (keys) => keys.join(APPLE ? '' : '+');
+function renderKeycaps(el, keys){
+  el.replaceChildren(...keys.map(key => Object.assign(document.createElement('span'), {className:'kbd', textContent:key})));
+}
 let shortcutsHeld = false;      // opened by holding a key, so the release closes it again
 let shortcutsFocus = null;
 function openShortcuts(held){
@@ -2210,6 +2493,8 @@ function applyI18n(){
   document.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); el.setAttribute('aria-label', el.title); });
   document.querySelectorAll('#langSeg button').forEach(b => b.classList.toggle('active', b.dataset.lang === prefs.lang));
   document.getElementById('shortcutsModKey').textContent = MOD_KEY;
+  renderKeycaps(document.getElementById('shortcutsUndoKeys'), UNDO_KEYS);
+  renderKeycaps(document.getElementById('shortcutsRedoKeys'), REDO_KEYS);
   document.getElementById('footShortcutsKey').textContent = t('footer.shortcuts', {key: MOD_KEY});
   lastDateText = '';
 }
@@ -2677,6 +2962,14 @@ document.addEventListener('keydown', (e) => {
     recordTime();
     return;
   }
+  // Undo / redo. e.key, not e.code: the shortcut follows the keyboard layout (Z/Y on QWERTZ).
+  const mod = APPLE ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+  const key = e.key.toLowerCase();
+  if(mod && !e.altKey && (key === 'z' || (key === 'y' && !APPLE && !e.shiftKey))){
+    e.preventDefault();
+    if(!e.repeat) stepHistory(key === 'y' || e.shiftKey);
+    return;
+  }
   if(/^(Digit|Numpad)0$/.test(e.code) && !e.repeat){
     e.preventDefault();
     recordTime(null);
@@ -2851,6 +3144,7 @@ function renderAll(){
   renderParticipants();
   renderCaptures();
   renderStatus();
+  renderHistory();
   if(rankSearch.value) renderSearchResults();
   if(drawer.classList.contains('open')) renderSettings();
 }
