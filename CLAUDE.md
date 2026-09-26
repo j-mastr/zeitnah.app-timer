@@ -122,7 +122,11 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
    specific sport's terms (boat, regatta, sail number, runner, vehicle, …). Sport-specific
    wording belongs in a sport text set only. `TEXTS.common` holds texts that fit every
    sport; each sport set (`generic`, `sailing`, `running`, `swimming`, `motor`, listed in
-   `SPORTS`) holds everything that names participants or races (and its default title).
+   `SPORTS`) holds everything that names participants or races (and its default title) —
+   including **examples in help texts and placeholders** ("z. B. Protest", "by fleet and by
+   class", "e.g. a yardstick"): those are sport-specific too, so the settings' descriptions
+   (`kinds.help`, `kinds.placeholder`, `kinds.roleHelp`, `groups.help`, `fields.help`,
+   `worksets.empty`) live in every sport set with that sport's examples, race word and grammar.
    `state.sport` (per race, changed with `race.setSport`) selects the active set; `t()`
    looks up that set, then `common`, then German. A new sport = a new key in `SPORTS` plus
    a `TEXTS` entry with the same keys as the others (see the key check below).
