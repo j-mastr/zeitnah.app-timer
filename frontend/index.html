@@ -273,6 +273,7 @@
     .btn.small{padding:11px 14px; font-size:14px;}
     select.assign{padding:11px 10px;}
     .target-x{padding:10px 10px;}
+    .member-opt{padding:10px 4px;}
     .search-results .res{padding:13px 12px;}
     .cap-side{gap:8px;}
     .kind-pick{padding:12px 10px; font-size:15px;}
@@ -371,6 +372,26 @@
   .shortcut-list .keys{display:inline-flex; align-items:center; gap:4px; flex:0 0 84px;}
   .modal p{margin:0 0 16px; font-size:14px; line-height:1.5;}
   .modal-actions{display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;}
+  /* Groups: settings blocks per group type, the members dialog, tags on participant rows. */
+  .group-type{border:1px solid var(--border); border-radius:10px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px;}
+  .group-type-head{display:flex; gap:6px; align-items:center; flex-wrap:wrap;}
+  .group-type-head .input{flex:1 1 8em; min-width:0;}
+  .group-type-head h4{margin:0; flex:1; font-size:13px; color:var(--muted); font-weight:600;}
+  .excl{display:flex; align-items:center; gap:4px; font-size:12px; color:var(--muted); white-space:nowrap;}
+  .group-row{display:flex; gap:6px; align-items:center; padding-left:10px;}
+  .group-row .input{flex:1 1 0; min-width:0;}
+  .group-row .link-btn{margin:0; white-space:nowrap; font-size:12px;}
+  .group-type > .link-btn{margin:0; align-self:flex-start; font-size:12px;}
+  #membersSearch{width:100%; margin:0 0 10px;}
+  .members-list{display:flex; flex-direction:column; gap:2px; max-height:50vh; overflow-y:auto; margin-bottom:14px;}
+  .members-list h4{margin:8px 0 4px; font-size:12px; color:var(--muted); font-weight:600;}
+  .member-opt{display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; font-size:14px; cursor:pointer;}
+  .member-opt .hint{color:var(--muted); font-size:12px;}
+  .member-opt.disabled{opacity:.5; cursor:default;}
+  .group-tags{display:flex; flex-wrap:wrap; gap:4px; margin-top:3px;}
+  .group-tag{font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:0 5px;}
+  .target-chip.is-group{border-style:dashed;}
+  .group-filter{width:100%;}
 
   .site-footer{margin-top:28px; text-align:center; color:var(--muted); font-size:12px; line-height:1.8;}
   .site-footer p{margin:0;}
@@ -455,6 +476,7 @@
     <div class="panel participants-panel">
       <div class="panel-head">
         <h2><span data-i18n="participants.title"></span> <span class="count" id="participantCount">0</span></h2>
+        <button class="icon-btn" id="groupsBtn" type="button" data-perm="group.add" data-i18n-title="groups.manage">⧉</button>
         <button class="icon-btn" id="importBtn" data-edit="normal" data-perm="participant.add" data-i18n-title="participants.import">↥</button>
         <input type="file" id="importFile" accept=".csv,text/csv,text/plain">
       </div>
@@ -465,6 +487,9 @@
           <button data-f="open" data-i18n="filter.open"></button>
           <button data-f="hideSorted" data-i18n="filter.hideSorted"></button>
         </div>
+      </div>
+      <div class="toolbar" id="groupFilterBar" hidden>
+        <select class="input group-filter" id="groupFilter" data-i18n-title="groups.filterLabel"></select>
       </div>
       <div class="toolbar">
         <div class="seg" id="sortFieldSeg">
@@ -538,6 +563,17 @@
     </div>
     <div class="kind-suggest" id="kindSuggest" data-edit="normal" data-perm="kind.add"></div>
     <p class="help" data-i18n="kinds.roleHelp"></p>
+  </section>
+
+  <section id="groupsSection">
+    <h3 data-i18n="groups.title"></h3>
+    <p class="help" data-i18n="groups.help" style="margin:0 0 10px;"></p>
+    <div id="groupTypeList"></div>
+    <div class="add-row kind-add" data-edit="normal" data-perm="groupType.add">
+      <input class="input" id="groupTypeInput" type="text" maxlength="40" autocomplete="off" data-i18n-placeholder="groups.typePlaceholder">
+      <button class="btn" id="addGroupTypeBtn" data-i18n="groups.addType"></button>
+    </div>
+    <div class="kind-suggest" id="groupSuggest" data-edit="normal" data-perm="groupType.add"></div>
   </section>
 
   <section id="worksetsSection" hidden>
@@ -670,6 +706,19 @@
   </div>
 </div>
 
+<!-- ---------- members of a group ---------- -->
+<div class="modal-backdrop" id="membersDialog" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
+    <h3 id="membersTitle"></h3>
+    <input class="input" id="membersSearch" type="search" autocomplete="off" data-i18n-placeholder="groups.search">
+    <div class="members-list" id="membersList"></div>
+    <div class="modal-actions">
+      <button class="btn" id="membersCancel" type="button" data-i18n="dialog.cancel"></button>
+      <button class="btn primary" id="membersOk" type="button" data-i18n="groups.apply"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ---------- confirmation dialog ---------- -->
 <div class="modal-backdrop" id="dialog" hidden>
   <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogText">
@@ -708,7 +757,7 @@ const DEFAULT_SPORT = 'generic';
  * no longer apply the events correctly, and add a step to SCHEMA_MIGRATIONS (mirrored in PHP).
  * States without `schema` are version 1. See docs/groups.md, "Schema versioning".
  */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 // Migration steps: version => function turning a raw state of that version into the next one.
 // They run on raw data (before normalizeState), so they must cope with legacy fields too.
 const SCHEMA_MIGRATIONS = {
@@ -725,13 +774,17 @@ const SCHEMA_MIGRATIONS = {
     if(!('targets' in out)) out.targets = typeof pid === 'string' ? [{type:'participant', id:pid}] : [];
     return out;
   }) : s.captures}),
+  // Version 3: group types and groups.
+  2: (s) => Object.assign({groupTypes: [], groups: []}, s),
 };
 /*
- * Capture targets: references {type, id} to what a capture applies to. For now participants
- * only (groups follow, see docs/groups.md). Mirrors OperationReducer::TARGET_TYPES.
+ * Capture targets and group members: references {type, id} to participants or groups.
+ * A group's members are resolved when reading (resolveRefs()), never stored. Mirrors
+ * OperationReducer::TARGET_TYPES; see docs/groups.md.
  */
-const TARGET_TYPES = ['participant'];
+const TARGET_TYPES = ['participant', 'group'];
 const MAX_TARGETS = 500;
+const MAX_MEMBERS = 5000;
 // Entity ids, generated by the clients (uid()).
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 /*
@@ -760,6 +813,38 @@ const TEXTS = {
       'status.archived': 'Archiviert',
       'status.outdated': 'Update nötig',
       'captures.removeTarget': '{name} entfernen',
+      'history.groupTypeAdd': 'Gruppenart anlegen',
+      'history.groupTypeUpdate': 'Gruppenart ändern',
+      'history.groupTypeDelete': 'Gruppenart löschen',
+      'history.groupAdd': 'Gruppe anlegen',
+      'history.groupUpdate': 'Gruppe ändern',
+      'history.groupDelete': 'Gruppe löschen',
+      'history.groupMembers': 'Gruppenmitglieder ändern',
+      'groups.title': 'Gruppen',
+      'groups.help': 'Gruppen fassen Mitglieder zusammen – auch andere Gruppen. Eine Zeit für eine Gruppe (z. B. ein Start) gilt für alle ihre Mitglieder. Gruppenarten ordnen die Gruppen nebeneinander, z. B. nach Flotte und nach Klasse.',
+      'groups.typePlaceholder': 'Neue Gruppenart',
+      'groups.addType': 'Hinzufügen',
+      'groups.suggest': 'Vorschläge:',
+      'groups.exclusive': 'Nur eine je Mitglied',
+      'groups.addGroup': '+ Gruppe hinzufügen',
+      'groups.defaultName': 'Gruppe {n}',
+      'groups.untyped': 'Ohne Gruppenart',
+      'groups.membersN': '{n} Mitglieder',
+      'groups.membersOne': '1 Mitglied',
+      'groups.membersNone': 'Mitglieder wählen',
+      'groups.deleteTypeTitle': 'Gruppenart löschen?',
+      'groups.deleteTypeText': '„{name}“ wird gelöscht. Ihre Gruppen bleiben erhalten, ohne Gruppenart.',
+      'groups.deleteTitle': 'Gruppe löschen?',
+      'groups.deleteText': '„{name}“ wird gelöscht. Zeiten, die der Gruppe zugeordnet sind, behalten den Verweis.',
+      'groups.exists': '„{name}“ gibt es schon.',
+      'groups.deleted': '(gelöschte Gruppe)',
+      'groups.manage': 'Gruppen verwalten',
+      'groups.filterAll': 'Alle Gruppen',
+      'groups.filterLabel': 'Nach Gruppe filtern',
+      'groups.membersTitle': 'Mitglieder: {name}',
+      'groups.search': 'Suchen …',
+      'groups.apply': 'Übernehmen',
+      'groups.cycle': 'enthält diese Gruppe',
       'lock.outdated': 'Nicht möglich mit dieser veralteten App-Version. Bitte die Seite neu laden.',
       'outdated.client': 'Diese App-Version ist älter als die des Servers. Bitte neu laden, um weiterzuarbeiten – noch nicht gesendete Zeiten bleiben erhalten und werden danach übertragen.',
       'outdated.storage': 'Die Daten in diesem Browser stammen von einer neueren App-Version. Bitte neu laden, um weiterzuarbeiten.',
@@ -970,6 +1055,38 @@ const TEXTS = {
       'status.archived': 'Archived',
       'status.outdated': 'Update required',
       'captures.removeTarget': 'Remove {name}',
+      'history.groupTypeAdd': 'Add group type',
+      'history.groupTypeUpdate': 'Change group type',
+      'history.groupTypeDelete': 'Delete group type',
+      'history.groupAdd': 'Add group',
+      'history.groupUpdate': 'Change group',
+      'history.groupDelete': 'Delete group',
+      'history.groupMembers': 'Change group members',
+      'groups.title': 'Groups',
+      'groups.help': 'Groups collect members – other groups too. A time for a group (e.g. a start) applies to all of its members. Group types arrange groups side by side, e.g. by fleet and by class.',
+      'groups.typePlaceholder': 'New group type',
+      'groups.addType': 'Add',
+      'groups.suggest': 'Suggestions:',
+      'groups.exclusive': 'One per member',
+      'groups.addGroup': '+ Add group',
+      'groups.defaultName': 'Group {n}',
+      'groups.untyped': 'Without type',
+      'groups.membersN': '{n} members',
+      'groups.membersOne': '1 member',
+      'groups.membersNone': 'Choose members',
+      'groups.deleteTypeTitle': 'Delete group type?',
+      'groups.deleteTypeText': '“{name}” will be deleted. Its groups stay, without a type.',
+      'groups.deleteTitle': 'Delete group?',
+      'groups.deleteText': '“{name}” will be deleted. Times assigned to the group keep the reference.',
+      'groups.exists': '“{name}” already exists.',
+      'groups.deleted': '(deleted group)',
+      'groups.manage': 'Manage groups',
+      'groups.filterAll': 'All groups',
+      'groups.filterLabel': 'Filter by group',
+      'groups.membersTitle': 'Members: {name}',
+      'groups.search': 'Search …',
+      'groups.apply': 'Apply',
+      'groups.cycle': 'contains this group',
       'lock.outdated': 'Not possible with this outdated version of the app. Please reload the page.',
       'outdated.client': 'This version of the app is older than the server’s. Please reload to carry on – times not sent yet are kept and sent afterwards.',
       'outdated.storage': 'The data in this browser comes from a newer version of the app. Please reload to carry on.',
@@ -1228,6 +1345,8 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Notiz:marker, Aufgabe:marker',
+      'groups.suggestions': 'Gruppe:1, Kategorie:1, Verein',
+      'groups.participants': 'Teilnehmer',
     },
     en: {
       'header.defaultName': '🏁 Finish Times',
@@ -1282,6 +1401,8 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Note:marker, Retired:marker',
+      'groups.suggestions': 'Group:1, Category:1, Club',
+      'groups.participants': 'Participants',
     },
   },
 
@@ -1341,6 +1462,8 @@ const TEXTS = {
       'kind.split': 'Tonnenrundung',
       'kind.finish': 'Zieldurchlauf',
       'kinds.suggestions': 'Protest:marker, Aufgabe:marker',
+      'groups.suggestions': 'Flotte:1, Klasse:1, Startgruppe:1, Verein',
+      'groups.participants': 'Boote',
     },
     en: {
       'header.defaultName': '⛵ Finish Times',
@@ -1395,6 +1518,8 @@ const TEXTS = {
       'kind.split': 'Mark rounding',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Protest:marker, Retired:marker',
+      'groups.suggestions': 'Fleet:1, Class:1, Start group:1, Club',
+      'groups.participants': 'Boats',
     },
   },
 
@@ -1453,6 +1578,8 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Aufgabe:marker, Verpflegung:split',
+      'groups.suggestions': 'Welle:1, Altersklasse:1, Strecke:1, Verein',
+      'groups.participants': 'Läufer',
     },
     en: {
       'header.defaultName': '🏃 Finish Times',
@@ -1507,6 +1634,8 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Retired:marker, Aid station:split',
+      'groups.suggestions': 'Wave:1, Age group:1, Distance:1, Club',
+      'groups.participants': 'Runners',
     },
   },
 
@@ -1565,6 +1694,8 @@ const TEXTS = {
       'kind.split': 'Zwischenzeit',
       'kind.finish': 'Anschlag',
       'kinds.suggestions': 'Wende:split, Disqualifikation:marker',
+      'groups.suggestions': 'Lauf:1, Wettkampf, Altersklasse:1, Verein',
+      'groups.participants': 'Schwimmer',
     },
     en: {
       'header.defaultName': '🏊 Finish Times',
@@ -1619,6 +1750,8 @@ const TEXTS = {
       'kind.split': 'Split',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Turn:split, Disqualification:marker',
+      'groups.suggestions': 'Heat:1, Event, Age group:1, Club',
+      'groups.participants': 'Swimmers',
     },
   },
 
@@ -1677,6 +1810,8 @@ const TEXTS = {
       'kind.split': 'Runde',
       'kind.finish': 'Ziel',
       'kinds.suggestions': 'Boxeneinfahrt:split, Boxenausfahrt:split, Strafe:marker',
+      'groups.suggestions': 'Klasse:1, Team:1, Startgruppe:1',
+      'groups.participants': 'Fahrzeuge',
     },
     en: {
       'header.defaultName': '🏎️ Finish Times',
@@ -1731,6 +1866,8 @@ const TEXTS = {
       'kind.split': 'Lap',
       'kind.finish': 'Finish',
       'kinds.suggestions': 'Pit in:split, Pit out:split, Penalty:marker',
+      'groups.suggestions': 'Class:1, Team:1, Start group:1',
+      'groups.participants': 'Vehicles',
     },
   },
 };
@@ -1801,7 +1938,7 @@ function removeKey(key){
 
 // Per-device preferences (never synced).
 const prefs = Object.assign(
-  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null, pinClock:true, captureFilter:'all'},
+  {lang:null, filterOpen:false, filterHideSorted:false, sortField:'manual', sortDir:'asc', serverUrl:null, pinClock:true, captureFilter:'all', groupFilter:''},
   readJson(KEYS.prefs) || {}
 );
 if(!['manual','alpha','time','elapsed'].includes(prefs.sortField)) prefs.sortField = 'manual';
@@ -1835,7 +1972,7 @@ function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function emptyState(){
-  return {schema:SCHEMA_VERSION, name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], worksets:[], captures:[]};
+  return {schema:SCHEMA_VERSION, name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], groupTypes:[], groups:[], worksets:[], captures:[]};
 }
 /** Schema version of a raw state (stored, from the server or a merge); none = 1. */
 function schemaOf(s){ return s && s.schema !== undefined && s.schema !== null ? s.schema : 1; }
@@ -1892,9 +2029,24 @@ function normalizeState(s){
     });
   }
   const sport = SPORTS.includes(s.sport) ? s.sport : 'generic';
-  return {schema:SCHEMA_VERSION, name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, worksets, captures};
+  const groupTypes = [];
+  for(const x of Array.isArray(s.groupTypes) ? s.groupTypes : []){
+    if(x && typeof x.id === 'string' && ID_RE.test(x.id) && typeof x.name === 'string' && x.name && !groupTypes.some(y => y.id === x.id)){
+      groupTypes.push({id:x.id, name:x.name, exclusive: x.exclusive === true});
+    }
+  }
+  const groups = [];
+  for(const g of Array.isArray(s.groups) ? s.groups : []){
+    if(!g || typeof g.id !== 'string' || !ID_RE.test(g.id) || typeof g.name !== 'string' || !g.name || groups.some(y => y.id === g.id)) continue;
+    const members = [];
+    for(const r of Array.isArray(g.members) ? g.members : []){
+      if(r && TARGET_TYPES.includes(r.type) && typeof r.id === 'string' && ID_RE.test(r.id) && !members.some(x => sameTarget(x, r))) members.push({type:r.type, id:r.id});
+    }
+    groups.push({id:g.id, typeId: groupTypes.some(y => y.id === g.typeId) ? g.typeId : null, name:g.name, members: sortedRefs(members)});
+  }
+  return {schema:SCHEMA_VERSION, name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, groupTypes, groups, worksets, captures};
 }
-function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.captures.length > 0; }
+function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.groupTypes.length > 0 || s.groups.length > 0 || s.captures.length > 0; }
 
 /*
  * Mirror of App\Race\OperationReducer (PHP). The server is authoritative; this copy
@@ -1911,7 +2063,13 @@ function reqTarget(v){
   if(!TARGET_TYPES.includes(type) || typeof id !== 'string' || !ID_RE.test(id)) throw new OpError('invalid_capture_target');
   return {type, id};
 }
-const sameTarget = (a, b) => a.type === b.type && a.id === b.id;
+function sameTarget(a, b){ return a.type === b.type && a.id === b.id; }
+function refKey(r){ return r.type + ':' + r.id; }
+/** Members are kept in one order (type, then id), so the same set is always the same list. */
+function sortedRefs(refs){
+  const key = (r) => r.type + ':' + r.id;
+  return [...refs].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+}
 /** A list of targets without duplicates, in their order. */
 function reqTargets(v){
   if(!Array.isArray(v) || v.length > MAX_TARGETS) throw new OpError('invalid_capture_targets');
@@ -1947,6 +2105,62 @@ const findCapture = (s, id) => s.captures.find(c => c.id === id);
 const findKind = (s, id) => s.kinds.find(k => k.id === id);
 const findKindByName = (s, name) => s.kinds.find(k => nameKey(k.name) === nameKey(name));
 const findWorkset = (s, id) => s.worksets.find(w => w.id === id);
+const findGroupType = (s, id) => s.groupTypes.find(x => x.id === id);
+const findGroupTypeByName = (s, name) => s.groupTypes.find(x => nameKey(x.name) === nameKey(name));
+const findGroup = (s, id) => s.groups.find(g => g.id === id);
+/** A group of that type (null: without a type) with that name, case-insensitively. */
+const findGroupByName = (s, typeId, name) => s.groups.find(g => g.typeId === typeId && nameKey(g.name) === nameKey(name));
+const refExists = (s, r) => (r.type === 'group' ? !!findGroup(s, r.id) : !!findParticipant(s, r.id));
+function reqGroupType(v){
+  if(!v || typeof v !== 'object') throw new OpError('invalid_group_type');
+  return {id: reqId(v.id, 'group_type_id'), name: reqName(v.name, 40, 'group_type_name'), exclusive: reqExclusive(v.exclusive)};
+}
+function reqExclusive(v){
+  if(v !== undefined && v !== null && typeof v !== 'boolean') throw new OpError('invalid_group_type');
+  return v === true;
+}
+/** Group members without duplicates. */
+function reqMembers(v){
+  if(!Array.isArray(v) || v.length > MAX_MEMBERS) throw new OpError('invalid_group_members');
+  const out = [];
+  for(const item of v){
+    const type = item && typeof item === 'object' ? item.type : undefined, id = item && typeof item === 'object' ? item.id : undefined;
+    if(!TARGET_TYPES.includes(type) || typeof id !== 'string' || !ID_RE.test(id)) throw new OpError('invalid_group_member');
+    if(!out.some(x => x.type === type && x.id === id)) out.push({type, id});
+  }
+  return out;
+}
+/** Whether group `outer` is `inner` or contains it, directly or through other groups. */
+function groupContains(s, outer, inner){
+  const seen = new Set(), queue = [outer];
+  while(queue.length){
+    const id = queue.shift();
+    if(id === inner) return true;
+    const g = seen.has(id) ? null : findGroup(s, id);
+    if(!g) continue;
+    seen.add(id);
+    for(const m of g.members) if(m.type === 'group') queue.push(m.id);
+  }
+  return false;
+}
+/**
+ * Adds members to a group: only existing ones that aren't members yet, and no group that would
+ * close a cycle (the group itself, or one that already contains it). No-op without the group.
+ */
+function addMembers(s, groupId, refs){
+  const g = findGroup(s, groupId);
+  if(!g) return s;
+  for(const r of refs){
+    if(!refExists(s, r) || g.members.some(m => sameTarget(m, r)) || (r.type === 'group' && groupContains(s, r.id, groupId))) continue;
+    g.members.push(r);
+  }
+  g.members = sortedRefs(g.members);
+  return s;
+}
+function withoutMember(s, ref){
+  for(const g of s.groups) g.members = g.members.filter(m => !sameTarget(m, ref));
+  return s;
+}
 const findWorksetByName = (s, name) => s.worksets.find(w => w.name !== null && nameKey(w.name) === nameKey(name));
 const nextWorksetNumber = (s) => 1 + Math.max(0, ...s.worksets.map(w => w.number));
 /** An optional name: null or blank means none. */
@@ -2027,7 +2241,7 @@ function applyOp(s, op){
       const id = reqId(op.participantId, 'participant_id');
       s.participants = s.participants.filter(b => b.id !== id);
       for(const w of s.worksets) w.ranking = w.ranking.filter(x => x !== id);
-      return s;
+      return withoutMember(s, {type:'participant', id});
     }
     case 'capture.add': {
       const c = op.capture;
@@ -2039,12 +2253,12 @@ function applyOp(s, op){
       const kind = reqCaptureKind(c.kind);
       const worksetId = optId(c.worksetId, 'workset_id');
       if(findCapture(s, id)) return s;
-      targets = targets.filter(t => findParticipant(s, t.id));
+      targets = targets.filter(t => refExists(s, t));
       s.captures.push({id, ts, tzOffset, targets, kind, worksetId});
       // A marker (e.g. a protest) annotates participants without them passing the point.
       // Only the capturing workset's ranking is affected.
       const w = worksetId === null ? null : findWorkset(s, worksetId);
-      if(w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => !targets.some(t => t.id === x));
+      if(w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => !targets.some(t => t.type === 'participant' && t.id === x));
       return s;
     }
     case 'capture.assign': {
@@ -2054,7 +2268,7 @@ function applyOp(s, op){
       if(op.targets !== undefined && op.targets !== null){
         const targets = reqTargets(op.targets);
         const c = findCapture(s, cid);
-        if(c) c.targets = targets.filter(t => findParticipant(s, t.id));
+        if(c) c.targets = targets.filter(t => refExists(s, t));
         return s;
       }
       const bid = optId(op.participantId, 'participant_id');
@@ -2067,7 +2281,7 @@ function applyOp(s, op){
       const cid = reqId(op.captureId, 'capture_id');
       const target = reqTarget(op.target);
       const c = findCapture(s, cid);
-      if(c && findParticipant(s, target.id) && !c.targets.some(x => sameTarget(x, target)) && c.targets.length < MAX_TARGETS) c.targets.push(target);
+      if(c && refExists(s, target) && !c.targets.some(x => sameTarget(x, target)) && c.targets.length < MAX_TARGETS) c.targets.push(target);
       return s;
     }
     case 'capture.target.remove': {
@@ -2107,6 +2321,70 @@ function applyOp(s, op){
       // Captures keep the id, like they keep the id of a deleted participant.
       s.kinds = s.kinds.filter(k => k.id !== id);
       for(const w of s.worksets) if(w.captureKind === id) w.captureKind = DEFAULT_KIND;
+      return s;
+    }
+    case 'groupType.add': {
+      const x = reqGroupType(op.groupType);
+      const before = optId(op.beforeId, 'before_id');
+      if(findGroupType(s, x.id) || findGroupTypeByName(s, x.name)) return s;
+      const pos = before === null ? -1 : s.groupTypes.findIndex(y => y.id === before);
+      s.groupTypes.splice(pos < 0 ? s.groupTypes.length : pos, 0, x);
+      return s;
+    }
+    case 'groupType.update': {
+      const id = reqId(op.groupTypeId, 'group_type_id');
+      const name = reqName(op.name, 40, 'group_type_name');
+      const exclusive = reqExclusive(op.exclusive);
+      const i = s.groupTypes.findIndex(y => y.id === id);
+      if(i >= 0) s.groupTypes[i] = {id, name, exclusive};
+      return s;
+    }
+    case 'groupType.delete': {
+      const id = reqId(op.groupTypeId, 'group_type_id');
+      // Its groups stay, without a type.
+      s.groupTypes = s.groupTypes.filter(y => y.id !== id);
+      for(const g of s.groups) if(g.typeId === id) g.typeId = null;
+      return s;
+    }
+    case 'group.add': {
+      const g = op.group;
+      if(!g || typeof g !== 'object') throw new OpError('invalid_group');
+      const id = reqId(g.id, 'group_id');
+      let typeId = optId(g.typeId, 'group_type_id');
+      const name = reqName(g.name, 40, 'group_name');
+      const members = reqMembers(g.members === undefined || g.members === null ? [] : g.members);
+      const before = optId(op.beforeId, 'before_id');
+      typeId = typeId !== null && findGroupType(s, typeId) ? typeId : null;
+      if(findGroup(s, id) || findGroupByName(s, typeId, name)) return s;
+      const pos = before === null ? -1 : s.groups.findIndex(y => y.id === before);
+      s.groups.splice(pos < 0 ? s.groups.length : pos, 0, {id, typeId, name, members:[]});
+      // The optional members restore a deleted group exactly (undo).
+      return addMembers(s, id, members);
+    }
+    case 'group.update': {
+      const id = reqId(op.groupId, 'group_id');
+      const name = reqName(op.name, 40, 'group_name');
+      const typeId = optId(op.typeId, 'group_type_id');
+      const g = findGroup(s, id);
+      if(g){ g.name = name; g.typeId = typeId !== null && findGroupType(s, typeId) ? typeId : null; }
+      return s;
+    }
+    case 'group.delete': {
+      const id = reqId(op.groupId, 'group_id');
+      // Captures keep the reference; other groups lose it as a member.
+      s.groups = s.groups.filter(g => g.id !== id);
+      return withoutMember(s, {type:'group', id});
+    }
+    case 'group.members.add': {
+      const id = reqId(op.groupId, 'group_id');
+      const refs = reqMembers(op.refs);
+      return addMembers(s, id, refs);
+    }
+    case 'group.members.remove': {
+      const id = reqId(op.groupId, 'group_id');
+      const refs = reqMembers(op.refs);
+      const g = findGroup(s, id);
+      if(g) g.members = g.members.filter(m => !refs.some(r => sameTarget(r, m)));
       return s;
     }
     case 'workset.add': {
@@ -2183,8 +2461,12 @@ function applyOp(s, op){
       if(!Number.isInteger(version) || version < 1 || version > SCHEMA_VERSION) throw new OpError('invalid_schema');
       src = runMigrations(src, version);
       const participants = src.participants || [], kinds = src.kinds || [], worksets = src.worksets || [], captures = src.captures || [];
+      const groupTypes = src.groupTypes === undefined || src.groupTypes === null ? [] : src.groupTypes;
+      const groups = src.groups === undefined || src.groups === null ? [] : src.groups;
       if(!Array.isArray(participants) || !Array.isArray(kinds) || !Array.isArray(worksets) || !Array.isArray(captures)
-        || participants.length > 5000 || kinds.length > 500 || worksets.length > 500 || captures.length > 20000) throw new OpError('invalid_state');
+        || !Array.isArray(groupTypes) || !Array.isArray(groups)
+        || participants.length > 5000 || kinds.length > 500 || worksets.length > 500 || captures.length > 20000
+        || groupTypes.length > 500 || groups.length > 5000) throw new OpError('invalid_state');
       const idMap = new Map();
       for(const b of participants){
         const id = reqId(b && b.id, 'participant_id');
@@ -2222,6 +2504,32 @@ function applyOp(s, op){
           if(mapped !== undefined && !target.ranking.includes(mapped)) target.ranking.push(mapped);
         }
       }
+      // Group types are matched by id or name; groups by id or by (type, name). Their members
+      // are united, once every group exists, mapped like everything else.
+      const typeMap = new Map();
+      for(const raw of groupTypes){
+        const x = reqGroupType(raw);
+        let target = findGroupType(s, x.id) || findGroupTypeByName(s, x.name);
+        if(!target){ target = x; s.groupTypes.push(x); }
+        typeMap.set(x.id, target.id);
+      }
+      const groupMap = new Map(), sourceMembers = new Map();
+      for(const g of groups){
+        if(!g || typeof g !== 'object') throw new OpError('invalid_group');
+        const id = reqId(g.id, 'group_id');
+        let typeId = optId(g.typeId, 'group_type_id');
+        const name = reqName(g.name, 40, 'group_name');
+        sourceMembers.set(id, reqMembers(g.members === undefined || g.members === null ? [] : g.members));
+        typeId = typeId === null ? null : (typeMap.has(typeId) ? typeMap.get(typeId) : (findGroupType(s, typeId) ? typeId : null));
+        let target = findGroup(s, id) || findGroupByName(s, typeId, name);
+        if(!target){ target = {id, typeId, name, members:[]}; s.groups.push(target); }
+        groupMap.set(id, target.id);
+      }
+      const mapRef = (r) => {
+        const map = r.type === 'group' ? groupMap : idMap;
+        return map.has(r.id) ? {type:r.type, id:map.get(r.id)} : null;
+      };
+      for(const [id, members] of sourceMembers) addMembers(s, groupMap.get(id), members.map(mapRef).filter(Boolean));
       for(const c of captures){
         if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
         const id = reqId(c.id, 'capture_id');
@@ -2231,11 +2539,11 @@ function applyOp(s, op){
         const kind = reqCaptureKind(c.kind);
         const wid = optId(c.worksetId, 'workset_id');
         if(findCapture(s, id)) continue;
-        // Participants are mapped to the ones they were matched with; unknown ones are dropped.
+        // Targets are mapped to what they were matched with; unknown ones are dropped.
         const mapped = [];
         for(const t of targets){
-          const ref = {type:'participant', id: idMap.has(t.id) ? idMap.get(t.id) : null};
-          if(ref.id !== null && !mapped.some(x => sameTarget(x, ref))) mapped.push(ref);
+          const ref = mapRef(t);
+          if(ref !== null && !mapped.some(x => sameTarget(x, ref))) mapped.push(ref);
         }
         s.captures.push({id, ts, tzOffset, targets: mapped,
           kind: kindMap.has(kind) ? kindMap.get(kind) : kind,
@@ -2330,8 +2638,12 @@ function operationPath(s, op){
     case 'race.rename': case 'race.setSport': case 'race.archive':
     case 'participant.rename': case 'participant.delete':
     case 'kind.add': case 'kind.update': case 'kind.delete':
+    case 'groupType.add': case 'groupType.update': case 'groupType.delete':
+    case 'group.add': case 'group.update': case 'group.delete':
     case 'workset.add':
       return [[parts[0], null], [parts[1], null]];
+    case 'group.members.add': case 'group.members.remove':
+      return [['group', null], ['members', null]];
     case 'participants.add':
       return [['participant', null], ['add', null]];
     case 'state.merge':
@@ -2376,7 +2688,9 @@ function rankedNext(w, id){
 /*
  * Parts are [kind, id, worksetId]. Ranking parts ('ranked', 'next') and 'captureKind' belong to
  * one workset; 'workset' is the whole workset (for adding and deleting it), 'worksetName' only
- * its name and 'worksetOrder' the order of all worksets (which one is the default).
+ * its name and 'worksetOrder' the order of all worksets (which one is the default). 'groupType'
+ * and 'group' are one of them with their position, 'groupsOfType' which groups have a type and
+ * 'memberOf' (id = ref key 'type:id') which groups contain a participant or group.
  */
 function footprint(s, parts){
   return JSON.stringify(parts.map(([kind, id, ws]) => {
@@ -2398,6 +2712,19 @@ function footprint(s, parts){
       }
       case 'worksetName': { const x = findWorkset(s, id); return x ? x.name : '$none'; }
       case 'worksetOrder': return s.worksets.map(x => x.id);
+      case 'groupType': {
+        const i = s.groupTypes.findIndex(x => x.id === id);
+        return i < 0 ? null : [s.groupTypes[i].name, s.groupTypes[i].exclusive, s.groupTypes[i + 1] ? s.groupTypes[i + 1].id : null];
+      }
+      case 'groupsOfType': return s.groups.filter(g => g.typeId === id).map(g => g.id);
+      case 'group': {
+        const i = s.groups.findIndex(x => x.id === id);
+        if(i < 0) return null;
+        const g = s.groups[i];
+        return [g.typeId, g.name, g.members, s.groups[i + 1] ? s.groups[i + 1].id : null];
+      }
+      // `id` is a ref key ('participant:p1'): the groups it is a member of.
+      case 'memberOf': return s.groups.filter(g => g.members.some(m => m.type + ':' + m.id === id)).map(g => g.id);
     }
   }));
 }
@@ -2417,6 +2744,16 @@ function rerankTargetsOps(s, targets, worksetId){
   if(!w) return [];
   return targets.filter(t => w.ranking.includes(t.id)).sort((a, b) => w.ranking.indexOf(b.id) - w.ranking.indexOf(a.id))
     .flatMap(t => rerankOps(s, t.id, worksetId));
+}
+/** Operations that put a participant or group back into the groups it is a member of in `s`. */
+function memberOfOps(s, ref){
+  return s.groups.filter(g => g.members.some(m => sameTarget(m, ref))).map(g => ({type:'group.members.add', groupId:g.id, refs:[ref]}));
+}
+/** The state after `op` on a copy of `s`, or null when it fails or changes nothing. */
+function changes(s, op){
+  let after;
+  try{ after = applyOp(clone(s), clone(op)); }catch(e){ return null; }
+  return JSON.stringify(after) === JSON.stringify(s) ? null : after;
 }
 /** The parts for a participant's place in every workset's ranking. */
 const rankedParts = (s, id) => s.worksets.map(w => ['ranked', id, w.id]);
@@ -2451,8 +2788,58 @@ function historyEntry(s, op){
     case 'participant.delete': {
       const p = findParticipant(s, op.participantId);
       if(!p) return null;
-      return entry([['participant', p.id], ...rankedParts(s, p.id)],
-        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, p.id, w.id))]);
+      const ref = {type:'participant', id:p.id};
+      return entry([['participant', p.id], ...rankedParts(s, p.id), ['memberOf', 'participant:' + p.id]],
+        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, p.id, w.id)), ...memberOfOps(s, ref)]);
+    }
+    case 'groupType.add': {
+      let x;
+      try{ x = reqGroupType(op.groupType); }catch(e){ return null; }
+      if(findGroupType(s, x.id) || findGroupTypeByName(s, x.name)) return null;
+      return entry([['groupType', x.id], ['groupsOfType', x.id]], [{type:'groupType.delete', groupTypeId:x.id}]);
+    }
+    case 'groupType.update': {
+      const x = findGroupType(s, op.groupTypeId);
+      return x ? entry([['groupType', x.id]], [{type:'groupType.update', groupTypeId:x.id, name:x.name, exclusive:x.exclusive}]) : null;
+    }
+    case 'groupType.delete': {
+      const i = s.groupTypes.findIndex(x => x.id === op.groupTypeId);
+      if(i < 0) return null;
+      const x = s.groupTypes[i], typed = s.groups.filter(g => g.typeId === x.id);
+      // Its groups lose their type: undo gives it back to them.
+      return entry([['groupType', x.id], ['groupsOfType', x.id], ...typed.map(g => ['group', g.id])],
+        [{type:'groupType.add', groupType:{...x}, beforeId: s.groupTypes[i + 1] ? s.groupTypes[i + 1].id : null},
+          ...typed.map(g => ({type:'group.update', groupId:g.id, name:g.name, typeId:x.id}))]);
+    }
+    case 'group.add': {
+      const id = op.group && typeof op.group === 'object' ? op.group.id : null;
+      if(typeof id !== 'string' || findGroup(s, id) || !changes(s, op)) return null;
+      return entry([['group', id], ['memberOf', 'group:' + id]], [{type:'group.delete', groupId:id}]);
+    }
+    case 'group.update': {
+      const g = findGroup(s, op.groupId);
+      return g ? entry([['group', g.id]], [{type:'group.update', groupId:g.id, name:g.name, typeId:g.typeId}]) : null;
+    }
+    case 'group.delete': {
+      const i = s.groups.findIndex(g => g.id === op.groupId);
+      if(i < 0) return null;
+      const g = s.groups[i];
+      // Other groups lose it as a member: undo puts it back there.
+      return entry([['group', g.id], ['memberOf', 'group:' + g.id]],
+        [{type:'group.add', group:clone(g), beforeId: s.groups[i + 1] ? s.groups[i + 1].id : null}, ...memberOfOps(s, {type:'group', id:g.id})]);
+    }
+    case 'group.members.add': case 'group.members.remove': {
+      const g = findGroup(s, op.groupId);
+      const after = g && changes(s, op);
+      if(!after) return null;
+      const now = findGroup(after, g.id).members;
+      const has = (list, r) => list.some(m => sameTarget(m, r));
+      // Only what really changed (known, not a member yet, no cycle) is undone.
+      const added = now.filter(r => !has(g.members, r)), removed = g.members.filter(r => !has(now, r));
+      return entry([['group', g.id]], [
+        ...(added.length ? [{type:'group.members.remove', groupId:g.id, refs:added}] : []),
+        ...(removed.length ? [{type:'group.members.add', groupId:g.id, refs:removed}] : []),
+      ]);
     }
     case 'workset.ranking.add':
       return entry([['ranked', op.participantId, op.worksetId]],
@@ -3137,7 +3524,10 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
     }
   }
 }
-function mergePayload(s){ return {schema:SCHEMA_VERSION, name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds, worksets:s.worksets, captures:s.captures}; }
+function mergePayload(s){
+  return {schema:SCHEMA_VERSION, name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds,
+    groupTypes:s.groupTypes, groups:s.groups, worksets:s.worksets, captures:s.captures};
+}
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
   if(e && e.code === 'access_revoked') return t('err.revoked');
@@ -3228,6 +3618,14 @@ const HISTORY_LABELS = {
   'kind.add': () => t('history.kindAdd'),
   'kind.update': () => t('history.kindUpdate'),
   'kind.delete': () => t('history.kindDelete'),
+  'groupType.add': () => t('history.groupTypeAdd'),
+  'groupType.update': () => t('history.groupTypeUpdate'),
+  'groupType.delete': () => t('history.groupTypeDelete'),
+  'group.add': () => t('history.groupAdd'),
+  'group.update': () => t('history.groupUpdate'),
+  'group.delete': () => t('history.groupDelete'),
+  'group.members.add': () => t('history.groupMembers'),
+  'group.members.remove': () => t('history.groupMembers'),
 };
 const historyLabel = (entry) => HISTORY_LABELS[entry.type]();
 
@@ -3441,7 +3839,8 @@ function cancelShortcutsHold(){ clearTimeout(shortcutsHoldTimer); shortcutsHoldT
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && !shortcutsEl.hidden){ e.preventDefault(); closeShortcuts(); return; }
   if(e.key !== 'Control' && e.key !== 'Meta'){ cancelShortcutsHold(); return; }
-  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden || !document.getElementById('stationDialog').hidden) return;
+  if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden || !document.getElementById('stationDialog').hidden
+    || !document.getElementById('membersDialog').hidden) return;
   // Not while typing: there Ctrl/Cmd starts an editing shortcut, not a lookup.
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
@@ -3468,8 +3867,39 @@ function onDoubleActivate(el, cb){
 
 // ---------- participant helpers ----------
 const participantById = (id) => S().participants.find(b => b.id === id);
-/** The ids of the participants a capture applies to (its participant targets). */
-const captureParticipantIds = (c) => c.targets.filter(x => x.type === 'participant').map(x => x.id);
+/*
+ * Group membership is resolved when reading, from the groups as they are now (docs/groups.md):
+ * a capture targeting a group applies to the participants in it — directly or through nested
+ * groups. Cached per render (reset in renderAll()).
+ */
+let groupMembersCache = null;
+/** The ids of the participants in a group, through nested groups; cycle-safe. */
+function groupParticipantIds(s, groupId){
+  if(!groupMembersCache) groupMembersCache = new Map();
+  if(groupMembersCache.has(groupId)) return groupMembersCache.get(groupId);
+  const ids = new Set(), seen = new Set(), queue = [groupId];
+  while(queue.length){
+    const g = findGroup(s, queue.shift());
+    if(!g || seen.has(g.id)) continue;
+    seen.add(g.id);
+    for(const m of g.members) (m.type === 'group' ? queue.push(m.id) : ids.add(m.id));
+  }
+  groupMembersCache.set(groupId, ids);
+  return ids;
+}
+/** The participant ids refs resolve to: participants themselves, groups to their members. */
+function resolveRefs(s, refs){
+  const ids = new Set();
+  for(const r of refs){
+    if(r.type === 'participant') ids.add(r.id);
+    else for(const id of groupParticipantIds(s, r.id)) ids.add(id);
+  }
+  return ids;
+}
+/** The ids of the participants a capture applies to (its targets, groups resolved). */
+const captureParticipantIds = (c) => [...resolveRefs(S(), c.targets)];
+/** The groups a participant is in, directly or through nested groups. */
+const participantGroups = (s, id) => s.groups.filter(g => groupParticipantIds(s, g.id).has(id));
 /** The participant's finishes (captures of the finish kind), or null without any. */
 function participantCaptureInfo(participantId){
   const s = S();
@@ -3675,14 +4105,15 @@ function cycleKind(once){
  * captures of the same kind, the previous capture of that kind, the number of a split-role
  * capture among the participant's captures of that kind (only for a capture of exactly one
  * participant), and the elapsed time of a finish per participant (`elapsedBy`: since its own
- * latest start, else the latest unassigned start before it) — `elapsed` is that time when it
- * is the same for all of them (or the unassigned start's for an unassigned finish), else null.
+ * latest start, else the latest start of a group it is in, else the latest unassigned start
+ * before it) — `elapsed` is that time when it is the same for all of them (or the unassigned
+ * start's for an unassigned finish), else null.
  */
-let factsCache = null;
+let factsCache = null;   // reset in renderAll(), like groupMembersCache
 function captureFacts(){
   if(factsCache) return factsCache;
   const s = S();
-  const facts = new Map(), count = new Map(), last = new Map(), numbers = new Map(), ownStart = new Map();
+  const facts = new Map(), count = new Map(), last = new Map(), numbers = new Map(), ownStart = new Map(), groupStart = new Map();
   let freeStart = null;
   for(const c of sortedCaptures(s)){
     const role = kindRole(s, c.kind);
@@ -3698,9 +4129,13 @@ function captureFacts(){
       numbers.set(key, number);
     }
     if(role === 'start'){
-      if(pids.length) pids.forEach(p => ownStart.set(p, c)); else freeStart = c;
+      // A start for a group (e.g. a fleet) is the start of each of its members.
+      const direct = c.targets.filter(x => x.type === 'participant').map(x => x.id);
+      if(!c.targets.length) freeStart = c;
+      direct.forEach(p => ownStart.set(p, c));
+      pids.filter(p => !direct.includes(p)).forEach(p => groupStart.set(p, c));
     }else if(role === 'finish'){
-      const elapsedOf = (p) => { const start = (p && ownStart.get(p)) || freeStart; return start ? c.ts - start.ts : null; };
+      const elapsedOf = (p) => { const start = (p && (ownStart.get(p) || groupStart.get(p))) || freeStart; return start ? c.ts - start.ts : null; };
       elapsedBy = new Map(pids.map(p => [p, elapsedOf(p)]));
       const values = pids.length ? [...elapsedBy.values()] : [elapsedOf(null)];
       elapsed = values.every(v => v === values[0]) ? values[0] : null;
@@ -3979,6 +4414,19 @@ function buildParticipantRow(participant, opts){
       m.textContent = meta;
       main.appendChild(m);
     }
+    // The groups it is in directly, once there are groups at all.
+    const groups = S().groups.filter(g => g.members.some(m => m.type === 'participant' && m.id === participant.id));
+    if(groups.length){
+      const tags = document.createElement('div');
+      tags.className = 'group-tags';
+      tags.replaceChildren(...groups.map(g => {
+        const tag = document.createElement('span');
+        tag.className = 'group-tag';
+        tag.textContent = g.name;
+        return tag;
+      }));
+      main.appendChild(tags);
+    }
     if(!opts.sorted && currentRanking().includes(participant.id)){
       const pill = document.createElement('div');
       pill.className = 'rank-pill';
@@ -4219,7 +4667,14 @@ function renderParticipants(){
   document.querySelector('#sortFieldSeg [data-sf="elapsed"]').hidden = !hasStarts();
   document.getElementById('sortDirBtn').textContent = prefs.sortDir === 'desc' ? '↓' : '↑';
 
+  // Filter by group (members through nested groups too), once there are groups.
+  const filterBar = document.getElementById('groupFilterBar');
+  filterBar.hidden = !s.groups.length;
+  const groupFilter = s.groups.length && findGroup(s, prefs.groupFilter) ? prefs.groupFilter : '';
+  if(s.groups.length) fillGroupSelect(document.getElementById('groupFilter'), s, t('groups.filterAll'), groupFilter);
+
   let list = s.participants.map((b, i) => ({b, i}));
+  if(groupFilter){ const ids = groupParticipantIds(s, groupFilter); list = list.filter(x => ids.has(x.b.id)); }
   const ranking = currentRanking();
   if(prefs.filterHideSorted) list = list.filter(x => !ranking.includes(x.b.id));
   if(prefs.filterOpen) list = list.filter(x => !participantCaptureInfo(x.b.id));
@@ -4425,7 +4880,8 @@ const LIST_SHORTCUTS = {
   d: () => toggleSortDir(),
 };
 document.addEventListener('keydown', (e) => {
-  if(!dialogEl.hidden || !shortcutsEl.hidden || !stationDialog.hidden || drawer.classList.contains('open') || !kindMenu.hidden) return;
+  if(!dialogEl.hidden || !shortcutsEl.hidden || !stationDialog.hidden || drawer.classList.contains('open') || !kindMenu.hidden
+    || !document.getElementById('membersDialog').hidden) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
@@ -4587,13 +5043,19 @@ function renderCaptures(){
   });
 }
 /*
- * A capture's participants. One (or none): a select that replaces the assignment, as always.
- * Several — a protest, a recall, a dead heat — are chips with ✕ each. Once a capture has a
- * participant, a small "+" select adds another one, whatever the kind.
+ * A capture's targets: participants and, once there are groups, groups. One (or none): a select
+ * that replaces the assignment, as always. Several — a protest, a recall, a dead heat — are
+ * chips with ✕ each. Once a capture has a target, a small "+" select adds another one.
+ * Select values are ref keys ('participant:id', 'group:id').
  */
 function buildTargetControls(s, c, editable){
-  const pids = captureParticipantIds(c);
-  const nameOf = (id) => { const p = participantById(id); return p ? p.name : t('captures.deletedParticipant'); };
+  const targets = c.targets;
+  const parseKey = (key) => { const i = key.indexOf(':'); return {type:key.slice(0, i), id:key.slice(i + 1)}; };
+  const nameOf = (r) => {
+    if(r.type === 'group'){ const g = findGroup(s, r.id); return g ? g.name : t('groups.deleted'); }
+    const p = participantById(r.id);
+    return p ? p.name : t('captures.deletedParticipant');
+  };
   const option = (value, text, selected = false) => {
     const o = document.createElement('option');
     o.value = value;
@@ -4601,23 +5063,41 @@ function buildTargetControls(s, c, editable){
     o.selected = selected;
     return o;
   };
+  // Participants, then one <optgroup> per group type (only once groups exist).
+  const fill = (sel, include) => {
+    const participants = s.participants.filter(p => include({type:'participant', id:p.id}));
+    const blocks = [...s.groupTypes.map(x => ({label:x.name, groups:groupsOfType(s, x.id)})),
+      {label:t('groups.untyped'), groups:groupsOfType(s, null)}]
+      .map(b => ({label:b.label, groups:b.groups.filter(g => include({type:'group', id:g.id}))})).filter(b => b.groups.length);
+    if(!blocks.length){ participants.forEach(p => sel.appendChild(option('participant:' + p.id, p.name))); return; }
+    const og = document.createElement('optgroup');
+    og.label = t('groups.participants');
+    participants.forEach(p => og.appendChild(option('participant:' + p.id, p.name)));
+    if(participants.length) sel.appendChild(og);
+    blocks.forEach(b => {
+      const g = document.createElement('optgroup');
+      g.label = b.label;
+      b.groups.forEach(x => g.appendChild(option('group:' + x.id, x.name)));
+      sel.appendChild(g);
+    });
+  };
   const out = [];
-  if(pids.length > 1){
+  if(targets.length > 1){
     const chips = document.createElement('span');
     chips.className = 'target-chips';
-    pids.forEach(id => {
+    targets.forEach(r => {
       const chip = document.createElement('span');
-      chip.className = 'target-chip';
-      chip.textContent = nameOf(id);
+      chip.className = 'target-chip' + (r.type === 'group' ? ' is-group' : '');
+      chip.textContent = nameOf(r);
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'target-x';
       x.textContent = '✕';
-      x.title = t('captures.removeTarget', {name: nameOf(id)});
+      x.title = t('captures.removeTarget', {name: nameOf(r)});
       x.setAttribute('aria-label', x.title);
       x.dataset.edit = 'critical';
       x.hidden = !editable;
-      x.addEventListener('click', () => perform({type:'capture.target.remove', captureId:c.id, target:{type:'participant', id}}));
+      x.addEventListener('click', () => perform({type:'capture.target.remove', captureId:c.id, target:{type:r.type, id:r.id}}));
       chip.appendChild(x);
       chips.appendChild(chip);
     });
@@ -4627,29 +5107,51 @@ function buildTargetControls(s, c, editable){
     sel.className = 'assign';
     sel.dataset.edit = 'critical';
     sel.appendChild(option('', t('captures.chooseParticipant')));
-    s.participants.forEach(b => sel.appendChild(option(b.id, b.name, pids[0] === b.id)));
-    if(pids.length && !participantById(pids[0])) sel.appendChild(option(pids[0], t('captures.deletedParticipant'), true));
+    fill(sel, () => true);
+    const current = targets[0];
+    if(current && !refExists(s, current)) sel.appendChild(option(refKey(current), nameOf(current)));
+    sel.value = current ? refKey(current) : '';
     sel.disabled = !editable;
     sel.addEventListener('change', () => {
-      if(!perform({type:'capture.assign', captureId:c.id, participantId:sel.value || null})) renderCaptures();
+      if(!perform({type:'capture.assign', captureId:c.id, targets: sel.value ? [parseKey(sel.value)] : []})) renderCaptures();
     });
     out.push(sel);
   }
-  if(editable && pids.length > 0){
+  if(editable && targets.length > 0){
     const add = document.createElement('select');
     add.className = 'assign add-target';
     add.dataset.edit = 'critical';
     add.title = t('captures.addTarget');
     add.setAttribute('aria-label', add.title);
     add.appendChild(option('', '+'));
-    s.participants.filter(b => !pids.includes(b.id)).forEach(b => add.appendChild(option(b.id, b.name)));
+    fill(add, (r) => !targets.some(x => sameTarget(x, r)));
     add.addEventListener('change', () => {
-      if(!add.value || !perform({type:'capture.target.add', captureId:c.id, target:{type:'participant', id:add.value}})) renderCaptures();
+      if(!add.value || !perform({type:'capture.target.add', captureId:c.id, target:parseKey(add.value)})) renderCaptures();
     });
     out.push(add);
   }
   return out;
 }
+/** Fills a select with "none" plus the groups, one <optgroup> per group type. */
+function fillGroupSelect(sel, s, noneText, value){
+  const blocks = [...s.groupTypes.map(x => ({label:x.name, groups:groupsOfType(s, x.id)})),
+    {label:t('groups.untyped'), groups:groupsOfType(s, null)}].filter(b => b.groups.length);
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = noneText;
+  sel.replaceChildren(none, ...blocks.map(b => {
+    const og = document.createElement('optgroup');
+    og.label = b.label;
+    b.groups.forEach(g => { const o = document.createElement('option'); o.value = g.id; o.textContent = g.name; og.appendChild(o); });
+    return og;
+  }));
+  sel.value = value;
+}
+document.getElementById('groupFilter').addEventListener('change', (e) => {
+  prefs.groupFilter = e.target.value;
+  savePrefs();
+  renderParticipants();
+});
 document.getElementById('capFilterSeg').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-kind]');
   if(!b) return;
@@ -4675,11 +5177,19 @@ async function exportCsv(){
     ['place', (c, f, i) => typed ? (f.role === 'marker' ? '' : f.place) : i + 1],
     ['timestamp', (c) => fmtIso(c.ts, c.tzOffset)],
     ['time', (c) => fmtTime(c.ts, c.tzOffset)],
-    ['participant', (c) => cell(captureParticipantIds(c).map(participantById).filter(Boolean).map(p => p.name).join(', '))],
+    // What the capture is assigned to: participants and groups by name.
+    ['participant', (c) => cell(c.targets.map(r => (r.type === 'group' ? findGroup(s, r.id) : participantById(r.id))).filter(Boolean).map(x => x.name).join(', '))],
     ...(typed ? [['kind', (c) => cell(captureKindText(c))], ['elapsed', (c, f) => f.elapsed !== null ? fmtDelta(f.elapsed) : '']] : []),
     ...(stations ? [['station', (c) => c.worksetId ? cell(worksetLabelById(c.worksetId, s)) : '']] : []),
+    // One column per group type (headed by its name): the capture's groups of that type — the
+    // ones it targets and the ones its participants are in.
+    ...s.groupTypes.map(x => ['groupType', (c) => {
+      const ids = captureParticipantIds(c);
+      return cell(groupsOfType(s, x.id).filter(g => c.targets.some(r => r.type === 'group' && r.id === g.id)
+        || ids.some(id => groupParticipantIds(s, g.id).has(id))).map(g => g.name).join(', '));
+    }, cell(x.name)]),
   ];
-  let csv = columns.map(([key]) => t(`export.col.${key}`)).join(';') + '\n';
+  let csv = columns.map(([key, , header]) => header || t(`export.col.${key}`)).join(';') + '\n';
   asc.forEach((c, i) => {
     const f = facts.get(c.id);
     csv += columns.map(([, value]) => value(c, f, i)).join(';') + '\n';
@@ -4736,6 +5246,7 @@ document.getElementById('renameRaceBtn').addEventListener('click', () => {
 
 function renderAll(){
   factsCache = null;
+  groupMembersCache = null;
   syncDeviceWorkset();
   applyI18n();
   applyPermissions();
@@ -4749,6 +5260,7 @@ function renderAll(){
   renderHistory();
   if(rankSearch.value) renderSearchResults();
   if(drawer.classList.contains('open')) renderSettings();
+  if(membersEdit) renderMembers();
 }
 
 // =====================================================================
@@ -4921,6 +5433,295 @@ kindNameInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter'){ e.preventDefault(); addKindFromInput(); }
 });
 
+// ---------- groups ----------
+/*
+ * Group types and their groups, managed in the settings. Everything shown elsewhere (tags on
+ * participant rows, the group filter, groups as capture targets, export columns) appears once
+ * groups exist (premise 3). Members are chosen in a dialog (#membersDialog).
+ */
+const groupTypeList = document.getElementById('groupTypeList');
+const groupTypeInput = document.getElementById('groupTypeInput');
+function groupTypeNameTaken(name, exceptId){
+  return S().groupTypes.some(x => x.id !== exceptId && nameKey(x.name) === nameKey(name));
+}
+function groupNameTaken(name, typeId, exceptId){
+  return S().groups.some(g => g.id !== exceptId && g.typeId === typeId && nameKey(g.name) === nameKey(name));
+}
+function addGroupType(name, exclusive){
+  name = cleanText(name).slice(0, 40);
+  if(!name) return false;
+  if(groupTypeNameTaken(name)){ toast(t('groups.exists', {name})); return false; }
+  return !!perform({type:'groupType.add', groupType:{id:uid(), name, exclusive}});
+}
+/** Suggestions of the sport text set ("name:1" = one group per member) that don't exist yet. */
+function groupTypeSuggestions(){
+  return t('groups.suggestions').split(',').map(entry => {
+    const [name, flag] = entry.split(':').map(v => cleanText(v || ''));
+    return {name, exclusive: flag === '1'};
+  }).filter(x => x.name && !groupTypeNameTaken(x.name));
+}
+/** Label for the number of members of a group (direct members). */
+function membersText(g){
+  const n = g.members.length;
+  return n === 0 ? t('groups.membersNone') : n === 1 ? t('groups.membersOne') : t('groups.membersN', {n});
+}
+/** Groups of a type (null: without a type), in their order. */
+function groupsOfType(s, typeId){ return s.groups.filter(g => g.typeId === typeId); }
+/** An inline name field committing on change, like the event types' names. */
+function inlineName(value, editable, label, commit){
+  const input = document.createElement('input');
+  input.className = 'input';
+  input.type = 'text';
+  input.maxLength = 40;
+  input.value = value;
+  input.readOnly = !editable;
+  input.setAttribute('aria-label', label);
+  input.addEventListener('change', () => commit(input));
+  input.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); input.blur(); }
+    else if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); input.value = value; input.blur(); }
+  });
+  input.addEventListener('blur', () => renderGroups());
+  return input;
+}
+function deleteButton(onClick){
+  const del = document.createElement('button');
+  del.className = 'mini';
+  del.type = 'button';
+  del.textContent = '✕';
+  del.title = t('action.delete');
+  del.setAttribute('aria-label', del.title);
+  del.addEventListener('click', onClick);
+  return del;
+}
+function buildGroupRow(g){
+  const li = document.createElement('div');
+  li.className = 'group-row';
+  li.dataset.edit = 'normal';
+  li.dataset.groupId = g.id;
+  const name = inlineName(g.name, can('group.update'), t('groups.title'), (input) => {
+    const value = cleanText(input.value), current = findGroup(S(), g.id);
+    if(!current) return;
+    if(!value || value === current.name){ input.value = current.name; return; }
+    if(groupNameTaken(value, current.typeId, g.id)){ toast(t('groups.exists', {name:value})); input.value = current.name; return; }
+    if(!perform({type:'group.update', groupId:g.id, name:value, typeId:current.typeId})) input.value = current.name;
+  });
+  const members = document.createElement('button');
+  members.type = 'button';
+  members.className = 'link-btn';
+  members.textContent = membersText(g);
+  members.disabled = !can('group.members');
+  members.addEventListener('click', () => openMembers(g.id));
+  const del = deleteButton(async () => {
+    const ok = await askConfirm({title:t('groups.deleteTitle'), text:t('groups.deleteText', {name:g.name}), ok:t('action.delete'), danger:true});
+    if(!ok) return;
+    groupTypeInput.focus({preventScroll: true});
+    perform({type:'group.delete', groupId:g.id});
+  });
+  del.hidden = !can('group.delete');
+  li.append(name, members, del);
+  return li;
+}
+/** Adds a group named "Group n" to a type and puts the cursor into its name. */
+function addGroup(typeId){
+  const s = S();
+  let n = groupsOfType(s, typeId).length + 1;
+  while(groupNameTaken(t('groups.defaultName', {n}), typeId)) n++;
+  const id = uid();
+  if(!perform({type:'group.add', group:{id, typeId, name:t('groups.defaultName', {n})}})) return;
+  const input = groupTypeList.querySelector(`[data-group-id="${id}"] input`);
+  if(input){ input.focus(); input.select(); }
+}
+function buildGroupTypeBlock(x){
+  const s = S();
+  const block = document.createElement('div');
+  block.className = 'group-type';
+  const head = document.createElement('div');
+  head.className = 'group-type-head';
+  head.dataset.edit = 'normal';
+  if(x){
+    const name = inlineName(x.name, can('groupType.update'), t('groups.title'), (input) => {
+      const value = cleanText(input.value), current = findGroupType(S(), x.id);
+      if(!current) return;
+      if(!value || value === current.name){ input.value = current.name; return; }
+      if(groupTypeNameTaken(value, x.id)){ toast(t('groups.exists', {name:value})); input.value = current.name; return; }
+      if(!perform({type:'groupType.update', groupTypeId:x.id, name:value, exclusive:current.exclusive})) input.value = current.name;
+    });
+    const excl = document.createElement('label');
+    excl.className = 'excl';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = x.exclusive;
+    box.disabled = !can('groupType.update');
+    box.addEventListener('change', () => {
+      const current = findGroupType(S(), x.id);
+      if(current && !perform({type:'groupType.update', groupTypeId:x.id, name:current.name, exclusive:box.checked})) box.checked = current.exclusive;
+    });
+    excl.append(box, t('groups.exclusive'));
+    const del = deleteButton(async () => {
+      const ok = await askConfirm({title:t('groups.deleteTypeTitle'), text:t('groups.deleteTypeText', {name:x.name}), ok:t('action.delete'), danger:true});
+      if(!ok) return;
+      groupTypeInput.focus({preventScroll: true});
+      perform({type:'groupType.delete', groupTypeId:x.id});
+    });
+    del.hidden = !can('groupType.delete');
+    head.append(name, excl, del);
+  }else{
+    const h = document.createElement('h4');
+    h.textContent = t('groups.untyped');
+    head.appendChild(h);
+  }
+  block.appendChild(head);
+  groupsOfType(s, x ? x.id : null).forEach(g => block.appendChild(buildGroupRow(g)));
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'link-btn';
+  add.dataset.edit = 'normal';
+  add.textContent = t('groups.addGroup');
+  add.hidden = !can('group.add');
+  add.addEventListener('click', () => addGroup(x ? x.id : null));
+  block.appendChild(add);
+  return block;
+}
+function renderGroups(){
+  const s = S();
+  // Nothing to manage here without any group permission (e.g. a station code).
+  const section = document.getElementById('groupsSection');
+  section.hidden = !['groupType.add', 'group.add', 'group.members'].some(can);
+  if(section.hidden) return;
+  // Leave the list alone while a name in it is being edited.
+  const editing = groupTypeList.contains(document.activeElement) && document.activeElement.matches('input[type="text"]');
+  if(!editing){
+    const blocks = s.groupTypes.map(x => buildGroupTypeBlock(x));
+    if(groupsOfType(s, null).length) blocks.push(buildGroupTypeBlock(null));
+    groupTypeList.replaceChildren(...blocks);
+  }
+  const suggestions = groupTypeSuggestions();
+  const wrap = document.getElementById('groupSuggest');
+  wrap.hidden = suggestions.length === 0;
+  wrap.replaceChildren(t('groups.suggest'), ...suggestions.map(x => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small';
+    b.textContent = x.name;
+    b.title = x.exclusive ? t('groups.exclusive') : '';
+    b.addEventListener('click', () => addGroupType(x.name, x.exclusive));
+    return b;
+  }));
+}
+function addGroupTypeFromInput(){
+  if(addGroupType(groupTypeInput.value, false)) groupTypeInput.value = '';
+}
+document.getElementById('addGroupTypeBtn').addEventListener('click', addGroupTypeFromInput);
+groupTypeInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter'){ e.preventDefault(); addGroupTypeFromInput(); }
+});
+document.getElementById('groupsBtn').addEventListener('click', () => {
+  openSettings();
+  document.getElementById('groupsSection').scrollIntoView({block: 'start'});
+});
+
+// ---------- members dialog ----------
+const membersDialog = document.getElementById('membersDialog');
+const membersList = document.getElementById('membersList');
+const membersSearch = document.getElementById('membersSearch');
+let membersEdit = null;   // {groupId, selected: Set of ref keys, previousFocus}
+function openMembers(groupId){
+  const g = findGroup(S(), groupId);
+  if(!g) return;
+  membersEdit = {groupId, selected: new Set(g.members.map(refKey)), previousFocus: document.activeElement};
+  document.getElementById('membersTitle').textContent = t('groups.membersTitle', {name: g.name});
+  membersSearch.value = '';
+  renderMembers();
+  lockScroll(true);
+  membersDialog.hidden = false;
+  membersSearch.focus({preventScroll: true});
+}
+function closeMembers(){
+  if(!membersEdit) return;
+  membersDialog.hidden = true;
+  lockScroll(false);
+  const focus = membersEdit.previousFocus;
+  membersEdit = null;
+  if(focus && focus.isConnected && focus.focus) focus.focus({preventScroll: true});
+}
+function renderMembers(){
+  const s = S();
+  const g = membersEdit && findGroup(s, membersEdit.groupId);
+  if(!g){ closeMembers(); return; }
+  const type = g.typeId ? findGroupType(s, g.typeId) : null;
+  const query = nameKey(membersSearch.value);
+  const matches = (name) => !query || nameKey(name).includes(query);
+  const option = (ref, name, hint, disabled) => {
+    const label = document.createElement('label');
+    label.className = 'member-opt' + (disabled ? ' disabled' : '');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = membersEdit.selected.has(refKey(ref));
+    box.disabled = disabled;
+    box.addEventListener('change', () => {
+      if(box.checked) membersEdit.selected.add(refKey(ref)); else membersEdit.selected.delete(refKey(ref));
+    });
+    label.append(box, name);
+    if(hint){
+      const h = document.createElement('span');
+      h.className = 'hint';
+      h.textContent = hint;
+      label.appendChild(h);
+    }
+    return label;
+  };
+  // In a type with one group per member, the others of that type a participant is in.
+  const otherOfType = (ref) => (type && type.exclusive
+    ? s.groups.filter(x => x.id !== g.id && x.typeId === type.id && x.members.some(m => sameTarget(m, ref))).map(x => x.name).join(', ') : '');
+  const rows = [];
+  const participants = s.participants.filter(p => matches(p.name))
+    .sort((a, b) => a.name.localeCompare(b.name, locale(), {numeric:true}));
+  if(participants.length){
+    const h = document.createElement('h4');
+    h.textContent = t('groups.participants');
+    rows.push(h, ...participants.map(p => option({type:'participant', id:p.id}, p.name, otherOfType({type:'participant', id:p.id}), false)));
+  }
+  const groups = s.groups.filter(x => x.id !== g.id && matches(x.name));
+  if(groups.length){
+    const h = document.createElement('h4');
+    h.textContent = t('groups.title');
+    rows.push(h, ...groups.map(x => {
+      const cycle = groupContains(s, x.id, g.id);
+      const typeName = x.typeId && findGroupType(s, x.typeId) ? findGroupType(s, x.typeId).name : '';
+      return option({type:'group', id:x.id}, x.name, cycle ? t('groups.cycle') : typeName, cycle);
+    }));
+  }
+  membersList.replaceChildren(...rows);
+}
+function applyMembers(){
+  const s = S();
+  const g = membersEdit && findGroup(s, membersEdit.groupId);
+  if(!g){ closeMembers(); return; }
+  const parse = (key) => { const i = key.indexOf(':'); return {type:key.slice(0, i), id:key.slice(i + 1)}; };
+  const current = new Set(g.members.map(refKey));
+  const added = [...membersEdit.selected].filter(k => !current.has(k)).map(parse);
+  const removed = [...current].filter(k => !membersEdit.selected.has(k)).map(parse);
+  const ops = [];
+  if(added.length) ops.push({type:'group.members.add', groupId:g.id, refs:added});
+  if(removed.length) ops.push({type:'group.members.remove', groupId:g.id, refs:removed});
+  // One group per member in an exclusive type: joining this one leaves the others (one step).
+  const type = g.typeId ? findGroupType(s, g.typeId) : null;
+  if(type && type.exclusive && added.length){
+    s.groups.filter(x => x.id !== g.id && x.typeId === type.id).forEach(x => {
+      const leave = added.filter(r => x.members.some(m => sameTarget(m, r)));
+      if(leave.length) ops.push({type:'group.members.remove', groupId:x.id, refs:leave});
+    });
+  }
+  if(ops.length && !perform(ops)) return;
+  closeMembers();
+}
+membersSearch.addEventListener('input', renderMembers);
+document.getElementById('membersOk').addEventListener('click', applyMembers);
+document.getElementById('membersCancel').addEventListener('click', closeMembers);
+membersDialog.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeMembers(); } });
+membersDialog.addEventListener('click', (e) => { if(e.target === membersDialog) closeMembers(); });
+
 // ---------- stations (worksets) ----------
 const worksetList = document.getElementById('worksetList');
 /** A station name must differ from the other stations' names and labels. */
@@ -5063,6 +5864,7 @@ function renderSettings(){
     sportSelect.appendChild(o);
   });
   renderKinds();
+  renderGroups();
   renderWorksets();
 
   const isServer = backend.kind === 'server';

@@ -59,7 +59,9 @@ product owner before implementing.
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
 | `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
 | `capture` (`{id, ts, tzOffset, targets, kind, worksetId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
-| capture `targets` — what a capture applies to: refs `{type:'participant', id}` (groups planned, `docs/groups.md`); none = unassigned, several = e.g. a protest | Boot(e) / boat(s) |
+| capture `targets` — what a capture applies to: refs `{type:'participant'\|'group', id}`; none = unassigned, several = e.g. a protest | Boot(e) / boat(s) |
+| `group` (`{id, typeId, name, members}`) — participants and other groups; a capture for a group applies to its members | e.g. Flotte A / Fleet A (texts in `common`: Gruppe / group) |
+| `groupType` (`{id, name, exclusive}`) — a dimension groups belong to (fleet, class, club …) | Gruppenart / group type |
 | `ranking` — a workset's queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
 | capture `kind` — what a capture marks: built-in `start` / `split` / `finish` or a custom kind | Start / Tonnenrundung / Zieldurchlauf, Zeitart / event type |
 | custom kind (`{id, name, role}`, role `split` or `marker`) | e.g. Protest (a marker) |
@@ -249,11 +251,11 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   kind. The ranking title follows the sticky kind's role (`sorted.titleStart`,
   `sorted.titleSplit`, else `sorted.title`).
 - **Elapsed time** of a finish = its time minus the participant's own latest start before it
-  (a start whose targets include it), else the latest unassigned start before it; per
+  (a start targeting it directly), else the latest start of a group it is in (directly or
+  through nested groups, resolved now), else the latest unassigned start before it; per
   participant for a finish of several (`captureFacts()` → `elapsedBy`, `elapsedFor()`), shown in
-  the row only when it is the same for all of them. A staggered start is recorded as one unassigned
-  start per group, so elapsed times of earlier groups drift — accepted for now; the analytics
-  pipeline knows the groups and start times.
+  the row only when it is the same for all of them. A **staggered start** is one start per group
+  (e.g. per fleet); a general recall is simply a later start for the group.
 
 ### Undo / redo
 - Two buttons ↶ ↷ (`.history-btns`) left of the status pill in the top bar. Like every
@@ -286,7 +288,8 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   entry is dropped, so the next step continues below it. Each entry lists the state `parts` it
   touches (`name`, `sport`, `participant`, `capture`, `kind`; per workset `ranked`, `next` =
   ranking neighbour and `captureKind`; `workset` = a whole workset, `worksetName`,
-  `worksetOrder`) and stores their `footprint()` before and after. Undo requires the current footprint to equal
+  `worksetOrder`; `groupType` / `group` with their position, `groupsOfType`, `memberOf` = the
+  groups containing a ref) and stores their `footprint()` before and after. Undo requires the current footprint to equal
   "after" (nobody changed those parts since) and checks on a copy (`footprintAfter()`) that the
   compensating operations really lead back to "before"; redo the other way round. The copy check
   also catches what the reducers can't restore, e.g. a capture of a deleted participant.
@@ -352,6 +355,38 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   recorded time; participants without a time always come last. Name sort is locale-aware and
   numeric.
 - Filters, sort order and language are per-device preferences (never synced).
+
+### Groups
+- **Groups** collect participants and other groups (nesting, e.g. a start group made of two
+  classes); **group types** arrange them side by side (fleet *and* class *and* club), so a
+  participant can be in several groups at once. Membership is **resolved when reading**, never
+  stored (`groupParticipantIds()`, `resolveRefs()`, cached per render): a capture for a group
+  applies to its members as they are now — moving a participant to the right fleet after the
+  start gives it that fleet's start. A member that would close a cycle is skipped by the reducers.
+- Managed in the settings section "Groups" (between event types and stations,
+  `renderGroups()`): per type a block with its name inline, "One per member" (`exclusive`) and ✕
+  (confirmation; its groups stay, without a type), its groups (name inline, "n members" link,
+  ✕ with confirmation; captures keep the reference, "(deleted group)"), "+ Add group" (named
+  "Group n", cursor in the name), plus "Without type" for groups that lost theirs. New types by
+  name or from the sport set's `groups.suggestions` (`name:1` = one per member). The ⧉
+  `.icon-btn` in the participants panel header opens the settings there.
+- **Members dialog** (`#membersDialog`, `openMembers()`): participants (sorted, with the other
+  group of an exclusive type as a hint) and other groups (one that contains this group is
+  disabled), a search field, Apply / Cancel. Apply sends the additions and removals as one undo
+  step; in an exclusive type, joining a group leaves the type's other groups in the same step.
+  `exclusive` is only this UI hint — the reducers accept double membership.
+- **Discreet until used:** once groups exist, participant rows show their direct groups as
+  tags (`.group-tag`), a group filter (`prefs.groupFilter`, per device, members of nested groups
+  included) appears above the sort bar, the capture target selects list groups in an
+  `<optgroup>` per type (values are ref keys `participant:id` / `group:id`; group chips are
+  dashed), and the CSV export gets one column per group type (headed by its name: the groups of
+  that type the capture targets or its participants are in); the participant column names
+  groups too.
+- Groups can't be ranked yet (phase 4 of `docs/groups.md`): a group's start is recorded as an
+  unassigned time and assigned to the group, or given to it with "+".
+- Groups are participant data: seen with `participant.view` (`Access::project()`), managed
+  with `groupType.add|update|delete`, `group.add|update|delete` and `group.members` (station
+  codes have none); all locked offline.
 
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
 - Holds the expected crossing order of participants approaching the line together. Every
@@ -432,7 +467,9 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   changing the sport. Rules like `race[id].archive` already parse, for containers above a race
   later (a race series); today a code targets one race and race paths carry no id.
 - Every operation needs one path (`operationPath()`): `race.rename|setSport|archive`,
-  `race.merge`, `participant.add|rename|delete`, `kind.add|update|delete`, `workset.add`,
+  `race.merge`, `participant.add|rename|delete`, `kind.add|update|delete`,
+  `groupType.add|update|delete`, `group.add|update|delete`, `group.members` (both membership
+  operations), `workset.add`,
   `workset[W].rename|delete|makeDefault|setKind`, `workset[W].ranking.add|remove|move`, and for
   captures `workset[W].capture.add|assign|setKind|delete` (the capture's workset; changing its
   targets, `capture.target.add|remove`, needs `assign`) or
@@ -659,7 +696,7 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
 - Opened by ⚙ in the top bar (next to the status pill, the station pill and the undo/redo
   buttons).
 - Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) ·
-  Stations (see Stations) · local mode: status, race code +
+  Groups (see Groups) · Stations (see Stations) · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced
   settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
@@ -699,6 +736,14 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
 | `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
 | `kind.delete` | `kindId` | captures keep the id; resets every workset's `captureKind` that was this kind to `finish` |
+| `groupType.add` | `groupType: {id, name, exclusive?}`, `beforeId?` | name ≤ 40 (`invalid_group_type_name`); `exclusive` boolean, missing/null = false (`invalid_group_type`); skips an existing id and a name taken case-insensitively; `beforeId` inserts before it (undo) |
+| `groupType.update` | `groupTypeId, name, exclusive` | replaces both; no-op if the type is gone |
+| `groupType.delete` | `groupTypeId` | its groups stay, with `typeId: null` |
+| `group.add` | `group: {id, typeId?, name, members?}`, `beforeId?` | name ≤ 40 (`invalid_group_name`), unique case-insensitively within its type (else skipped, like an existing id); unknown `typeId` → null; `members` (≤ 5000 refs, `invalid_group_members` / `invalid_group_member`) and `beforeId` restore a deleted group (undo) |
+| `group.update` | `groupId, name, typeId` | replaces both (unknown type → null); no-op if the group is gone |
+| `group.delete` | `groupId` | removes it from other groups' members; captures keep the reference |
+| `group.members.add` | `groupId, refs` | adds known refs that aren't members yet and don't close a cycle; members are kept sorted by `type:id` |
+| `group.members.remove` | `groupId, refs` | |
 | `state.merge` | `state: {schema, name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `schema` (missing/null = 1; otherwise an integer 1…`SCHEMA_VERSION`, else `invalid_schema`) — an older state is migrated first; `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
 
 Every `workset.*` operation except `workset.add` requires `worksetId` (`invalid_workset_id`);
@@ -707,14 +752,17 @@ there is no implicit default workset in operations.
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
+`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], groupTypes:[{id,name,exclusive}], groups:[{id,typeId,name,members:[{type,id}]}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
 States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
 and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
 former and drops the latter when the repository loads a race (a race starts without worksets),
 `normalizeState()` does the same on the client.
 `schema` is the state's version (see Schema versioning); states stored before versioning lack
 it and count as 1. Version 2 replaced the captures' `participantId` by `targets` (migration
-step 1 → 2 on both sides; old operation shapes with `participantId` are still accepted).
+step 1 → 2 on both sides; old operation shapes with `participantId` are still accepted);
+version 3 added `groupTypes` and `groups`, and groups as capture targets. `participant.delete`
+also removes the participant from every group; `state.merge` merges group types (by id or
+name) and groups (by id or type + name), unites their members and maps capture targets.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
@@ -842,9 +890,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 7. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
-- Elapsed times use the latest unassigned start: with staggered starts (one unassigned start per
-  group) they are wrong for all but the last group. Groups are not modelled yet; the accepted
-  concept and the plan are in `docs/groups.md`.
+- Groups can't be put into a ranking yet, participant metadata fields and rule-based groups
+  don't exist yet: phases 4 and 5 of `docs/groups.md`.
 - No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
   create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't

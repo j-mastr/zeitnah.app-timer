@@ -246,7 +246,7 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
 | 0. Specification | done | this document |
 | 1. Schema versioning | done (version 1) | see "Phase 1 notes"; must be deployed before phase 2 ships |
 | 2. Capture targets | done (version 2) | see "Phase 2 notes"; deploy only after phase 1 has been live for a while |
-| 3. Groups and group types | open | |
+| 3. Groups and group types | done (version 3) | branch `claude/groups-phase-3`; see "Phase 3 notes" |
 | 4. Groups in rankings | open | |
 | 5. Fields and rule-based groups | open | |
 | 6. Reporting | not planned yet | |
@@ -304,3 +304,37 @@ rejected with `invalid_capture_target` until phase 3 raises the version again).
 - Limitation of the parity test: objects with keys `0…n` (e.g. `{"0": ref}`) decode as lists in
   PHP; the generator doesn't send them (no real client does).
 - `tests/e2e/offline-start.mjs` now announces the server's schema when it fetches a snapshot.
+
+### Phase 3 notes
+
+Built on its own branch (`claude/groups-phase-3`), on top of phases 1–2. `CLAUDE.md`
+("Groups", the operations table) documents the implementation. Decisions and deviations:
+
+- **Deleting a group type keeps its groups**, without a type (`typeId: null`, listed under
+  "Without type"), instead of deleting them too — simpler to undo and nothing is lost. Undo
+  gives the type back to them.
+- **Group names are unique within their type** (case-insensitively), not across the race:
+  "Laser" can be a class and a start group.
+- **Members are kept sorted** by `type:id` in both reducers, so the same set is always the same
+  list (undo restores states exactly; no order to merge).
+- No limit on the number of groups per race (only per operation: ≤ 5000 members; a merge takes
+  ≤ 500 types and ≤ 5000 groups), like participants.
+- A merge creates the groups first and unites the members afterwards, in the source's order, so
+  nested groups can refer to groups listed later.
+- **UI:** groups are managed in the settings (a block per type), members are chosen in a dialog
+  per group (search, checkboxes; nested groups with a cycle disabled). There is no per-
+  participant group menu: bulk selection in the dialog fits a fleet of 50 boats better. The
+  participants panel gets a ⧉ button (like ↥) that opens the settings there; participant rows
+  show their direct groups as tags; the filter includes members of nested groups.
+- `exclusive` only changes the dialog: joining a group of such a type leaves the type's other
+  groups in the same undo step, and the others are shown as a hint. The reducers never check it.
+- The permission path for both membership operations is `group.members`.
+- Groups can't be ranked yet (phase 4): a group start is recorded as an unassigned time and
+  assigned to the group (or added with "+").
+- CSV: the participant column names targeted groups too; one column per group type.
+- Tests: reducer parity covers the group operations and a merge with nested groups (generator
+  biased so that groups with members and group-targeted captures actually occur); undo covers
+  deleting a member participant, a nested group, removing members and deleting a type; access
+  scope checks that station codes can't manage groups; the smoke test creates a type and a
+  group, picks members, assigns a start to the group and checks the elapsed time and the filter
+  on the other device.

@@ -45,14 +45,27 @@ const randomWorkset = () => (rnd() < 0.1 ? pick([null, 'w1', {}]) : {
   ranking: pick(rankings), captureKind: pick([undefined, undefined, ...captureKinds]),
 });
 const ref = (id) => ({type: 'participant', id});
-const randomTarget = () => pick([ref(pick(participantIds)), ref(pick(participantIds)), ref(pick(participantIds)), {type: 'group', id: 'g1'},
+const groupIds = ['g1', 'g2', 'g3', 'g4', 'not valid!'];
+const groupTypeIds = ['t1', 't2', 't3', 'not valid!'];
+const gref = (id) => ({type: 'group', id});
+const groupNames = ['Fleet A', 'fleet a', ' Gold ', 'Silver', 'Wave 1', 'Wave 2', 'Laser', '', 'q'.repeat(41), 5];
+const randomRefs = () => pick([undefined, null, [], [ref(pick(participantIds))], [gref(pick(groupIds)), ref(pick(participantIds)), gref(pick(groupIds))],
+  [ref(pick(participantIds)), ref(pick(participantIds)), gref(pick(groupIds)), ref('b1'), ref('b1')], [{type: 'team', id: 'x'}], 'g1', [gref('g1'), gref('g2'), gref('g3')]]);
+const randomGroupType = () => (rnd() < 0.1 ? pick([null, 't1', []]) : {id: pick(groupTypeIds), name: pick(['Fleet', 'fleet', 'Class', '', 3]), exclusive: pick([undefined, null, true, false, 'yes'])});
+const randomGroup = () => (rnd() < 0.05 ? pick([null, 'g1']) : {id: pick(groupIds.slice(0, 4)), typeId: pick([undefined, null, ...groupTypeIds, 'tX']),
+  name: rnd() < 0.8 ? pick(groupNames.slice(0, 7)) : pick(groupNames), members: rnd() < 0.3 ? randomRefs() : undefined});
+const validRefs = () => Array.from({length: 1 + Math.floor(rnd() * 4)}, () => (rnd() < 0.7 ? ref(pick(participantIds.slice(0, 5))) : gref(pick(groupIds.slice(0, 4)))));
+const randomTarget = () => pick([ref(pick(participantIds)), ref(pick(participantIds)), ref(pick(participantIds)), gref(pick(groupIds)), gref(pick(groupIds)), {type: 'team', id: 'g1'},
   {id: 'b1'}, {type: 'participant', id: 'not valid!'}, {type: 'participant'}, 'b1', null, ['participant', 'b1']]);
-const randomTargets = () => pick([undefined, null, [], [ref(pick(participantIds))], [ref(pick(participantIds)), ref(pick(participantIds)), ref('b1')],
+const randomTargets = () => pick([undefined, null, [], [ref(pick(participantIds))], [gref(pick(groupIds))], [gref(pick(groupIds)), ref(pick(participantIds))], [ref(pick(participantIds)), ref(pick(participantIds)), ref('b1')],
   [randomTarget(), randomTarget()], Array.from({length: 501}, () => ref('b1')), 'b1', {type: 'participant', id: 'b1'}]);
 // (Not generated: objects with keys 0…n, e.g. {0: ref}, which PHP decodes as a list.)
 const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
   'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind',
   'capture.add', 'capture.assign', 'capture.target.add', 'capture.target.add', 'capture.target.remove',
+  'groupType.add', 'groupType.add', 'groupType.update', 'groupType.delete',
+  'group.add', 'group.add', 'group.add', 'group.add', 'group.add', 'group.update', 'group.delete',
+  'group.members.add', 'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove', 'group.members.remove',
   'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus',
   'workset.add', 'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
   'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move'];
@@ -76,12 +89,21 @@ function randomOp(i) {
     case 'capture.add': op.capture = {id: pick(captureIds), ts: pick([1790000000000 + i, -1, 1.5]), tzOffset: pick([120, -480, 0, null, undefined, 1200, 1.5, '60']), participantId: pick([...participantIds, null]), kind: pick(captureKinds), worksetId: pick(worksetRefs)};
       if (rnd() < 0.6) op.capture.targets = randomTargets();
       if (rnd() < 0.4) delete op.capture.participantId;
+      // A valid one with participants and groups (the picks above are correlated and rarely all valid).
+      if (rnd() < 0.3) op.capture = {id: pick(captureIds), ts: 1790000000000 + i, tzOffset: 60, kind: pick(['start', 'finish', 'split']), worksetId: pick(worksetRefs.slice(0, 7)), targets: validRefs()};
       break;
     case 'capture.assign':
       op.captureId = pick(captureIds);
       if (rnd() < 0.5) op.participantId = pick([...participantIds, null]); else op.targets = randomTargets();
       break;
     case 'capture.target.add': case 'capture.target.remove': op.captureId = pick(captureIds); op.target = randomTarget(); break;
+    case 'groupType.add': op.groupType = randomGroupType(); if (rnd() < 0.3) op.beforeId = pick([...groupTypeIds, null]); break;
+    case 'groupType.update': op.groupTypeId = pick(groupTypeIds); op.name = pick(['Fleet', 'Class', '', 7]); op.exclusive = pick([true, false, undefined, 1]); break;
+    case 'groupType.delete': op.groupTypeId = pick(groupTypeIds); break;
+    case 'group.add': op.group = randomGroup(); if (rnd() < 0.3) op.beforeId = pick([...groupIds, null]); break;
+    case 'group.update': op.groupId = pick(groupIds); op.name = pick(groupNames); op.typeId = pick([undefined, null, ...groupTypeIds]); break;
+    case 'group.delete': op.groupId = pick(groupIds); break;
+    case 'group.members.add': case 'group.members.remove': op.groupId = pick(groupIds); op.refs = rnd() < 0.7 ? validRefs() : randomRefs(); break;
     case 'capture.delete': op.captureId = pick(captureIds); break;
     case 'capture.setKind': op.captureId = pick(captureIds); op.kind = pick(captureKinds); break;
     case 'workset.setKind': op.worksetId = pick(worksetRefs); op.kind = pick(captureKinds); break;
@@ -90,7 +112,11 @@ function randomOp(i) {
     case 'kind.delete': op.kindId = pick(kindIds); break;
     case 'state.merge':
       op.state = {
-        schema: pick([undefined, undefined, null, 1, SCHEMA_VERSION, SCHEMA_VERSION + 1, 0, '1', 1.5]),
+        schema: pick([undefined, undefined, null, 1, 2, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION + 1, 0, '1', 1.5]),
+        groupTypes: pick([undefined, [], [randomGroupType()], [{id: 'mt' + i, name: pick(['Fleet', 'Class'])}, {id: pick(groupTypeIds), name: 'Club'}]]),
+        groups: pick([undefined, [], [randomGroup()],
+          [{id: 'mg' + i, typeId: pick(['mt' + i, 't1', null]), name: pick(['Fleet A', 'Laser']), members: [ref('m' + i), gref(pick(groupIds)), gref('mh' + i)]},
+            {id: 'mh' + i, name: 'Wave 1', members: [gref('mg' + i), ref(pick(participantIds))]}, randomGroup()]]),
         name: pick(['Local', null]),
         sport: pick(['sailing', 'running', 'generic', undefined, null, 'bogus', 7]),
         participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
@@ -99,7 +125,7 @@ function randomOp(i) {
           [{id: 'mw' + i, name: pick(['Finish', null, 'Gate']), ranking: ['m' + i, pick(participantIds)], captureKind: pick(['mk' + i, 'start', 'k1'])},
             {id: pick(worksetIds), name: pick(worksetNames), ranking: pick(rankings)}]]),
         captures: [{id: 'mc' + i, ts: 1790000000500, tzOffset: pick([120, null, 999]), kind: pick(['mk' + i, ...captureKinds]),
-          worksetId: pick(['mw' + i, ...worksetRefs]), ...pick([{participantId: 'm' + i}, {targets: [ref('m' + i), ref(pick(participantIds)), ref('zz')]}, {targets: randomTargets()}])},
+          worksetId: pick(['mw' + i, ...worksetRefs]), ...pick([{participantId: 'm' + i}, {targets: [ref('m' + i), ref(pick(participantIds)), ref('zz'), gref('mg' + i), gref(pick(groupIds))]}, {targets: randomTargets()}])},
           {id: pick(captureIds), ts: 5, participantId: null}],
       };
       break;

@@ -57,6 +57,8 @@ foreach ([
     ['type' => 'workset.ranking.add', 'worksetId' => 'w2', 'participantId' => 'p2'], ['type' => 'workset.setKind', 'worksetId' => 'w2', 'kind' => 'start'],
     ['type' => 'capture.assign', 'captureId' => 'c2', 'participantId' => null], ['type' => 'capture.delete', 'captureId' => 'c3'],
     ['type' => 'capture.add', 'capture' => ['id' => 'c9', 'ts' => 9, 'participantId' => null]],
+    ['type' => 'groupType.add', 'groupType' => ['id' => 't', 'name' => 'Fleet']], ['type' => 'group.add', 'group' => ['id' => 'g', 'name' => 'A']],
+    ['type' => 'group.members.add', 'groupId' => 'g', 'refs' => []], ['type' => 'group.delete', 'groupId' => 'g'],
     ['type' => 'capture.target.add', 'captureId' => 'c2', 'target' => ['type' => 'participant', 'id' => 'p1']],
     ['type' => 'capture.target.remove', 'captureId' => 'c3', 'target' => ['type' => 'participant', 'id' => 'p1']],
 ] as $op) {
