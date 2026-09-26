@@ -54,8 +54,18 @@ const groupNames = ['Fleet A', 'fleet a', ' Gold ', 'Silver', 'Wave 1', 'Wave 2'
 const randomRefs = () => pick([undefined, null, [], [ref(pick(participantIds))], [gref(pick(groupIds)), ref(pick(participantIds)), gref(pick(groupIds))],
   [ref(pick(participantIds)), ref(pick(participantIds)), gref(pick(groupIds)), ref('b1'), ref('b1')], [{type: 'team', id: 'x'}], 'g1', [gref('g1'), gref('g2'), gref('g3')]]);
 const randomGroupType = () => (rnd() < 0.1 ? pick([null, 't1', []]) : {id: pick(groupTypeIds), name: pick(['Fleet', 'fleet', 'Class', '', 3]), exclusive: pick([undefined, null, true, false, 'yes'])});
+const fieldIds = ['f1', 'f2', 'f3', 'not valid!'];
+const randomField = () => (rnd() < 0.08 ? pick([null, 'f1']) : {id: pick(fieldIds.slice(0, 3)), name: pick(['Yardstick', 'yardstick', 'Club', 'Bib', '', 5]), type: pick(['number', 'number', 'text', 'text', 'choice'])});
+const metaValues = [102, 99.5, 0, -3, 'KYC', ' Kieler  YC ', '', null, true, 'x'.repeat(81), [1], 1e21];
+const randomMeta = () => pick([undefined, null, [], [{field: pick(fieldIds), value: pick(metaValues)}],
+  [{field: 'f1', value: pick([102, 95, 110])}, {field: 'f2', value: pick(['KYC', 'NRV', 7])}], 'f1', [{value: 3}]]);
+const randomRule = () => pick([undefined, null, {all: []}, 'eq',
+  {all: [{field: 'f1', op: 'range', min: pick([null, 95, 100]), max: pick([null, 105, 'x'])}]},
+  {all: [{field: 'f2', op: 'eq', value: pick(['KYC', '', 3, null])}]},
+  {all: [{field: pick(fieldIds), op: 'in', values: pick([[], ['KYC', 'NRV'], [102, 'x'], 'KYC'])}, {field: 'f1', op: pick(['range', 'lt']), min: 1}]}]);
 const randomGroup = () => (rnd() < 0.05 ? pick([null, 'g1']) : {id: pick(groupIds.slice(0, 4)), typeId: pick([undefined, null, ...groupTypeIds, 'tX']),
-  name: rnd() < 0.8 ? pick(groupNames.slice(0, 7)) : pick(groupNames), members: rnd() < 0.3 ? randomRefs() : undefined});
+  name: rnd() < 0.8 ? pick(groupNames.slice(0, 7)) : pick(groupNames), members: rnd() < 0.3 ? randomRefs() : undefined,
+  ...(rnd() < 0.3 ? {rule: randomRule()} : {})});
 const validRefs = () => Array.from({length: 1 + Math.floor(rnd() * 4)}, () => (rnd() < 0.7 ? ref(pick(participantIds.slice(0, 5))) : gref(pick(groupIds.slice(0, 4)))));
 const randomTarget = () => pick([ref(pick(participantIds)), ref(pick(participantIds)), ref(pick(participantIds)), gref(pick(groupIds)), gref(pick(groupIds)), {type: 'team', id: 'g1'},
   {id: 'b1'}, {type: 'participant', id: 'not valid!'}, {type: 'participant'}, 'b1', null, ['participant', 'b1']]);
@@ -68,6 +78,8 @@ const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add
   'groupType.add', 'groupType.add', 'groupType.update', 'groupType.delete',
   'group.add', 'group.add', 'group.add', 'group.add', 'group.add', 'group.update', 'group.delete',
   'group.members.add', 'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove', 'group.members.remove',
+  'field.add', 'field.add', 'field.add', 'field.update', 'field.delete', 'participant.setMeta', 'participant.setMeta', 'participant.setMeta',
+  'participant.setMeta', 'group.setRule', 'group.setRule',
   'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus',
   'workset.add', 'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
   'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move',
@@ -79,7 +91,7 @@ function randomOp(i) {
   switch (type) {
     case 'race.rename': op.name = pick(['Kieler Woche', null, '   ', 'y'.repeat(81)]); break;
     case 'race.setSport': op.sport = pick(['generic', 'sailing', 'running', 'swimming', 'motor', 'bogus', null]); break;
-    case 'participants.add': op.participants = [{id: pick(participantIds), name: pick(names)}, {id: pick(participantIds), name: pick(names)}]; break;
+    case 'participants.add': op.participants = [{id: pick(participantIds), name: pick(names), meta: randomMeta()}, {id: pick(participantIds), name: pick(names)}]; break;
     case 'participant.rename': op.participantId = pick(participantIds); op.name = pick(names); break;
     case 'participant.delete': op.participantId = pick(participantIds); break;
     case 'workset.ranking.add': case 'workset.ranking.remove':
@@ -111,6 +123,11 @@ function randomOp(i) {
     case 'group.add': op.group = randomGroup(); if (rnd() < 0.3) op.beforeId = pick([...groupIds, null]); break;
     case 'group.update': op.groupId = pick(groupIds); op.name = pick(groupNames); op.typeId = pick([undefined, null, ...groupTypeIds]); break;
     case 'group.delete': op.groupId = pick(groupIds); break;
+    case 'field.add': op.field = randomField(); if (rnd() < 0.3) op.beforeId = pick([...fieldIds, null]); break;
+    case 'field.update': op.fieldId = pick(fieldIds); op.name = pick(['Yardstick', 'YS', '', 4]); break;
+    case 'field.delete': op.fieldId = pick(fieldIds); break;
+    case 'participant.setMeta': op.participantId = pick(participantIds); op.fieldId = pick(fieldIds); op.value = pick(metaValues); break;
+    case 'group.setRule': op.groupId = pick(groupIds); op.rule = randomRule(); break;
     case 'group.members.add': case 'group.members.remove': op.groupId = pick(groupIds); op.refs = rnd() < 0.7 ? validRefs() : randomRefs(); break;
     case 'capture.delete': op.captureId = pick(captureIds); break;
     case 'capture.setKind': op.captureId = pick(captureIds); op.kind = pick(captureKinds); break;
@@ -120,14 +137,17 @@ function randomOp(i) {
     case 'kind.delete': op.kindId = pick(kindIds); break;
     case 'state.merge':
       op.state = {
-        schema: pick([undefined, undefined, null, 1, 2, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION + 1, 0, '1', 1.5]),
+        schema: pick([undefined, undefined, null, 1, 2, 4, SCHEMA_VERSION, SCHEMA_VERSION, SCHEMA_VERSION + 1, 0, '1', 1.5]),
+        fields: pick([undefined, [], [randomField()], [{id: 'mf' + i, name: pick(['Yardstick', 'Club']), type: 'number'}, {id: 'f2', name: 'Club', type: 'text'}]]),
         groupTypes: pick([undefined, [], [randomGroupType()], [{id: 'mt' + i, name: pick(['Fleet', 'Class'])}, {id: pick(groupTypeIds), name: 'Club'}]]),
         groups: pick([undefined, [], [randomGroup()],
-          [{id: 'mg' + i, typeId: pick(['mt' + i, 't1', null]), name: pick(['Fleet A', 'Laser']), members: [ref('m' + i), gref(pick(groupIds)), gref('mh' + i)]},
+          [{id: 'mg' + i, typeId: pick(['mt' + i, 't1', null]), name: pick(['Fleet A', 'Laser']), members: [ref('m' + i), gref(pick(groupIds)), gref('mh' + i)],
+            rule: pick([null, {all: [{field: 'mf' + i, op: 'range', min: 100, max: null}]}])},
             {id: 'mh' + i, name: 'Wave 1', members: [gref('mg' + i), ref(pick(participantIds))]}, randomGroup()]]),
         name: pick(['Local', null]),
         sport: pick(['sailing', 'running', 'generic', undefined, null, 'bogus', 7]),
-        participants: [{id: 'm' + i, name: pick(names)}, {id: pick(participantIds), name: 'NED 7'}],
+        participants: [{id: 'm' + i, name: pick(names), meta: pick([undefined, [{field: 'mf' + i, value: 101}, {field: 'f2', value: 'KYC'}], randomMeta()])},
+          {id: pick(participantIds), name: 'NED 7', meta: [{field: pick(['mf' + i, 'f1']), value: pick([98, 'x'])}]}],
         kinds: pick([undefined, [], [{id: 'mk' + i, name: pick(['Protest', 'Gate']), role: pick(['split', 'marker'])}], [randomKind()]]),
         worksets: pick([undefined, [], [randomWorkset()],
           [{id: 'mw' + i, name: pick(['Finish', null, 'Gate']), ranking: ['m' + i, pick(participantIds)], captureKind: pick(['mk' + i, 'start', 'k1'])},
@@ -174,6 +194,23 @@ const fixed = [[
   {type: 'state.merge', state: {schema: 2, participants: [{id: 'x1', name: 'X1'}], worksets: [{id: 'w2', ranking: ['x1']}]}},
   {type: 'workset.ranking.remove', worksetId: 'w1', ref: Q('mg')},
   {type: 'workset.ranking.add', worksetId: 'w1', ref: {type: 'group'}},
+], [
+  {type: 'field.add', field: {id: 'ys', name: 'Yardstick', type: 'number'}},
+  {type: 'field.add', field: {id: 'club', name: 'Club', type: 'text'}, beforeId: 'ys'},
+  {type: 'participants.add', participants: [
+    {id: 'p1', name: 'GER 1', meta: [{field: 'ys', value: 102}, {field: 'club', value: ' Kieler  YC '}, {field: 'zz', value: 1}]},
+    {id: 'p2', name: 'NED 7', meta: [{field: 'ys', value: 'fast'}, {field: 'club', value: 7}]}]},
+  {type: 'participant.setMeta', participantId: 'p2', fieldId: 'ys', value: 99.5},
+  {type: 'participant.setMeta', participantId: 'p1', fieldId: 'club', value: '   '},
+  {type: 'participant.setMeta', participantId: 'p1', fieldId: 'club', value: false},
+  {type: 'group.add', group: {id: 'g', name: 'Fast', rule: {all: [{field: 'ys', op: 'range', min: null, max: 100}]}}},
+  {type: 'group.setRule', groupId: 'g', rule: {all: [{field: 'ys', op: 'in', values: [99.5, 102]}, {field: 'club', op: 'eq', value: 'KYC'}]}},
+  {type: 'field.update', fieldId: 'club', name: 'Verein'},
+  {type: 'field.delete', fieldId: 'ys'},
+  {type: 'state.merge', state: {schema: 5, fields: [{id: 'x', name: 'verein', type: 'text'}, {id: 'b', name: 'Bib', type: 'number'}],
+    participants: [{id: 'q', name: 'ger 1', meta: [{field: 'x', value: 'NRV'}, {field: 'b', value: 12}]}, {id: 'r', name: 'FRA 3', meta: [{field: 'x', value: 5}]}],
+    groups: [{id: 'g', name: 'Fast', rule: null}, {id: 'h', name: 'Bibs', rule: {all: [{field: 'b', op: 'range', min: 10}]}}]}},
+  {type: 'state.merge', state: {schema: 4, participants: [{id: 's', name: 'S'}], groups: [{id: 'k', name: 'Old', members: []}]}},
 ]];
 const cases = [];
 for (let n = 0; n < count + fixed.length; n++) {

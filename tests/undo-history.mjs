@@ -39,6 +39,9 @@ const captureKinds = ['start', 'split', 'finish', ...kindIds];
 const worksetIds = ['w1', 'w2', 'w3'];
 
 const groupIds = ['g1', 'g2', 'g3', 'g4'];
+const fieldIds = ['f1', 'f2'];
+const fieldValue = (f) => (f === 'f1' ? pick([95, 102, 110, null]) : pick(['KYC', 'NRV', null, 3]));
+const randomRule = () => pick([null, {all: [{field: 'f1', op: 'range', min: pick([null, 100]), max: 105}]}, {all: [{field: 'f2', op: 'eq', value: 'KYC'}]}]);
 const groupTypeIds = ['t1', 't2'];
 const randomRefs = () => Array.from({length: 1 + Math.floor(rnd() * 3)},
   () => (rnd() < 0.6 ? {type: 'participant', id: pick(participantIds)} : {type: 'group', id: pick(groupIds)}));
@@ -50,12 +53,19 @@ function randomOp(i) {
     'capture.setKind', 'workset.setKind', 'kind.add', 'kind.add', 'kind.update', 'kind.delete',
     'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault',
     'groupType.add', 'groupType.update', 'groupType.delete', 'group.add', 'group.add', 'group.add', 'group.update', 'group.delete',
-    'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove']);
+    'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove',
+    'field.add', 'field.add', 'field.update', 'field.delete', 'participant.setMeta', 'participant.setMeta', 'participant.setMeta', 'group.setRule']);
   switch (type) {
     case 'race.rename': return {type, name: pick(['Kieler Woche', null, 'Cup'])};
     case 'race.setSport': return {type, sport: pick(['generic', 'sailing', 'running'])};
     case 'participants.add':
-      return {type, participants: [{id: pick(participantIds), name: pick(names)}, {id: pick(participantIds), name: pick(names)}]};
+      return {type, participants: [{id: pick(participantIds), name: pick(names), meta: rnd() < 0.4 ? [{field: 'f1', value: 101}, {field: 'f2', value: 'KYC'}] : undefined},
+        {id: pick(participantIds), name: pick(names)}]};
+    case 'field.add': return {type, field: {id: pick(fieldIds), name: pick(['Yardstick', 'Club', 'yardstick']), type: 'f1' === fieldIds[0] && rnd() < 0.5 ? 'number' : 'text'}};
+    case 'field.update': return {type, fieldId: pick(fieldIds), name: 'Field ' + i};
+    case 'field.delete': return {type, fieldId: pick(fieldIds)};
+    case 'participant.setMeta': { const f = pick(fieldIds); return {type, participantId: pick(participantIds), fieldId: f, value: fieldValue(f)}; }
+    case 'group.setRule': return {type, groupId: pick(groupIds), rule: randomRule()};
     case 'participant.rename': return {type, participantId: pick(participantIds), name: pick(names) + ' ' + i};
     case 'participant.delete': return {type, participantId: pick(participantIds)};
     case 'workset.ranking.add': case 'workset.ranking.remove':
@@ -203,6 +213,31 @@ for (let n = 0; n < cases; n++) {
     assert.equal(footprintAfter(s, entry.undo, entry.parts), footprint(before, entry.parts), `${op.type} can be undone`);
     replay(s, entry.undo);
     assert.equal(canonical(s), canonical(before), `undoing ${op.type} restores the ranking`);
+  }
+}
+
+// Fields: deleting a field or a participant with values, changing a value or a rule — undo restores them.
+{
+  const s = replay(emptyState(), [
+    {type: 'field.add', field: {id: 'ys', name: 'Yardstick', type: 'number'}},
+    {type: 'field.add', field: {id: 'club', name: 'Club', type: 'text'}},
+    {type: 'participants.add', participants: [{id: 'a', name: 'A', meta: [{field: 'ys', value: 101}, {field: 'club', value: 'KYC'}]}, {id: 'b', name: 'B', meta: [{field: 'ys', value: 96}]}]},
+    {type: 'group.add', group: {id: 'g', name: 'Fast', rule: {all: [{field: 'ys', op: 'range', max: 100}]}}},
+  ]);
+  for (const op of [
+    {type: 'field.delete', fieldId: 'ys'},
+    {type: 'participant.delete', participantId: 'a'},
+    {type: 'participant.setMeta', participantId: 'b', fieldId: 'ys', value: null},
+    {type: 'participant.setMeta', participantId: 'b', fieldId: 'club', value: 'NRV'},
+    {type: 'group.setRule', groupId: 'g', rule: null},
+    {type: 'group.delete', groupId: 'g'},
+  ]) {
+    const before = clone(s);
+    const entry = historyEntry(s, op);
+    applyOp(s, clone(op));
+    assert.equal(footprintAfter(s, entry.undo, entry.parts), footprint(before, entry.parts), `${op.type} can be undone`);
+    replay(s, entry.undo);
+    assert.equal(canonical(s), canonical(before), `undoing ${op.type} restores fields, values and rules`);
   }
 }
 

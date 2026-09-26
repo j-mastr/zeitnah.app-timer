@@ -57,7 +57,8 @@ product owner before implementing.
 | Concept in code | Sailing UI (de / en) |
 | --- | --- |
 | `race` (one timed event, has a code, name, sport, archive flag) | Regatta / regatta |
-| `participant` (`{id, name}`) | Boot, Segelnummer / boat, sail number |
+| `participant` (`{id, name, meta?}`) | Boot, Segelnummer / boat, sail number |
+| `field` (`{id, name, type}`) — an extra value per participant (`meta: [{field, value}]`), e.g. a yardstick | Feld / field (all sports, in `common`) |
 | `capture` (`{id, ts, tzOffset, targets, kind, worksetId}`) — one recorded finish-line crossing | Zieldurchlauf / finish |
 | capture `targets` — what a capture applies to: refs `{type:'participant'\|'group', id}`; none = unassigned, several = e.g. a protest | Boot(e) / boat(s) |
 | `group` (`{id, typeId, name, members}`) — participants and other groups; a capture for a group applies to its members | e.g. Flotte A / Fleet A (texts in `common`: Gruppe / group) |
@@ -339,11 +340,18 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   normalised). Names are unique case-insensitively; duplicates are refused with a toast.
 - Rename inline (✎), delete (✕, confirmation; recorded times keep their participant id).
 - CSV import via the ↥ icon button in the panel header (same `.icon-btn` style):
-  one participant per line, first column (`;` or `,` separated, quotes stripped),
-  an optional header line matching the text `import.headerPattern` is skipped (sailing:
-  `name`, `boot`, `boat`, `segelnummer`, `sail`…), existing names are skipped.
+  one participant per line, first column (`;` or `,` separated — taken from the first line —,
+  double quotes honoured, `splitCsvLine()`), an optional header line matching the text
+  `import.headerPattern` (sailing: `name`, `boot`, `boat`, `segelnummer`, `sail`…). Existing
+  names are not added again. With a header, its other named columns are **fields**
+  (`importOps()`): an existing field by name, else a new one — a number field when every value
+  in the column is a number (decimal comma or point), else text. New participants get their
+  values with them (`participants.add` with `meta`), known ones get differing non-empty values
+  (`participant.setMeta`); everything is one undo step. Without a header, extra columns are
+  ignored as before.
 - Each row shows the participant's latest finish (captures of role finish only), with `+x` if it
-  has more, and its elapsed time when there is a start.
+  has more, and its elapsed time when there is a start. Once fields exist, a line with its values
+  ("Yardstick 102 · Club KYC", `fieldValuesText()`, or "Add values") opens the values dialog.
 - Filters are toggle buttons in one bar: **All**, **No finish time**, **Hide approaching**.
   "No finish time" and "Hide approaching" can be active at the same time; clicking "All"
   turns both off; activating either turns "All" off. By default ranked participants are shown
@@ -390,9 +398,38 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   number key or a double-tap on its row, and every member gets that start. Its row
   (`buildRankedGroupRow()`, `.is-group`, ⧉ before the name) shows the type and the number of
   members (nested groups resolved).
+- **Rules** (`group.rule`): a group also contains every participant whose values match all of
+  its conditions — `eq` (texts case-insensitively), `in` (one of several values), `range` (a
+  number, `min ≤ value < max`, either open) — resolved when reading like its members
+  (`groupRuleMatches()`, `directlyIn()`): a participant added or changed later is in or out at
+  once. Edited at the top of the members dialog (`#ruleEditor`, once fields exist): field,
+  condition (text: is / is one of; number: in range / is) and values; one condition there, a
+  rule with more (from a merge) is shown, not edited. Participants matched by the rule show
+  "by rule" there, the members link reads "n members + m by rule", and tags, the filter,
+  exclusive clashes and capture targets all count rule members.
 - Groups are participant data: seen with `participant.view` (`Access::project()`), managed
-  with `groupType.add|update|delete`, `group.add|update|delete` and `group.members` (station
-  codes have none); all locked offline.
+  with `groupType.add|update|delete`, `group.add|update|delete` (a rule too) and
+  `group.members` (station codes have none); all locked offline.
+
+### Fields
+- **Fields** (`state.fields`, `{id, name, type}`, type `text` or `number`; texts in `common`)
+  are extra values per participant, e.g. a yardstick, a club or a bib number. There is no field
+  "role": a calculation that needs a handicap value (reporting, later) picks the field by name
+  or asks (see `docs/groups.md`).
+- A participant's values are `meta: [{field, value}]`, sorted by field id and left out while
+  empty (`metaOf()`); a value that doesn't fit its field's type is ignored by the reducers.
+- Settings section "Fields" (between groups and stations, `renderFields()`): name inline, type,
+  ✕ (confirmation; its values go, rules naming it then match nobody), "+ add" with a type
+  select; a text field offers "Make groups from values" (`makeGroupsFromField()`): a group type
+  named like the field (created, one per member, if there is none) with one group per distinct
+  value, each filled by an `eq` rule — one undo step.
+- **Values dialog** (`#valuesDialog`, `openValues()`): one input per field, numbers with comma
+  or point (`parseNumberInput()`), blank = none; Apply sends the changed values as one step.
+  Values are shown in the UI language's number format (`fmtMeta()`).
+- CSV export: one column per field (headed by its name) with the values of the capture's
+  participants.
+- Managed with `field.add|update|delete`; values need `participant.setMeta`; seen with
+  `participant.view`. All locked offline.
 
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
 - Holds the expected crossing order of participants approaching the line together — or of
@@ -477,8 +514,9 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   later (a race series); today a code targets one race and race paths carry no id.
 - Every operation needs one path (`operationPath()`): `race.rename|setSport|archive`,
   `race.merge`, `participant.add|rename|delete`, `kind.add|update|delete`,
-  `groupType.add|update|delete`, `group.add|update|delete`, `group.members` (both membership
-  operations), `workset.add`,
+  `groupType.add|update|delete`, `group.add|update|delete` (`group.setRule` too),
+  `group.members` (both membership operations), `field.add|update|delete`,
+  `participant.setMeta`, `workset.add`,
   `workset[W].rename|delete|makeDefault|setKind`, `workset[W].ranking.add|remove|move`, and for
   captures `workset[W].capture.add|assign|setKind|delete` (the capture's workset; changing its
   targets, `capture.target.add|remove`, needs `assign`) or
@@ -705,7 +743,7 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
 - Opened by ⚙ in the top bar (next to the status pill, the station pill and the undo/redo
   buttons).
 - Language · Sport (select, `data-edit="normal"`) · Event types (custom kinds, see Capture kinds) ·
-  Groups (see Groups) · Stations (see Stations) · local mode: status, race code +
+  Groups (see Groups) · Fields (see Fields) · Stations (see Stations) · local mode: status, race code +
   Connect, recent connections (quick connect), "Create a new race on the server", advanced
   settings (server URL), "Reset local data" · server mode: status with transport, client count and pending count, code (read-only), direct
   link `<serverUrl>/#r=<CODE>` with copy button, read-only server URL under advanced
@@ -725,7 +763,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `race.rename` | `name` (null/blank = default) | max 80 chars |
 | `race.archive` | – | sets `archived: true` and clears the ranking |
 | `race.setSport` | `sport` (one of `SPORTS`) | rejects with `invalid_sport` if not a known sport |
-| `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
+| `participants.add` | `participants: [{id, name, meta?}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates; `meta` (≤ 100 `{field, value}`, `invalid_meta`) sets values of known fields (import, undo) |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |
 | `participant.delete` | `participantId` | also removes it from every ranking and group; captures keep the id |
 | `capture.add` | `capture: {id, ts, tzOffset, targets, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `targets` a list of ≤ 500 refs `{type:'participant'\|'group', id}` (`invalid_capture_targets` / `invalid_capture_target`; duplicates dropped), missing/null = the legacy `participantId` (nullable); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown targets dropped; removes its targets (participants and groups) from that workset's ranking unless the kind is a marker |
@@ -753,6 +791,11 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `group.delete` | `groupId` | removes it from other groups' members and from every ranking; captures keep the reference |
 | `group.members.add` | `groupId, refs` | adds known refs that aren't members yet and don't close a cycle; members are kept sorted by `type:id` |
 | `group.members.remove` | `groupId, refs` | |
+| `group.setRule` | `groupId, rule` | `rule` null or `{all: [≤ 10 conditions]}`: `{field, op:'eq', value}`, `{field, op:'in', values}` (≤ 50), `{field, op:'range', min, max}` (numbers, not both null); else `invalid_group_rule`; no-op if the group is gone. `group.add` takes `rule` too |
+| `field.add` | `field: {id, name, type}`, `beforeId?` | name ≤ 40 (`invalid_field_name`), type `text`/`number` (`invalid_field_type`); skips an existing id and a name taken case-insensitively |
+| `field.update` | `fieldId, name` | renames; no-op if the field is gone |
+| `field.delete` | `fieldId` | removes its values from every participant; rules keep naming it |
+| `participant.setMeta` | `participantId, fieldId, value` | `value` a text (≤ 80, cleaned, blank = none), a finite number or null (`invalid_meta_value`); no-op without participant or field, or when the value doesn't fit the field's type |
 | `state.merge` | `state: {schema, name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `schema` (missing/null = 1; otherwise an integer 1…`SCHEMA_VERSION`, else `invalid_schema`) — an older state is migrated first; `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
 
 Every `workset.*` operation except `workset.add` requires `worksetId` (`invalid_workset_id`);
@@ -761,7 +804,7 @@ there is no implicit default workset in operations.
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], groupTypes:[{id,name,exclusive}], groups:[{id,typeId,name,members:[{type,id}]}], worksets:[{id,number,name,ranking:[{type,id}],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
+`{schema, name, archived, sport, participants:[{id,name,meta?:[{field,value}]}], kinds:[{id,name,role}], fields:[{id,name,type}], groupTypes:[{id,name,exclusive}], groups:[{id,typeId,name,members:[{type,id}],rule}], worksets:[{id,number,name,ranking:[{type,id}],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
 States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
 and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
 former and drops the latter when the repository loads a race (a race starts without worksets),
@@ -775,6 +818,10 @@ name) and groups (by id or type + name), unites their members and maps capture t
 Version 4 turned rankings into refs, so groups can be ranked (migration: ids → participant
 refs; the ranking operations still take `participantId` / `beforeId`). A merge extends the
 rankings after the groups exist, mapping both kinds of refs.
+Version 5 added `fields`, participants' `meta` and groups' `rule` (migration: `fields: []`,
+`rule: null`). A merge takes fields by id or name first, fills in values only where a
+participant has none (mapped fields, fitting types), and gives a rule (mapped fields) to a new
+group or one without a rule.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
@@ -902,8 +949,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 7. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
-- Participant metadata fields and rule-based groups don't exist yet: phase 5 of
-  `docs/groups.md`.
+- Reporting (corrected times from a handicap field, results per group, places of a dead heat)
+  is prepared, not built: phase 6 of `docs/groups.md`. Fields have no "choice" type yet.
 - No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
   create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't
