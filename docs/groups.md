@@ -249,7 +249,7 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
 | 2. Capture targets | done (version 2) | see "Phase 2 notes"; deploy only after phase 1 has been live for a while |
 | 3. Groups and group types | done (version 3) | branch `claude/groups-phase-3`; see "Phase 3 notes" |
 | 4. Groups in rankings | done (version 4) | branch `claude/groups-phase-4`; see "Phase 4 notes" |
-| 5. Fields and rule-based groups | open | |
+| 5. Fields and rule-based groups | done (version 5) | branch `claude/groups-phase-5`; see "Phase 5 notes" |
 | 6. Reporting | not planned yet | |
 
 ### Phase 1 notes
@@ -368,3 +368,35 @@ Groups, the operations table) documents it. Decisions:
   ranking reordered, a group start, deletes, merges of schema-2 and schema-3 sources); undo got
   a ranked group's start, its deletion and a move; the smoke test queues a fleet through the
   quick search and records its start with its number key.
+
+### Phase 5 notes
+
+Built on `claude/groups-phase-5`, from `main` with phases 1–4 merged. `CLAUDE.md` (Fields,
+Groups, Participants, the operations table) documents it. Decisions and deviations:
+
+- **Field types: `text` and `number` only.** A "choice" type is left out: groups (or "Make
+  groups from values") cover a fixed set of values; it can be added later with a version bump.
+  A field's type can't be changed after it is created (values would need converting).
+- **Values are a list** on the participant — `meta: [{field, value}]`, sorted by field id and
+  left out while empty — not an object keyed by field id: PHP turns an empty object (and keys
+  like `"0"`) into a list, which would break reducer parity.
+- A value that doesn't fit its field's type is **ignored**, not rejected (lenient like other
+  references: buffered operations keep replaying); only a malformed value is
+  `invalid_meta_value`.
+- **Rules**: `eq`, `in`, `range` with `min ≤ value < max` (bands like 90–100, 100–110 don't
+  overlap); texts compare case-insensitively. A deleted field's rules stay and match nobody.
+  `group.setRule` needs the `group.update` permission (a rule is part of the group).
+- **Rule editor**: one condition in the members dialog (text: is / is one of; number: in range /
+  is); several conditions are supported by the model (and merges) but only shown.
+- **Import** creates fields from a header row (numbers detected per column, decimal comma
+  accepted) and takes over values of known participants where they differ — previously an
+  import only added new names. Rows without a header work as before.
+- **Make groups from values** (text fields): a group type named like the field (exclusive, if
+  it doesn't exist yet) with one `eq`-rule group per distinct value. Number fields get their
+  groups (e.g. yardstick bands) by range rules in the members dialog.
+- The picking of a handicap field for calculations stays with reporting (phase 6).
+- Tests: parity got the field, value and rule operations, values in `participants.add` and
+  merges (with a fixed sequence: type mismatches, clearing, rename, delete, merges of schema-4
+  and schema-5 sources); undo got deleting a field and a participant with values, changing
+  values and rules; the smoke test imports a CSV with columns, makes groups from a text field
+  and fills a group by a range rule, then moves a boat out of it by changing its value.

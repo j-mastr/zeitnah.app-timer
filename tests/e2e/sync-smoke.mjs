@@ -161,6 +161,30 @@ try {
   await b.selectOption('#groupFilter', '');
   step('groups: members chosen in a dialog; a ranked group gets its start, which gives its members an elapsed time');
 
+  // Fields: an import with a header creates its columns as fields and takes over values of
+  // known participants; a text field makes groups; a number range fills a group by rule.
+  await a.setInputFiles('#importFile', {name: 'boats.csv', mimeType: 'text/csv',
+    buffer: Buffer.from('Name;Yardstick;Verein\nGER 123;102;KYC\nITA 9;"98,5";NRV\n')});
+  await b.locator('#participantList li:has-text("ITA 9") .field-values', {hasText: 'Yardstick 98.5 · Verein NRV'}).waitFor();
+  assert.equal(await b.textContent('#participantList li:has-text("GER 123") .field-values'), 'Yardstick 102 · Verein KYC');
+  await a.click('#settingsBtn');
+  assert.equal(await a.locator('#fieldList li').count(), 2);
+  await a.click('#fieldList li:has(input[value="Verein"]) >> text=Gruppen daraus bilden');
+  await b.locator('#participantList li:has-text("ITA 9") .group-tag', {hasText: 'NRV'}).waitFor();
+  // Flotte A by rule: Yardstick below 100 (ITA 9, not a member itself).
+  await a.click('#groupTypeList .group-row:has(input[value="Flotte A"]) .link-btn');
+  await a.selectOption('#ruleField', {label: 'Yardstick'});
+  await a.fill('#ruleMax', '100');
+  await a.click('#membersOk');
+  await b.locator('#participantList li:has-text("ITA 9") .group-tag', {hasText: 'Flotte A'}).waitFor();
+  await a.click('#drawerClose');
+  // Changing the value takes it out again.
+  await a.click('#participantList li:has-text("ITA 9") .field-values');
+  await a.fill('#valuesList input >> nth=0', '101');
+  await a.click('#valuesOk');
+  await b.waitForFunction(() => ![...document.querySelectorAll('#participantList li')].some(li => li.textContent.includes('ITA 9') && li.textContent.includes('Flotte A')));
+  step('fields: import with columns, groups from values, a group filled by a rule');
+
   // Stations: a second one has its own approaching list and kind.
   await b.click('#settingsBtn');
   await b.click('#addWorksetBtn');
@@ -216,7 +240,7 @@ try {
   assert.equal(await c.locator('#participantList button[title="Rename"]').count(), 0);
   await c.click('#settingsBtn');
   assert.equal(await c.locator('#worksetList .ws-row').count(), 2, 'its station and "No station"');
-  for (const sel of ['#sportSelect', '#kindsSection', '#groupsSection', '#addWorksetBtn', '#archiveBtn', '#mergeBtn']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
+  for (const sel of ['#sportSelect', '#kindsSection', '#groupsSection', '#fieldsSection', '#addWorksetBtn', '#archiveBtn', '#mergeBtn']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
   await c.click('#drawerClose');
   await c.click('h1');
   await c.keyboard.press('Space');

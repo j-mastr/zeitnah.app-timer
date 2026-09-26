@@ -41,7 +41,8 @@ const types = ['race.rename', 'race.setSport', 'race.archive', 'participants.add
   'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault',
   'workset.setKind', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
   'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove',
-  'groupType.add', 'groupType.update', 'groupType.delete', 'group.add', 'group.update', 'group.delete', 'group.members.add', 'group.members.remove', 'bogus', 7];
+  'groupType.add', 'groupType.update', 'groupType.delete', 'group.add', 'group.update', 'group.delete', 'group.members.add', 'group.members.remove',
+  'field.add', 'field.update', 'field.delete', 'participant.setMeta', 'group.setRule', 'bogus', 7];
 function randomOp() {
   const op = {type: pick(types)};
   if (rnd() < 0.9) op.worksetId = pick([...worksets, null, 5, 'x y']);

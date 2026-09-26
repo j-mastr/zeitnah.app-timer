@@ -9,8 +9,9 @@ namespace App\Race;
  *
  * State shape:
  *   schema: int (SCHEMA_VERSION), name: ?string, archived: bool, sport: string,
- *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
- *   groupTypes: list<{id, name, exclusive: bool}>, groups: list<{id, typeId: ?string, name, members: list<ref>}>,
+ *   participants: list<{id, name, meta?: list<{field, value}>}>, kinds: list<{id, name, role}>,
+ *   fields: list<{id, name, type: 'text'|'number'}>,
+ *   groupTypes: list<{id, name, exclusive: bool}>, groups: list<{id, typeId: ?string, name, members: list<ref>, rule: ?{all: list<condition>}}>,
  *   worksets: list<{id, number: int, name: ?string, ranking: list<ref>, captureKind: string}>,
  *   captures: list<{id, ts, tzOffset: ?int, targets: list<{type: 'participant', id}>, kind: string, worksetId: ?string}>
  *
@@ -30,6 +31,11 @@ namespace App\Race;
  * in a group is resolved when reading (the clients do that), never stored: a capture targeting
  * a group applies to its members as they are at that moment. A member that would close a cycle
  * is skipped. See docs/groups.md.
+ *
+ * Fields are extra values per participant (e.g. a yardstick, a club): `meta` lists them sorted
+ * by field id and is left out while empty; a value that doesn't fit its field's type is
+ * ignored. A group's `rule` adds every participant whose values match all of its conditions
+ * (`eq` a value, `in` a list, `range` min ≤ value < max) — resolved when reading, like members.
  *
  * Every capture has a `kind`: one of the built-in kinds (start, split, finish; the default
  * is finish) or the id of a custom kind in `kinds`. A custom kind has the role `split` (a
@@ -60,6 +66,7 @@ final class OperationReducer
         'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove',
         'kind.add', 'kind.update', 'kind.delete',
         'groupType.add', 'groupType.update', 'groupType.delete',
+        'field.add', 'field.update', 'field.delete', 'participant.setMeta', 'group.setRule',
         'group.add', 'group.update', 'group.delete', 'group.members.add', 'group.members.remove',
         'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
         'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
@@ -73,16 +80,23 @@ final class OperationReducer
      * changed semantics. Clients of an older version are refused (`client_outdated`).
      * Mirrors SCHEMA_VERSION in frontend/index.html.
      */
-    public const SCHEMA_VERSION = 4;
+    public const SCHEMA_VERSION = 5;
 
     /** Migration steps: version => method turning a state of that version into the next one. */
-    private const MIGRATIONS = [1 => 'toVersion2', 2 => 'toVersion3', 3 => 'toVersion4'];
+    private const MIGRATIONS = [1 => 'toVersion2', 2 => 'toVersion3', 3 => 'toVersion4', 4 => 'toVersion5'];
 
     /** What a capture target or a group member may reference. */
     public const TARGET_TYPES = ['participant', 'group'];
     private const MAX_TARGETS = 500;
     private const MAX_MEMBERS = 5000;
     private const MAX_GROUP_NAME = 40;
+    public const FIELD_TYPES = ['text', 'number'];
+    private const MAX_FIELD_NAME = 40;
+    private const MAX_META_TEXT = 80;
+    private const MAX_META = 100;
+    public const RULE_OPS = ['eq', 'in', 'range'];
+    private const MAX_RULE_CONDITIONS = 10;
+    private const MAX_RULE_VALUES = 50;
 
     // Mirrors SPORTS in frontend/index.html.
     public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
@@ -105,7 +119,7 @@ final class OperationReducer
     {
         return [
             'schema' => self::SCHEMA_VERSION, 'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
-            'kinds' => [], 'groupTypes' => [], 'groups' => [], 'worksets' => [], 'captures' => [],
+            'kinds' => [], 'fields' => [], 'groupTypes' => [], 'groups' => [], 'worksets' => [], 'captures' => [],
         ];
     }
 
@@ -202,10 +216,15 @@ final class OperationReducer
                 foreach ($participants as $participant) {
                     $id = self::id(is_array($participant) ? ($participant['id'] ?? null) : null, 'participant_id');
                     $name = self::name(is_array($participant) ? ($participant['name'] ?? null) : null, self::MAX_PARTICIPANT_NAME, 'participant_name');
+                    // Optional values (an import with columns, restoring a deleted participant).
+                    $meta = self::metaList(is_array($participant) ? ($participant['meta'] ?? null) : null);
                     if (null !== self::findParticipant($state, $id) || null !== self::findParticipantByName($state, $name)) {
                         continue;
                     }
                     $state['participants'][] = ['id' => $id, 'name' => $name];
+                    foreach ($meta as $entry) {
+                        $state = self::withMeta($state, $id, $entry['field'], $entry['value']);
+                    }
                 }
 
                 return $state;
@@ -384,6 +403,54 @@ final class OperationReducer
 
                 return $state;
 
+            case 'field.add':
+                $field = self::field($op['field'] ?? null);
+                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                if (null !== self::findField($state, $field['id']) || null !== self::findFieldByName($state, $field['name'])) {
+                    return $state;
+                }
+                $position = null === $before ? null : self::findField($state, $before);
+                array_splice($state['fields'], $position ?? count($state['fields']), 0, [$field]);
+
+                return $state;
+
+            case 'field.update':
+                $id = self::id($op['fieldId'] ?? null, 'field_id');
+                $name = self::name($op['name'] ?? null, self::MAX_FIELD_NAME, 'field_name');
+                $index = self::findField($state, $id);
+                if (null !== $index) {
+                    $state['fields'][$index]['name'] = $name;
+                }
+
+                return $state;
+
+            case 'field.delete':
+                $id = self::id($op['fieldId'] ?? null, 'field_id');
+                // Its values go; rules naming it stay (and match nobody).
+                $state['fields'] = array_values(array_filter($state['fields'], static fn ($f) => $f['id'] !== $id));
+                foreach ($state['participants'] as $participant) {
+                    $state = self::withMeta($state, $participant['id'], $id, null, true);
+                }
+
+                return $state;
+
+            case 'participant.setMeta':
+                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                $fieldId = self::id($op['fieldId'] ?? null, 'field_id');
+                $value = self::metaValue($op['value'] ?? null);
+
+                return self::withMeta($state, $id, $fieldId, $value);
+
+            case 'group.setRule':
+                $id = self::id($op['groupId'] ?? null, 'group_id');
+                $rule = self::rule($op['rule'] ?? null);
+                $index = self::findGroup($state, $id);
+                if (null !== $index) {
+                    $state['groups'][$index]['rule'] = $rule;
+                }
+
+                return $state;
+
             case 'group.add':
                 $group = $op['group'] ?? null;
                 if (!is_array($group)) {
@@ -393,13 +460,14 @@ final class OperationReducer
                 $typeId = self::optionalId($group['typeId'] ?? null, 'group_type_id');
                 $name = self::name($group['name'] ?? null, self::MAX_GROUP_NAME, 'group_name');
                 $members = self::memberList($group['members'] ?? []);
+                $rule = self::rule($group['rule'] ?? null);
                 $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
                 $typeId = null !== $typeId && null !== self::findGroupType($state, $typeId) ? $typeId : null;
                 if (null !== self::findGroup($state, $id) || null !== self::findGroupByName($state, $typeId, $name)) {
                     return $state;
                 }
                 $position = null === $before ? null : self::findGroup($state, $before);
-                array_splice($state['groups'], $position ?? count($state['groups']), 0, [['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => []]]);
+                array_splice($state['groups'], $position ?? count($state['groups']), 0, [['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => [], 'rule' => $rule]]);
 
                 // The optional members restore a deleted group exactly (undo).
                 return self::addMembers($state, $id, $members);
@@ -588,6 +656,18 @@ final class OperationReducer
         return $state + ['groupTypes' => [], 'groups' => []];
     }
 
+    /** Version 5: participant fields, and a rule on every group. */
+    private static function toVersion5(array $state): array
+    {
+        foreach ($state['groups'] ?? [] as $i => $group) {
+            if (is_array($group)) {
+                $state['groups'][$i] += ['rule' => null];
+            }
+        }
+
+        return $state + ['fields' => []];
+    }
+
     /** Version 4: a ranking holds refs (participants or groups) instead of participant ids. */
     private static function toVersion4(array $state): array
     {
@@ -636,23 +716,44 @@ final class OperationReducer
         $captures = $source['captures'] ?? [];
         $groupTypes = $source['groupTypes'] ?? [];
         $groups = $source['groups'] ?? [];
+        $fields = $source['fields'] ?? [];
         if (!is_array($participants) || !is_array($kinds) || !is_array($worksets) || !is_array($captures)
-            || !is_array($groupTypes) || !is_array($groups)
+            || !is_array($groupTypes) || !is_array($groups) || !is_array($fields)
             || count($participants) > 5000 || count($kinds) > 500 || count($worksets) > 500 || count($captures) > 20000
-            || count($groupTypes) > 500 || count($groups) > 5000) {
+            || count($groupTypes) > 500 || count($groups) > 5000 || count($fields) > 500) {
             throw new InvalidOperationException('invalid_state');
+        }
+
+        // Fields are matched by id or name; values are only filled in where a participant has none.
+        $fieldMap = [];
+        foreach ($fields as $field) {
+            $field = self::field($field);
+            $index = self::findField($state, $field['id']) ?? self::findFieldByName($state, $field['name']);
+            if (null === $index) {
+                $state['fields'][] = $field;
+                $fieldMap[$field['id']] = $field['id'];
+            } else {
+                $fieldMap[$field['id']] = $state['fields'][$index]['id'];
+            }
         }
 
         $idMap = [];
         foreach ($participants as $participant) {
             $id = self::id(is_array($participant) ? ($participant['id'] ?? null) : null, 'participant_id');
             $name = self::name(is_array($participant) ? ($participant['name'] ?? null) : null, self::MAX_PARTICIPANT_NAME, 'participant_name');
+            $meta = self::metaList(is_array($participant) ? ($participant['meta'] ?? null) : null);
             $index = self::findParticipant($state, $id) ?? self::findParticipantByName($state, $name);
             if (null === $index) {
                 $state['participants'][] = ['id' => $id, 'name' => $name];
                 $idMap[$id] = $id;
             } else {
                 $idMap[$id] = $state['participants'][$index]['id'];
+            }
+            foreach ($meta as $entry) {
+                $fieldId = $fieldMap[$entry['field']] ?? $entry['field'];
+                if (null === self::metaOf($state, $idMap[$id], $fieldId)) {
+                    $state = self::withMeta($state, $idMap[$id], $fieldId, $entry['value']);
+                }
             }
         }
 
@@ -718,13 +819,16 @@ final class OperationReducer
             $typeId = self::optionalId($group['typeId'] ?? null, 'group_type_id');
             $name = self::name($group['name'] ?? null, self::MAX_GROUP_NAME, 'group_name');
             $sourceMembers[$id] = self::memberList($group['members'] ?? []);
+            $rule = self::mapRuleFields(self::rule($group['rule'] ?? null), $fieldMap);
             $typeId = null === $typeId ? null : ($typeMap[$typeId] ?? (null !== self::findGroupType($state, $typeId) ? $typeId : null));
             $index = self::findGroup($state, $id) ?? self::findGroupByName($state, $typeId, $name);
             if (null === $index) {
-                $state['groups'][] = ['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => []];
+                $state['groups'][] = ['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => [], 'rule' => $rule];
                 $groupMap[$id] = $id;
             } else {
                 $groupMap[$id] = $state['groups'][$index]['id'];
+                // A rule is only taken over by a group that has none.
+                $state['groups'][$index]['rule'] ??= $rule;
             }
         }
         $mapRef = static function (array $ref) use (&$idMap, &$groupMap): ?array {
@@ -1141,6 +1245,193 @@ final class OperationReducer
     private static function isKnownKind(array $state, string $kind): bool
     {
         return in_array($kind, self::BUILTIN_KINDS, true) || null !== self::findKind($state, $kind);
+    }
+
+    /** @return array{id: string, name: string, type: string} */
+    private static function field(mixed $value): array
+    {
+        if (!is_array($value)) {
+            throw new InvalidOperationException('invalid_field');
+        }
+        $id = self::id($value['id'] ?? null, 'field_id');
+        $name = self::name($value['name'] ?? null, self::MAX_FIELD_NAME, 'field_name');
+        $type = $value['type'] ?? null;
+        if (!in_array($type, self::FIELD_TYPES, true)) {
+            throw new InvalidOperationException('invalid_field_type');
+        }
+
+        return ['id' => $id, 'name' => $name, 'type' => $type];
+    }
+
+    /** A field value: a text (≤ 80, blank = none), a finite number, or null (none). */
+    private static function metaValue(mixed $value): string|int|float|null
+    {
+        if (null === $value || is_int($value) || (is_float($value) && is_finite($value))) {
+            return $value;
+        }
+        if (!is_string($value)) {
+            throw new InvalidOperationException('invalid_meta_value');
+        }
+        $clean = self::clean($value);
+        if (mb_strlen($clean) > self::MAX_META_TEXT) {
+            throw new InvalidOperationException('invalid_meta_value');
+        }
+
+        return '' === $clean ? null : $clean;
+    }
+
+    /** @return list<array{field: string, value: string|int|float|null}> values given with a participant */
+    private static function metaList(mixed $value): array
+    {
+        if (null === $value) {
+            return [];
+        }
+        if (!is_array($value) || !array_is_list($value) || count($value) > self::MAX_META) {
+            throw new InvalidOperationException('invalid_meta');
+        }
+
+        return array_map(static fn ($entry) => [
+            'field' => self::id(is_array($entry) ? ($entry['field'] ?? null) : null, 'field_id'),
+            'value' => self::metaValue(is_array($entry) ? ($entry['value'] ?? null) : null),
+        ], $value);
+    }
+
+    private static function metaOf(array $state, string $participantId, string $fieldId): string|int|float|null
+    {
+        $index = self::findParticipant($state, $participantId);
+        foreach (null === $index ? [] : ($state['participants'][$index]['meta'] ?? []) as $entry) {
+            if ($entry['field'] === $fieldId) {
+                return $entry['value'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Sets (or with null clears) a participant's value of a field. No-op without the
+     * participant or the field, or when the value doesn't fit the field's type — unless
+     * $anyField clears the value of a field that is gone. `meta` stays sorted by field id and
+     * is left out while empty.
+     */
+    private static function withMeta(array $state, string $participantId, string $fieldId, string|int|float|null $value, bool $anyField = false): array
+    {
+        $index = self::findParticipant($state, $participantId);
+        $field = self::findField($state, $fieldId);
+        if (null === $index || (null === $field && !$anyField)) {
+            return $state;
+        }
+        if (null !== $value && ('number' === $state['fields'][$field]['type']) !== !is_string($value)) {
+            return $state;
+        }
+        $meta = array_values(array_filter($state['participants'][$index]['meta'] ?? [], static fn ($e) => $e['field'] !== $fieldId));
+        if (null !== $value) {
+            $meta[] = ['field' => $fieldId, 'value' => $value];
+            usort($meta, static fn ($a, $b) => strcmp($a['field'], $b['field']));
+        }
+        if ($meta) {
+            $state['participants'][$index]['meta'] = $meta;
+        } else {
+            unset($state['participants'][$index]['meta']);
+        }
+
+        return $state;
+    }
+
+    /**
+     * A group's rule: null, or {all: [condition]} with conditions {field, op: eq, value},
+     * {field, op: in, values} or {field, op: range, min, max} (min ≤ value < max, either open).
+     */
+    private static function rule(mixed $value): ?array
+    {
+        if (null === $value) {
+            return null;
+        }
+        $all = is_array($value) ? ($value['all'] ?? null) : null;
+        if (!is_array($all) || !array_is_list($all) || !$all || count($all) > self::MAX_RULE_CONDITIONS) {
+            throw new InvalidOperationException('invalid_group_rule');
+        }
+        $conditions = [];
+        foreach ($all as $condition) {
+            if (!is_array($condition)) {
+                throw new InvalidOperationException('invalid_group_rule');
+            }
+            $field = self::id($condition['field'] ?? null, 'field_id');
+            $op = $condition['op'] ?? null;
+            if ('eq' === $op) {
+                $conditions[] = ['field' => $field, 'op' => $op, 'value' => self::ruleValue($condition['value'] ?? null)];
+            } elseif ('in' === $op) {
+                $values = $condition['values'] ?? null;
+                if (!is_array($values) || !array_is_list($values) || !$values || count($values) > self::MAX_RULE_VALUES) {
+                    throw new InvalidOperationException('invalid_group_rule');
+                }
+                $conditions[] = ['field' => $field, 'op' => $op, 'values' => array_map(self::ruleValue(...), $values)];
+            } elseif ('range' === $op) {
+                $min = self::ruleBound($condition['min'] ?? null);
+                $max = self::ruleBound($condition['max'] ?? null);
+                if (null === $min && null === $max) {
+                    throw new InvalidOperationException('invalid_group_rule');
+                }
+                $conditions[] = ['field' => $field, 'op' => $op, 'min' => $min, 'max' => $max];
+            } else {
+                throw new InvalidOperationException('invalid_group_rule');
+            }
+        }
+
+        return ['all' => $conditions];
+    }
+
+    private static function ruleValue(mixed $value): string|int|float
+    {
+        $value = self::metaValue($value);
+        if (null === $value) {
+            throw new InvalidOperationException('invalid_group_rule');
+        }
+
+        return $value;
+    }
+
+    private static function ruleBound(mixed $value): int|float|null
+    {
+        if (null === $value || is_int($value) || (is_float($value) && is_finite($value))) {
+            return $value;
+        }
+        throw new InvalidOperationException('invalid_group_rule');
+    }
+
+    private static function mapRuleFields(?array $rule, array $fieldMap): ?array
+    {
+        if (null === $rule) {
+            return null;
+        }
+        foreach ($rule['all'] as $i => $condition) {
+            $rule['all'][$i]['field'] = $fieldMap[$condition['field']] ?? $condition['field'];
+        }
+
+        return $rule;
+    }
+
+    private static function findField(array $state, string $id): ?int
+    {
+        foreach ($state['fields'] as $i => $field) {
+            if ($field['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findFieldByName(array $state, string $name): ?int
+    {
+        $key = self::key($name);
+        foreach ($state['fields'] as $i => $field) {
+            if (self::key($field['name']) === $key) {
+                return $i;
+            }
+        }
+
+        return null;
     }
 
     private static function findGroupType(array $state, string $id): ?int

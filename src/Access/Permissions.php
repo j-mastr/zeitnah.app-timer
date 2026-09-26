@@ -162,6 +162,13 @@ final class Permissions
                 return [[$parts[0], null], [$parts[1], null]];
             case 'group.members.add': case 'group.members.remove':
                 return [['group', null], ['members', null]];
+            case 'field.add': case 'field.update': case 'field.delete':
+                return [['field', null], [$parts[1], null]];
+            case 'participant.setMeta':
+                return [['participant', null], ['setMeta', null]];
+            // A group's rule is part of the group.
+            case 'group.setRule':
+                return [['group', null], ['update', null]];
             case 'participants.add':
                 return [['participant', null], ['add', null]];
             case 'state.merge':

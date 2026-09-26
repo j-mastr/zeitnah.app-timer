@@ -398,6 +398,18 @@
   .group-clash{font-size:12px; color:var(--accent); padding-left:10px;}
   .target-chip.is-group{border-style:dashed;}
   .group-filter{width:100%;}
+  /* Fields: values on participant rows, the values dialog, the rule editor of a group. */
+  .field-values{display:block; margin:2px 0 0; padding:0; background:none; border:none; font-family:inherit; font-size:11px; color:var(--muted); text-align:left; cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px;}
+  .field-values:disabled{cursor:default; text-decoration:none;}
+  .field-type{font-size:12px; color:var(--muted); white-space:nowrap;}
+  .kind-row .link-btn{margin:0; font-size:12px; white-space:nowrap;}
+  .values-list{display:flex; flex-direction:column; gap:10px; margin-bottom:14px;}
+  .values-list label{display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted);}
+  .rule-editor{border:1px solid var(--border); border-radius:10px; padding:8px 10px; margin-bottom:12px;}
+  .rule-editor h4{margin:0 0 6px; font-size:12px; color:var(--muted); font-weight:600;}
+  .rule-row{display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap;}
+  .rule-row .input{flex:1 1 8em; min-width:0;}
+  .rule-editor .help{margin:0; font-size:12px;}
 
   .site-footer{margin-top:28px; text-align:center; color:var(--muted); font-size:12px; line-height:1.8;}
   .site-footer p{margin:0;}
@@ -582,6 +594,17 @@
     <div class="kind-suggest" id="groupSuggest" data-edit="normal" data-perm="groupType.add"></div>
   </section>
 
+  <section id="fieldsSection">
+    <h3 data-i18n="fields.title"></h3>
+    <p class="help" data-i18n="fields.help" style="margin:0 0 10px;"></p>
+    <ul class="kind-list" id="fieldList"></ul>
+    <div class="add-row kind-add" data-edit="normal" data-perm="field.add">
+      <input class="input" id="fieldNameInput" type="text" maxlength="40" autocomplete="off" data-i18n-placeholder="fields.placeholder">
+      <select class="input kind-role" id="fieldTypeSelect" data-i18n-title="fields.type"></select>
+      <button class="btn" id="addFieldBtn" data-i18n="fields.add"></button>
+    </div>
+  </section>
+
   <section id="worksetsSection" hidden>
     <h3 data-i18n="worksets.title"></h3>
     <p class="help" id="worksetsHelp" data-i18n="worksets.help" style="margin:0 0 10px;"></p>
@@ -712,10 +735,35 @@
   </div>
 </div>
 
+<!-- ---------- a participant's field values ---------- -->
+<div class="modal-backdrop" id="valuesDialog" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="valuesTitle">
+    <h3 id="valuesTitle"></h3>
+    <div class="values-list" id="valuesList"></div>
+    <div class="modal-actions">
+      <button class="btn" id="valuesCancel" type="button" data-i18n="dialog.cancel"></button>
+      <button class="btn primary" id="valuesOk" type="button" data-i18n="groups.apply"></button>
+    </div>
+  </div>
+</div>
+
 <!-- ---------- members of a group ---------- -->
 <div class="modal-backdrop" id="membersDialog" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="membersTitle">
     <h3 id="membersTitle"></h3>
+    <div class="rule-editor" id="ruleEditor" hidden>
+      <h4 data-i18n="groups.rule"></h4>
+      <div class="rule-row">
+        <select class="input" id="ruleField" data-i18n-title="groups.rule"></select>
+        <select class="input" id="ruleOp" data-i18n-title="groups.rule"></select>
+      </div>
+      <div class="rule-row" id="ruleValues">
+        <input class="input" id="ruleValue" type="text" autocomplete="off" maxlength="400">
+        <input class="input" id="ruleMin" type="text" inputmode="decimal" autocomplete="off" data-i18n-placeholder="groups.ruleMin">
+        <input class="input" id="ruleMax" type="text" inputmode="decimal" autocomplete="off" data-i18n-placeholder="groups.ruleMax">
+      </div>
+      <p class="help" id="ruleNote"></p>
+    </div>
     <input class="input" id="membersSearch" type="search" autocomplete="off" data-i18n-placeholder="groups.search">
     <div class="members-list" id="membersList"></div>
     <div class="modal-actions">
@@ -763,7 +811,7 @@ const DEFAULT_SPORT = 'generic';
  * no longer apply the events correctly, and add a step to SCHEMA_MIGRATIONS (mirrored in PHP).
  * States without `schema` are version 1. See docs/groups.md, "Schema versioning".
  */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 // Migration steps: version => function turning a raw state of that version into the next one.
 // They run on raw data (before normalizeState), so they must cope with legacy fields too.
 const SCHEMA_MIGRATIONS = {
@@ -785,7 +833,16 @@ const SCHEMA_MIGRATIONS = {
   // Version 4: a ranking holds refs (participants or groups) instead of participant ids.
   3: (s) => Object.assign({}, s, {worksets: Array.isArray(s.worksets) ? s.worksets.map(w => (w && typeof w === 'object' && Array.isArray(w.ranking)
     ? Object.assign({}, w, {ranking: w.ranking.map(id => (typeof id === 'string' ? {type:'participant', id} : id))}) : w)) : s.worksets}),
+  // Version 5: participant fields, and a rule on every group.
+  4: (s) => Object.assign({fields: []}, s, {groups: Array.isArray(s.groups)
+    ? s.groups.map(g => (g && typeof g === 'object' ? Object.assign({}, g, {rule: g.rule === undefined ? null : g.rule}) : g)) : s.groups}),
 };
+/*
+ * Fields: extra values per participant (e.g. a yardstick, a club). Mirrors
+ * OperationReducer::FIELD_TYPES / RULE_OPS; see docs/groups.md.
+ */
+const FIELD_TYPES = ['text', 'number'];
+const RULE_OPS = ['eq', 'in', 'range'];
 /*
  * Capture targets and group members: references {type, id} to participants or groups.
  * A group's members are resolved when reading (resolveRefs()), never stored. Mirrors
@@ -829,6 +886,11 @@ const TEXTS = {
       'history.groupUpdate': 'Gruppe ändern',
       'history.groupDelete': 'Gruppe löschen',
       'history.groupMembers': 'Gruppenmitglieder ändern',
+      'history.fieldAdd': 'Feld anlegen',
+      'history.fieldUpdate': 'Feld umbenennen',
+      'history.fieldDelete': 'Feld löschen',
+      'history.participantValues': 'Angaben ändern',
+      'history.groupRule': 'Gruppenregel ändern',
       'groups.title': 'Gruppen',
       'groups.help': 'Gruppen fassen Mitglieder zusammen – auch andere Gruppen. Eine Zeit für eine Gruppe (z. B. ein Start) gilt für alle ihre Mitglieder. Gruppenarten ordnen die Gruppen nebeneinander, z. B. nach Flotte und nach Klasse.',
       'groups.typePlaceholder': 'Neue Gruppenart',
@@ -854,6 +916,37 @@ const TEXTS = {
       'groups.search': 'Suchen …',
       'groups.apply': 'Übernehmen',
       'groups.cycle': 'enthält diese Gruppe',
+      'groups.rule': 'Regel',
+      'groups.ruleNone': '— keine Regel —',
+      'groups.ruleEq': 'ist',
+      'groups.ruleIn': 'ist eine von',
+      'groups.ruleRange': 'im Bereich',
+      'groups.ruleValue': 'Wert',
+      'groups.ruleValues': 'Werte, mit Komma getrennt',
+      'groups.ruleMin': 'ab',
+      'groups.ruleMax': 'unter',
+      'groups.ruleHelp': 'Alle, deren Angabe passt, gehören dazu – auch später hinzugekommene. Ein Bereich schließt „ab“ ein und endet vor „unter“.',
+      'groups.ruleComplex': 'Regel mit {n} Bedingungen – hier nicht änderbar.',
+      'groups.ruleInvalid': 'Die Regel ist unvollständig.',
+      'groups.byRule': 'per Regel',
+      'groups.membersRule': '+ {n} per Regel',
+      'fields.title': 'Felder',
+      'fields.help': 'Zusätzliche Angaben, z. B. Yardstick, Verein oder Startnummer. Sie erscheinen in der Liste und im Export und können Gruppen per Regel füllen. Ein Import mit Kopfzeile legt Spalten als Felder an.',
+      'fields.placeholder': 'Neues Feld',
+      'fields.type': 'Art der Angabe',
+      'fields.typeText': 'Text',
+      'fields.typeNumber': 'Zahl',
+      'fields.add': 'Hinzufügen',
+      'fields.exists': '„{name}“ gibt es schon.',
+      'fields.deleteTitle': 'Feld löschen?',
+      'fields.deleteText': '„{name}“ wird gelöscht, mit allen Angaben darin. Gruppenregeln, die es nutzen, passen dann auf niemanden mehr.',
+      'fields.makeGroups': 'Gruppen daraus bilden',
+      'fields.groupsMade': '{n} Gruppen angelegt.',
+      'fields.noGroups': 'Keine neuen Werte für Gruppen.',
+      'fields.addValues': 'Angaben ergänzen',
+      'fields.valuesTitle': 'Angaben: {name}',
+      'fields.invalidNumber': '„{value}“ ist keine Zahl.',
+      'import.valuesUpdated': '{n} Angaben übernommen.',
       'groups.clash': 'In mehreren Gruppen der Art „{type}“, die nur eine je Mitglied vorsieht.',
       'groups.clashCount': '{n} Mitglieder in mehreren Gruppen dieser Art',
       'groups.clashOne': '1 Mitglied in mehreren Gruppen dieser Art',
@@ -1074,6 +1167,11 @@ const TEXTS = {
       'history.groupUpdate': 'Change group',
       'history.groupDelete': 'Delete group',
       'history.groupMembers': 'Change group members',
+      'history.fieldAdd': 'Add field',
+      'history.fieldUpdate': 'Rename field',
+      'history.fieldDelete': 'Delete field',
+      'history.participantValues': 'Change values',
+      'history.groupRule': 'Change group rule',
       'groups.title': 'Groups',
       'groups.help': 'Groups collect members – other groups too. A time for a group (e.g. a start) applies to all of its members. Group types arrange groups side by side, e.g. by fleet and by class.',
       'groups.typePlaceholder': 'New group type',
@@ -1099,6 +1197,37 @@ const TEXTS = {
       'groups.search': 'Search …',
       'groups.apply': 'Apply',
       'groups.cycle': 'contains this group',
+      'groups.rule': 'Rule',
+      'groups.ruleNone': '— no rule —',
+      'groups.ruleEq': 'is',
+      'groups.ruleIn': 'is one of',
+      'groups.ruleRange': 'in range',
+      'groups.ruleValue': 'Value',
+      'groups.ruleValues': 'Values, separated by commas',
+      'groups.ruleMin': 'from',
+      'groups.ruleMax': 'below',
+      'groups.ruleHelp': 'Everybody whose value matches belongs to it – also those added later. A range includes “from” and ends before “below”.',
+      'groups.ruleComplex': 'Rule with {n} conditions – can’t be changed here.',
+      'groups.ruleInvalid': 'The rule is incomplete.',
+      'groups.byRule': 'by rule',
+      'groups.membersRule': '+ {n} by rule',
+      'fields.title': 'Fields',
+      'fields.help': 'Extra values, e.g. a yardstick, a club or a bib number. They show in the list and the export and can fill groups by rule. An import with a header line creates its columns as fields.',
+      'fields.placeholder': 'New field',
+      'fields.type': 'Kind of value',
+      'fields.typeText': 'Text',
+      'fields.typeNumber': 'Number',
+      'fields.add': 'Add',
+      'fields.exists': '“{name}” already exists.',
+      'fields.deleteTitle': 'Delete field?',
+      'fields.deleteText': '“{name}” will be deleted with all its values. Group rules using it then match nobody.',
+      'fields.makeGroups': 'Make groups from values',
+      'fields.groupsMade': '{n} groups created.',
+      'fields.noGroups': 'No new values to make groups of.',
+      'fields.addValues': 'Add values',
+      'fields.valuesTitle': 'Values: {name}',
+      'fields.invalidNumber': '“{value}” is not a number.',
+      'import.valuesUpdated': '{n} values taken over.',
       'groups.clash': 'In several groups of “{type}”, which has one group per member.',
       'groups.clashCount': '{n} members in several groups of this type',
       'groups.clashOne': '1 member in several groups of this type',
@@ -1987,7 +2116,7 @@ function locale(){ return prefs.lang === 'de' ? 'de-DE' : 'en-GB'; }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function emptyState(){
-  return {schema:SCHEMA_VERSION, name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], groupTypes:[], groups:[], worksets:[], captures:[]};
+  return {schema:SCHEMA_VERSION, name:null, archived:false, sport:DEFAULT_SPORT, participants:[], kinds:[], fields:[], groupTypes:[], groups:[], worksets:[], captures:[]};
 }
 /** Schema version of a raw state (stored, from the server or a merge); none = 1. */
 function schemaOf(s){ return s && s.schema !== undefined && s.schema !== null ? s.schema : 1; }
@@ -2013,7 +2142,13 @@ function normalizeState(s){
   const rawParticipants = Array.isArray(s.participants) ? s.participants : (Array.isArray(s.boats) ? s.boats : []);
   const participants = rawParticipants
     .filter(p => p && typeof p.id === 'string' && typeof p.name === 'string')
-    .map(p => ({id:p.id, name:p.name}));
+    .map(p => {
+      const meta = (Array.isArray(p.meta) ? p.meta : [])
+        .filter((e, i, all) => e && typeof e.field === 'string' && ID_RE.test(e.field) && (typeof e.value === 'string' || (typeof e.value === 'number' && Number.isFinite(e.value)))
+          && all.findIndex(x => x && x.field === e.field) === i)
+        .map(e => ({field:e.field, value:e.value})).sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0));
+      return meta.length ? {id:p.id, name:p.name, meta} : {id:p.id, name:p.name};
+    });
   const participantIds = new Set(participants.map(p => p.id));
   const captures = Array.isArray(s.captures)
     ? s.captures.filter(c => c && typeof c.id === 'string' && Number.isFinite(c.ts)).map(c => {
@@ -2058,11 +2193,19 @@ function normalizeState(s){
     for(const r of Array.isArray(g.members) ? g.members : []){
       if(r && TARGET_TYPES.includes(r.type) && typeof r.id === 'string' && ID_RE.test(r.id) && !members.some(x => sameTarget(x, r))) members.push({type:r.type, id:r.id});
     }
-    groups.push({id:g.id, typeId: groupTypes.some(y => y.id === g.typeId) ? g.typeId : null, name:g.name, members: sortedRefs(members)});
+    let rule = null;
+    try{ rule = reqRule(g.rule); }catch(e){}
+    groups.push({id:g.id, typeId: groupTypes.some(y => y.id === g.typeId) ? g.typeId : null, name:g.name, members: sortedRefs(members), rule});
   }
-  return {schema:SCHEMA_VERSION, name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, groupTypes, groups, worksets, captures};
+  const fields = [];
+  for(const f of Array.isArray(s.fields) ? s.fields : []){
+    if(f && typeof f.id === 'string' && ID_RE.test(f.id) && typeof f.name === 'string' && f.name && FIELD_TYPES.includes(f.type) && !fields.some(y => y.id === f.id)){
+      fields.push({id:f.id, name:f.name, type:f.type});
+    }
+  }
+  return {schema:SCHEMA_VERSION, name: typeof s.name === 'string' && s.name ? s.name : null, archived: !!s.archived, sport, participants, kinds, fields, groupTypes, groups, worksets, captures};
 }
-function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.groupTypes.length > 0 || s.groups.length > 0 || s.captures.length > 0; }
+function hasData(s){ return !!s.name || s.participants.length > 0 || s.kinds.length > 0 || s.fields.length > 0 || s.groupTypes.length > 0 || s.groups.length > 0 || s.captures.length > 0; }
 
 /*
  * Mirror of App\Race\OperationReducer (PHP). The server is authoritative; this copy
@@ -2123,6 +2266,79 @@ const findCapture = (s, id) => s.captures.find(c => c.id === id);
 const findKind = (s, id) => s.kinds.find(k => k.id === id);
 const findKindByName = (s, name) => s.kinds.find(k => nameKey(k.name) === nameKey(name));
 const findWorkset = (s, id) => s.worksets.find(w => w.id === id);
+const findField = (s, id) => s.fields.find(f => f.id === id);
+const findFieldByName = (s, name) => s.fields.find(f => nameKey(f.name) === nameKey(name));
+function reqField(v){
+  if(!v || typeof v !== 'object') throw new OpError('invalid_field');
+  const id = reqId(v.id, 'field_id');
+  const name = reqName(v.name, 40, 'field_name');
+  if(!FIELD_TYPES.includes(v.type)) throw new OpError('invalid_field_type');
+  return {id, name, type:v.type};
+}
+/** A field value: a text (≤ 80, blank = none), a finite number, or null (none). */
+function reqMetaValue(v){
+  if(v === null || v === undefined) return null;
+  if(typeof v === 'number' && Number.isFinite(v)) return v;
+  if(typeof v !== 'string') throw new OpError('invalid_meta_value');
+  const clean = cleanText(v);
+  if([...clean].length > 80) throw new OpError('invalid_meta_value');
+  return clean === '' ? null : clean;
+}
+/** Values given with a participant: [{field, value}]. */
+function reqMetaList(v){
+  if(v === null || v === undefined) return [];
+  if(!Array.isArray(v) || v.length > 100) throw new OpError('invalid_meta');
+  return v.map(e => ({field: reqId(e && typeof e === 'object' ? e.field : undefined, 'field_id'), value: reqMetaValue(e && typeof e === 'object' ? e.value : null)}));
+}
+function metaOf(s, participantId, fieldId){
+  const p = findParticipant(s, participantId);
+  const e = p && p.meta ? p.meta.find(x => x.field === fieldId) : null;
+  return e ? e.value : null;
+}
+/**
+ * Sets (or with null clears) a participant's value of a field. No-op without the participant
+ * or the field, or when the value doesn't fit the field's type — unless `anyField` clears the
+ * value of a field that is gone. `meta` stays sorted by field id and is left out while empty.
+ */
+function withMeta(s, participantId, fieldId, value, anyField = false){
+  const p = findParticipant(s, participantId);
+  const f = findField(s, fieldId);
+  if(!p || (!f && !anyField)) return s;
+  if(value !== null && (f.type === 'number') !== (typeof value !== 'string')) return s;
+  const meta = (p.meta || []).filter(e => e.field !== fieldId);
+  if(value !== null){ meta.push({field:fieldId, value}); meta.sort((a, b) => (a.field < b.field ? -1 : a.field > b.field ? 1 : 0)); }
+  if(meta.length) p.meta = meta; else delete p.meta;
+  return s;
+}
+/**
+ * A group's rule: null, or {all: [condition]} with conditions {field, op: eq, value},
+ * {field, op: in, values} or {field, op: range, min, max} (min ≤ value < max, either open).
+ */
+function reqRule(v){
+  if(v === null || v === undefined) return null;
+  const all = typeof v === 'object' ? v.all : undefined;
+  if(!Array.isArray(all) || !all.length || all.length > 10) throw new OpError('invalid_group_rule');
+  const ruleValue = (x) => { const r = reqMetaValue(x); if(r === null) throw new OpError('invalid_group_rule'); return r; };
+  const bound = (x) => { if(x === null || x === undefined) return null; if(typeof x === 'number' && Number.isFinite(x)) return x; throw new OpError('invalid_group_rule'); };
+  return {all: all.map(c => {
+    if(!c || typeof c !== 'object') throw new OpError('invalid_group_rule');
+    const field = reqId(c.field, 'field_id');
+    if(c.op === 'eq') return {field, op:c.op, value:ruleValue(c.value)};
+    if(c.op === 'in'){
+      if(!Array.isArray(c.values) || !c.values.length || c.values.length > 50) throw new OpError('invalid_group_rule');
+      return {field, op:c.op, values:c.values.map(ruleValue)};
+    }
+    if(c.op === 'range'){
+      const min = bound(c.min), max = bound(c.max);
+      if(min === null && max === null) throw new OpError('invalid_group_rule');
+      return {field, op:c.op, min, max};
+    }
+    throw new OpError('invalid_group_rule');
+  })};
+}
+function mapRuleFields(rule, fieldMap){
+  return rule === null ? null : {all: rule.all.map(c => Object.assign({}, c, {field: fieldMap.has(c.field) ? fieldMap.get(c.field) : c.field}))};
+}
 const findGroupType = (s, id) => s.groupTypes.find(x => x.id === id);
 const findGroupTypeByName = (s, name) => s.groupTypes.find(x => nameKey(x.name) === nameKey(name));
 const findGroup = (s, id) => s.groups.find(g => g.id === id);
@@ -2260,8 +2476,11 @@ function applyOp(s, op){
       for(const b of op.participants){
         const id = reqId(b && b.id, 'participant_id');
         const name = reqName(b && b.name, 60, 'participant_name');
+        // Optional values (an import with columns, restoring a deleted participant).
+        const meta = reqMetaList(b ? b.meta : null);
         if(findParticipant(s, id) || findParticipantByName(s, name)) continue;
         s.participants.push({id, name});
+        for(const e of meta) withMeta(s, id, e.field, e.value);
       }
       return s;
     }
@@ -2381,6 +2600,41 @@ function applyOp(s, op){
       for(const g of s.groups) if(g.typeId === id) g.typeId = null;
       return s;
     }
+    case 'field.add': {
+      const f = reqField(op.field);
+      const before = optId(op.beforeId, 'before_id');
+      if(findField(s, f.id) || findFieldByName(s, f.name)) return s;
+      const pos = before === null ? -1 : s.fields.findIndex(y => y.id === before);
+      s.fields.splice(pos < 0 ? s.fields.length : pos, 0, f);
+      return s;
+    }
+    case 'field.update': {
+      const id = reqId(op.fieldId, 'field_id');
+      const name = reqName(op.name, 40, 'field_name');
+      const f = findField(s, id);
+      if(f) f.name = name;
+      return s;
+    }
+    case 'field.delete': {
+      const id = reqId(op.fieldId, 'field_id');
+      // Its values go; rules naming it stay (and match nobody).
+      s.fields = s.fields.filter(f => f.id !== id);
+      for(const p of s.participants) withMeta(s, p.id, id, null, true);
+      return s;
+    }
+    case 'participant.setMeta': {
+      const id = reqId(op.participantId, 'participant_id');
+      const fieldId = reqId(op.fieldId, 'field_id');
+      const value = reqMetaValue(op.value);
+      return withMeta(s, id, fieldId, value);
+    }
+    case 'group.setRule': {
+      const id = reqId(op.groupId, 'group_id');
+      const rule = reqRule(op.rule);
+      const g = findGroup(s, id);
+      if(g) g.rule = rule;
+      return s;
+    }
     case 'group.add': {
       const g = op.group;
       if(!g || typeof g !== 'object') throw new OpError('invalid_group');
@@ -2388,11 +2642,12 @@ function applyOp(s, op){
       let typeId = optId(g.typeId, 'group_type_id');
       const name = reqName(g.name, 40, 'group_name');
       const members = reqMembers(g.members === undefined || g.members === null ? [] : g.members);
+      const rule = reqRule(g.rule);
       const before = optId(op.beforeId, 'before_id');
       typeId = typeId !== null && findGroupType(s, typeId) ? typeId : null;
       if(findGroup(s, id) || findGroupByName(s, typeId, name)) return s;
       const pos = before === null ? -1 : s.groups.findIndex(y => y.id === before);
-      s.groups.splice(pos < 0 ? s.groups.length : pos, 0, {id, typeId, name, members:[]});
+      s.groups.splice(pos < 0 ? s.groups.length : pos, 0, {id, typeId, name, members:[], rule});
       // The optional members restore a deleted group exactly (undo).
       return addMembers(s, id, members);
     }
@@ -2503,17 +2758,31 @@ function applyOp(s, op){
       const participants = src.participants || [], kinds = src.kinds || [], worksets = src.worksets || [], captures = src.captures || [];
       const groupTypes = src.groupTypes === undefined || src.groupTypes === null ? [] : src.groupTypes;
       const groups = src.groups === undefined || src.groups === null ? [] : src.groups;
+      const fields = src.fields === undefined || src.fields === null ? [] : src.fields;
       if(!Array.isArray(participants) || !Array.isArray(kinds) || !Array.isArray(worksets) || !Array.isArray(captures)
-        || !Array.isArray(groupTypes) || !Array.isArray(groups)
+        || !Array.isArray(groupTypes) || !Array.isArray(groups) || !Array.isArray(fields)
         || participants.length > 5000 || kinds.length > 500 || worksets.length > 500 || captures.length > 20000
-        || groupTypes.length > 500 || groups.length > 5000) throw new OpError('invalid_state');
+        || groupTypes.length > 500 || groups.length > 5000 || fields.length > 500) throw new OpError('invalid_state');
+      // Fields are matched by id or name; values are only filled in where a participant has none.
+      const fieldMap = new Map();
+      for(const raw of fields){
+        const f = reqField(raw);
+        let target = findField(s, f.id) || findFieldByName(s, f.name);
+        if(!target){ target = f; s.fields.push(f); }
+        fieldMap.set(f.id, target.id);
+      }
       const idMap = new Map();
       for(const b of participants){
         const id = reqId(b && b.id, 'participant_id');
         const name = reqName(b && b.name, 60, 'participant_name');
+        const meta = reqMetaList(b ? b.meta : null);
         let target = findParticipant(s, id) || findParticipantByName(s, name);
         if(!target){ target = {id, name}; s.participants.push(target); }
         idMap.set(id, target.id);
+        for(const e of meta){
+          const fieldId = fieldMap.has(e.field) ? fieldMap.get(e.field) : e.field;
+          if(metaOf(s, target.id, fieldId) === null) withMeta(s, target.id, fieldId, e.value);
+        }
       }
       // Custom kinds are matched by id or (case-insensitive) name, like participants.
       const kindMap = new Map();
@@ -2558,9 +2827,12 @@ function applyOp(s, op){
         let typeId = optId(g.typeId, 'group_type_id');
         const name = reqName(g.name, 40, 'group_name');
         sourceMembers.set(id, reqMembers(g.members === undefined || g.members === null ? [] : g.members));
+        const rule = mapRuleFields(reqRule(g.rule), fieldMap);
         typeId = typeId === null ? null : (typeMap.has(typeId) ? typeMap.get(typeId) : (findGroupType(s, typeId) ? typeId : null));
         let target = findGroup(s, id) || findGroupByName(s, typeId, name);
-        if(!target){ target = {id, typeId, name, members:[]}; s.groups.push(target); }
+        if(!target){ target = {id, typeId, name, members:[], rule}; s.groups.push(target); }
+        // A rule is only taken over by a group that has none.
+        else if(target.rule === null) target.rule = rule;
         groupMap.set(id, target.id);
       }
       const mapRef = (r) => {
@@ -2688,6 +2960,13 @@ function operationPath(s, op){
       return [[parts[0], null], [parts[1], null]];
     case 'group.members.add': case 'group.members.remove':
       return [['group', null], ['members', null]];
+    case 'field.add': case 'field.update': case 'field.delete':
+      return [['field', null], [parts[1], null]];
+    case 'participant.setMeta':
+      return [['participant', null], ['setMeta', null]];
+    // A group's rule is part of the group.
+    case 'group.setRule':
+      return [['group', null], ['update', null]];
     case 'participants.add':
       return [['participant', null], ['add', null]];
     case 'state.merge':
@@ -2745,7 +3024,14 @@ function footprint(s, parts){
     switch(kind){
       case 'name': return s.name;
       case 'sport': return s.sport;
-      case 'participant': { const p = findParticipant(s, id); return p ? p.name : null; }
+      case 'participant': { const p = findParticipant(s, id); return p ? [p.name, p.meta || null] : null; }
+      // `id` is 'participantId|fieldId': that value.
+      case 'meta': { const [pid, fid] = id.split('|'); return metaOf(s, pid, fid); }
+      case 'field': {
+        const i = s.fields.findIndex(x => x.id === id);
+        return i < 0 ? null : [s.fields[i].name, s.fields[i].type, s.fields[i + 1] ? s.fields[i + 1].id : null];
+      }
+      case 'fieldValues': return s.participants.filter(p => metaOf(s, p.id, id) !== null).map(p => [p.id, metaOf(s, p.id, id)]);
       // Ranking parts name a ref key ('participant:p1', 'group:g1').
       case 'ranked': return w ? rankedIndex(w, id) >= 0 : null;
       case 'next': { if(!w || rankedIndex(w, id) < 0) return null; const n = w.ranking[rankedIndex(w, id) + 1]; return n ? refKey(n) : '$end'; }
@@ -2769,7 +3055,7 @@ function footprint(s, parts){
         const i = s.groups.findIndex(x => x.id === id);
         if(i < 0) return null;
         const g = s.groups[i];
-        return [g.typeId, g.name, g.members, s.groups[i + 1] ? s.groups[i + 1].id : null];
+        return [g.typeId, g.name, g.members, g.rule, s.groups[i + 1] ? s.groups[i + 1].id : null];
       }
       // `id` is a ref key ('participant:p1'): the groups it is a member of.
       case 'memberOf': return s.groups.filter(g => g.members.some(m => m.type + ':' + m.id === id)).map(g => g.id);
@@ -2826,7 +3112,7 @@ function historyEntry(s, op){
         parts: added.flatMap(p => [['participant', p.id], ...rankedParts(s, {type:'participant', id:p.id})]),
         undo: added.map(p => ({type:'participant.delete', participantId:p.id})),
         // Only what was really added: the rest were duplicates the first time too.
-        redo: [{type:'participants.add', participants: added.map(p => ({id:p.id, name:p.name}))}],
+        redo: [{type:'participants.add', participants: added.map(p => (p.meta ? {id:p.id, name:p.name, meta:clone(p.meta)} : {id:p.id, name:p.name}))}],
       };
     }
     case 'participant.rename': {
@@ -2838,7 +3124,37 @@ function historyEntry(s, op){
       if(!p) return null;
       const ref = {type:'participant', id:p.id};
       return entry([['participant', p.id], ...rankedParts(s, ref), ['memberOf', 'participant:' + p.id]],
-        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, ref, w.id)), ...memberOfOps(s, ref)]);
+        [{type:'participants.add', participants:[p.meta ? {id:p.id, name:p.name, meta:clone(p.meta)} : {id:p.id, name:p.name}]},
+          ...s.worksets.flatMap(w => rerankOps(s, ref, w.id)), ...memberOfOps(s, ref)]);
+    }
+    case 'field.add': {
+      let f;
+      try{ f = reqField(op.field); }catch(e){ return null; }
+      if(findField(s, f.id) || findFieldByName(s, f.name)) return null;
+      return entry([['field', f.id], ['fieldValues', f.id]], [{type:'field.delete', fieldId:f.id}]);
+    }
+    case 'field.update': {
+      const f = findField(s, op.fieldId);
+      return f ? entry([['field', f.id]], [{type:'field.update', fieldId:f.id, name:f.name}]) : null;
+    }
+    case 'field.delete': {
+      const i = s.fields.findIndex(f => f.id === op.fieldId);
+      if(i < 0) return null;
+      const f = s.fields[i];
+      // Its values go with it: undo puts them back.
+      return entry([['field', f.id], ['fieldValues', f.id]], [
+        {type:'field.add', field:{...f}, beforeId: s.fields[i + 1] ? s.fields[i + 1].id : null},
+        ...s.participants.filter(p => metaOf(s, p.id, f.id) !== null).map(p => ({type:'participant.setMeta', participantId:p.id, fieldId:f.id, value:metaOf(s, p.id, f.id)})),
+      ]);
+    }
+    case 'participant.setMeta': {
+      if(!findParticipant(s, op.participantId) || !findField(s, op.fieldId)) return null;
+      return entry([['meta', op.participantId + '|' + op.fieldId]],
+        [{type:'participant.setMeta', participantId:op.participantId, fieldId:op.fieldId, value:metaOf(s, op.participantId, op.fieldId)}]);
+    }
+    case 'group.setRule': {
+      const g = findGroup(s, op.groupId);
+      return g ? entry([['group', g.id]], [{type:'group.setRule', groupId:g.id, rule:clone(g.rule)}]) : null;
     }
     case 'groupType.add': {
       let x;
@@ -3574,7 +3890,7 @@ async function connectToRace(serverUrl, code, {interactive = true} = {}){
 }
 function mergePayload(s){
   return {schema:SCHEMA_VERSION, name:s.name, sport:s.sport, participants:s.participants, kinds:s.kinds,
-    groupTypes:s.groupTypes, groups:s.groups, worksets:s.worksets, captures:s.captures};
+    fields:s.fields, groupTypes:s.groupTypes, groups:s.groups, worksets:s.worksets, captures:s.captures};
 }
 function errorMessage(e, code){
   if(e && e.code === 'not_found') return t('err.notFound', {code});
@@ -3674,6 +3990,11 @@ const HISTORY_LABELS = {
   'group.delete': () => t('history.groupDelete'),
   'group.members.add': () => t('history.groupMembers'),
   'group.members.remove': () => t('history.groupMembers'),
+  'field.add': () => t('history.fieldAdd'),
+  'field.update': () => t('history.fieldUpdate'),
+  'field.delete': () => t('history.fieldDelete'),
+  'participant.setMeta': () => t('history.participantValues'),
+  'group.setRule': () => t('history.groupRule'),
 };
 const historyLabel = (entry) => HISTORY_LABELS[entry.type]();
 
@@ -3888,7 +4209,7 @@ document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape' && !shortcutsEl.hidden){ e.preventDefault(); closeShortcuts(); return; }
   if(e.key !== 'Control' && e.key !== 'Meta'){ cancelShortcutsHold(); return; }
   if(e.repeat || shortcutsHoldTimer || !dialogEl.hidden || !shortcutsEl.hidden || !document.getElementById('stationDialog').hidden
-    || !document.getElementById('membersDialog').hidden) return;
+    || !document.getElementById('membersDialog').hidden || !document.getElementById('valuesDialog').hidden) return;
   // Not while typing: there Ctrl/Cmd starts an editing shortcut, not a lookup.
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
@@ -3931,9 +4252,29 @@ function groupParticipantIds(s, groupId){
     if(!g || seen.has(g.id)) continue;
     seen.add(g.id);
     for(const m of g.members) (m.type === 'group' ? queue.push(m.id) : ids.add(m.id));
+    // Plus everybody whose values match its rule.
+    if(g.rule) for(const p of s.participants) if(groupRuleMatches(s, g.rule, p.id)) ids.add(p.id);
   }
   groupMembersCache.set(groupId, ids);
   return ids;
+}
+/**
+ * Whether a participant's values match a rule: every condition — `eq` (texts
+ * case-insensitively), `in` (one of the values), `range` (a number, min ≤ value < max).
+ */
+function groupRuleMatches(s, rule, participantId){
+  const same = (a, b) => (typeof a === 'string' && typeof b === 'string' ? nameKey(a) === nameKey(b) : a === b);
+  return rule.all.every(c => {
+    const v = metaOf(s, participantId, c.field);
+    if(v === null) return false;
+    if(c.op === 'eq') return same(v, c.value);
+    if(c.op === 'in') return c.values.some(x => same(v, x));
+    return typeof v === 'number' && (c.min === null || v >= c.min) && (c.max === null || v < c.max);
+  });
+}
+/** Whether a participant is in a group itself — a member or matching its rule (not through nesting). */
+function directlyIn(s, g, participantId){
+  return g.members.some(m => m.type === 'participant' && m.id === participantId) || (!!g.rule && groupRuleMatches(s, g.rule, participantId));
 }
 /** The participant ids refs resolve to: participants themselves, groups to their members. */
 function resolveRefs(s, refs){
@@ -4463,11 +4804,22 @@ function buildParticipantRow(participant, opts){
       m.textContent = meta;
       main.appendChild(m);
     }
+    // Its field values, once there are fields (a tap edits them).
+    if(!opts.sorted && S().fields.length){
+      const values = document.createElement('button');
+      values.type = 'button';
+      values.className = 'field-values';
+      values.dataset.edit = 'normal';
+      values.textContent = fieldValuesText(S(), participant.id) || t('fields.addValues');
+      values.disabled = !can('participant.setMeta');
+      values.addEventListener('click', (e) => { e.stopPropagation(); openValues(participant.id); });
+      main.appendChild(values);
+    }
     // The groups it is in directly, once there are groups at all. Several groups of a type with
     // one group per member are allowed (concurrent edits), but flagged.
     const s = S();
     const ref = {type:'participant', id:participant.id};
-    const groups = s.groups.filter(g => g.members.some(m => sameTarget(m, ref)));
+    const groups = s.groups.filter(g => directlyIn(s, g, participant.id));
     if(groups.length){
       const clashing = new Set(exclusiveClashes(s, ref));
       const tags = document.createElement('div');
@@ -4843,31 +5195,89 @@ function renderParticipants(){
 // ---------- CSV import ----------
 const importFile = document.getElementById('importFile');
 document.getElementById('importBtn').addEventListener('click', () => importFile.click());
-function parseCsvParticipants(text){
-  const names = [];
-  text.split(/\r\n|\n|\r/).map(l => l.trim()).filter(Boolean).forEach((line, i) => {
-    const delim = line.includes(';') ? ';' : (line.includes(',') ? ',' : null);
-    let first = (delim ? line.split(delim)[0] : line).replace(/^"(.*)"$/, '$1');
-    first = cleanText(first).slice(0, 60);
-    if(i === 0 && new RegExp(t('import.headerPattern'), 'i').test(first)) return;
-    if(first) names.push(first);
+/** Splits a CSV line at `delim`, honouring double quotes ("a;b" and "" inside quotes). */
+function splitCsvLine(line, delim){
+  if(!delim) return [line];
+  const cells = [];
+  let cell = '', quoted = false;
+  for(let i = 0; i < line.length; i++){
+    const ch = line[i];
+    if(quoted){
+      if(ch === '"' && line[i + 1] === '"'){ cell += '"'; i++; }
+      else if(ch === '"') quoted = false;
+      else cell += ch;
+    }else if(ch === '"') quoted = true;
+    else if(ch === delim){ cells.push(cell); cell = ''; }
+    else cell += ch;
+  }
+  cells.push(cell);
+  return cells;
+}
+/*
+ * One participant per line, the name in the first column (`;` or `,` separated, taken from the
+ * first line). A first line whose first column matches `import.headerPattern` is a header: its
+ * other named columns are fields (existing ones by name; new ones are numbers when every value
+ * is one, else texts). Returns {header: [names] | null, rows: [[cells]]}.
+ */
+function parseCsv(text){
+  const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim());
+  if(!lines.length) return {header:null, rows:[]};
+  const delim = lines[0].includes(';') ? ';' : (lines[0].includes(',') ? ',' : null);
+  const rows = lines.map(l => splitCsvLine(l, delim).map(c => cleanText(c)));
+  const header = new RegExp(t('import.headerPattern'), 'i').test(rows[0][0] || '') ? rows.shift() : null;
+  return {header, rows};
+}
+/** The operations of an import: new fields, new participants with their values, values of existing ones. */
+function importOps(s, {header, rows}){
+  const ops = [], newParticipants = [];
+  // Columns → fields (only with a header, and only where fields may be added or already exist).
+  const columns = [];
+  (header || []).forEach((name, i) => {
+    if(i === 0 || !name) return;
+    const values = rows.map(r => r[i] || '').filter(Boolean);
+    let f = findFieldByName(s, name.slice(0, 40)) || columns.map(c => c.field).find(x => nameKey(x.name) === nameKey(name.slice(0, 40)));
+    if(!f){
+      if(!can('field.add')) return;
+      f = {id:uid(), name:name.slice(0, 40), type: values.length && values.every(v => !Number.isNaN(parseNumberInput(v))) ? 'number' : 'text'};
+      ops.push({type:'field.add', field:{...f}});
+    }
+    columns.push({index:i, field:f});
   });
-  return names;
+  const valueOf = (f, text) => {
+    if(!text) return null;
+    if(f.type === 'number'){ const v = parseNumberInput(text); return Number.isNaN(v) ? null : v; }
+    return text.slice(0, 80);
+  };
+  const seen = new Map(s.participants.map(p => [nameKey(p.name), p]));
+  let updated = 0;
+  for(const row of rows){
+    const name = (row[0] || '').slice(0, 60);
+    if(!name) continue;
+    const meta = columns.map(c => ({field:c.field.id, value:valueOf(c.field, row[c.index] || '')})).filter(e => e.value !== null);
+    const existing = seen.get(nameKey(name));
+    if(existing && existing.id){
+      // Known participants: their values are taken over where they differ.
+      for(const e of meta){
+        if(metaOf(s, existing.id, e.field) !== e.value){ ops.push({type:'participant.setMeta', participantId:existing.id, fieldId:e.field, value:e.value}); updated++; }
+      }
+      continue;
+    }
+    if(existing) continue;   // twice in the file
+    seen.set(nameKey(name), {});
+    newParticipants.push(meta.length ? {id:uid(), name, meta} : {id:uid(), name});
+  }
+  for(let i = 0; i < newParticipants.length; i += 2000) ops.push({type:'participants.add', participants:newParticipants.slice(i, i + 2000)});
+  // Fields first, then the participants, then values of known ones.
+  ops.sort((a, b) => ['field.add', 'participants.add', 'participant.setMeta'].indexOf(a.type) - ['field.add', 'participants.add', 'participant.setMeta'].indexOf(b.type));
+  return {ops, added:newParticipants.length, updated};
 }
 importFile.addEventListener('change', async () => {
   const file = importFile.files[0];
   if(!file) return;
   try{
-    const names = parseCsvParticipants(await file.text());
-    const seen = new Set(S().participants.map(b => nameKey(b.name)));
-    const participants = [];
-    for(const name of names){
-      if(seen.has(nameKey(name))) continue;
-      seen.add(nameKey(name));
-      participants.push({id:uid(), name});
-    }
-    if(participants.length){
-      if(perform({type:'participants.add', participants})) toast(t('import.done', {n:participants.length}));
+    const {ops, added, updated} = importOps(S(), parseCsv(await file.text()));
+    if(added || updated){
+      if(perform(ops)) toast([added ? t('import.done', {n:added}) : '', updated ? t('import.valuesUpdated', {n:updated}) : ''].filter(Boolean).join(' '));
     }else{
       toast(t('import.none'));
     }
@@ -5022,7 +5432,7 @@ const LIST_SHORTCUTS = {
 };
 document.addEventListener('keydown', (e) => {
   if(!dialogEl.hidden || !shortcutsEl.hidden || !stationDialog.hidden || drawer.classList.contains('open') || !kindMenu.hidden
-    || !document.getElementById('membersDialog').hidden) return;
+    || !document.getElementById('membersDialog').hidden || !document.getElementById('valuesDialog').hidden) return;
   const el = document.activeElement;
   const tag = (el && el.tagName) || '';
   if(['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || (el && el.isContentEditable)) return;
@@ -5328,6 +5738,9 @@ async function exportCsv(){
       return cell(groupsOfType(s, x.id).filter(g => c.targets.some(r => r.type === 'group' && r.id === g.id)
         || ids.some(id => groupParticipantIds(s, g.id).has(id))).map(g => g.name).join(', '));
     }, cell(x.name)]),
+    // One column per field (headed by its name): the values of the capture's participants.
+    ...s.fields.map(f => ['field', (c) => cell([...new Set(captureParticipantIds(c).map(id => metaOf(s, id, f.id)).filter(v => v !== null)
+      .map(v => (typeof v === 'number' ? v.toLocaleString(locale(), {useGrouping: false, maximumFractionDigits: 6}) : v)))].join(', ')), cell(f.name)]),
   ];
   let csv = columns.map(([key, , header]) => header || t(`export.col.${key}`)).join(';') + '\n';
   asc.forEach((c, i) => {
@@ -5600,23 +6013,28 @@ function groupTypeSuggestions(){
     return {name, exclusive: flag === '1'};
   }).filter(x => x.name && !groupTypeNameTaken(x.name));
 }
-/** Label for the number of members of a group (direct members). */
+/** Label for the members of a group: its members, plus the participants its rule adds. */
 function membersText(g){
+  const s = S();
   const n = g.members.length;
-  return n === 0 ? t('groups.membersNone') : n === 1 ? t('groups.membersOne') : t('groups.membersN', {n});
+  const byRule = g.rule ? s.participants.filter(p => !g.members.some(m => m.type === 'participant' && m.id === p.id) && groupRuleMatches(s, g.rule, p.id)).length : 0;
+  const text = n === 0 && !g.rule ? t('groups.membersNone') : n === 1 ? t('groups.membersOne') : t('groups.membersN', {n});
+  return g.rule ? text + ' ' + t('groups.membersRule', {n: byRule}) : text;
 }
 /** Groups of a type (null: without a type), in their order. */
 function groupsOfType(s, typeId){ return s.groups.filter(g => g.typeId === typeId); }
-/** The exclusive group types in which `ref` is a direct member of more than one group. */
+/** Whether a participant or group is in a group itself (a member, or a participant matching its rule). */
+const inGroupItself = (s, g, ref) => (ref.type === 'participant' ? directlyIn(s, g, ref.id) : g.members.some(m => sameTarget(m, ref)));
+/** The exclusive group types in which `ref` is in more than one group itself. */
 function exclusiveClashes(s, ref){
   return s.groupTypes.filter(x => x.exclusive
-    && s.groups.filter(g => g.typeId === x.id && g.members.some(m => sameTarget(m, ref))).length > 1).map(x => x.id);
+    && s.groups.filter(g => g.typeId === x.id && inGroupItself(s, g, ref)).length > 1).map(x => x.id);
 }
 /** How many participants and groups are in more than one group of an exclusive type. */
 function clashCount(s, typeId){
-  const counts = new Map();
-  for(const g of groupsOfType(s, typeId)) for(const m of g.members) counts.set(refKey(m), (counts.get(refKey(m)) || 0) + 1);
-  return [...counts.values()].filter(n => n > 1).length;
+  const groups = groupsOfType(s, typeId);
+  const refs = [...s.participants.map(p => participantRef(p.id)), ...s.groups.map(g => ({type:'group', id:g.id}))];
+  return refs.filter(r => groups.filter(g => inGroupItself(s, g, r)).length > 1).length;
 }
 /** An inline name field committing on change, like the event types' names. */
 function inlineName(value, editable, label, commit){
@@ -5624,7 +6042,7 @@ function inlineName(value, editable, label, commit){
   input.className = 'input';
   input.type = 'text';
   input.maxLength = 40;
-  input.value = value;
+  input.defaultValue = value;   // also the `value` attribute, so a row can be found by its name
   input.readOnly = !editable;
   input.setAttribute('aria-label', label);
   input.addEventListener('change', () => commit(input));
@@ -5779,6 +6197,159 @@ document.getElementById('groupsBtn').addEventListener('click', () => {
   document.getElementById('groupsSection').scrollIntoView({block: 'start'});
 });
 
+// ---------- field values ----------
+/** A value as shown: numbers in the UI language's format. */
+function fmtMeta(v){ return typeof v === 'number' ? v.toLocaleString(locale(), {maximumFractionDigits: 6}) : v; }
+/** A number typed by a person (comma or point as decimal separator): null when blank, NaN when no number. */
+function parseNumberInput(text){
+  const v = text.trim().replace(/\s/g, '').replace(',', '.');
+  return v === '' ? null : (/^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(v) ? Number(v) : NaN);
+}
+/** "Yardstick 102 · Club KYC": a participant's values, in the order of the fields. */
+function fieldValuesText(s, participantId){
+  return s.fields.map(f => ({f, v: metaOf(s, participantId, f.id)})).filter(x => x.v !== null).map(x => x.f.name + ' ' + fmtMeta(x.v)).join(' · ');
+}
+const valuesDialog = document.getElementById('valuesDialog');
+let valuesEdit = null;   // {participantId, previousFocus}
+function openValues(participantId){
+  const s = S();
+  const p = findParticipant(s, participantId);
+  if(!p) return;
+  valuesEdit = {participantId, previousFocus: document.activeElement};
+  document.getElementById('valuesTitle').textContent = t('fields.valuesTitle', {name: p.name});
+  document.getElementById('valuesList').replaceChildren(...s.fields.map(f => {
+    const label = document.createElement('label');
+    const input = document.createElement('input');
+    input.className = 'input';
+    input.type = 'text';
+    input.dataset.field = f.id;
+    input.maxLength = 80;
+    if(f.type === 'number') input.inputMode = 'decimal';
+    const v = metaOf(s, participantId, f.id);
+    input.value = v === null ? '' : (typeof v === 'number' ? fmtMeta(v).replace(/\s/g, '') : v);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); applyValues(); } });
+    label.append(f.name, input);
+    return label;
+  }));
+  lockScroll(true);
+  valuesDialog.hidden = false;
+  const first = valuesDialog.querySelector('input');
+  if(first) first.focus({preventScroll: true});
+}
+function closeValues(){
+  if(!valuesEdit) return;
+  valuesDialog.hidden = true;
+  lockScroll(false);
+  const focus = valuesEdit.previousFocus;
+  valuesEdit = null;
+  if(focus && focus.isConnected && focus.focus) focus.focus({preventScroll: true});
+}
+function applyValues(){
+  const s = S();
+  if(!valuesEdit || !findParticipant(s, valuesEdit.participantId)){ closeValues(); return; }
+  const ops = [];
+  for(const input of valuesDialog.querySelectorAll('input[data-field]')){
+    const f = findField(s, input.dataset.field);
+    if(!f) continue;
+    let value = f.type === 'number' ? parseNumberInput(input.value) : (cleanText(input.value) || null);
+    if(Number.isNaN(value)){ toast(t('fields.invalidNumber', {value: input.value.trim()})); input.focus(); return; }
+    if(value !== metaOf(s, valuesEdit.participantId, f.id)) ops.push({type:'participant.setMeta', participantId:valuesEdit.participantId, fieldId:f.id, value});
+  }
+  if(ops.length && !perform(ops)) return;
+  closeValues();
+}
+document.getElementById('valuesOk').addEventListener('click', applyValues);
+document.getElementById('valuesCancel').addEventListener('click', closeValues);
+valuesDialog.addEventListener('keydown', (e) => { if(e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); closeValues(); } });
+valuesDialog.addEventListener('click', (e) => { if(e.target === valuesDialog) closeValues(); });
+
+// ---------- fields (settings) ----------
+const fieldList = document.getElementById('fieldList');
+const fieldNameInput = document.getElementById('fieldNameInput');
+const fieldTypeSelect = document.getElementById('fieldTypeSelect');
+const fieldTypeLabel = (type) => (type === 'number' ? t('fields.typeNumber') : t('fields.typeText'));
+function fieldNameTaken(name, exceptId){ return S().fields.some(f => f.id !== exceptId && nameKey(f.name) === nameKey(name)); }
+function addField(name, type){
+  name = cleanText(name).slice(0, 40);
+  if(!name) return false;
+  if(fieldNameTaken(name)){ toast(t('fields.exists', {name})); return false; }
+  return !!perform({type:'field.add', field:{id:uid(), name, type}});
+}
+/**
+ * One group per value of a text field, each filled by a rule (`eq` that value), in a group
+ * type named like the field (created, one per member, when there is none yet). One undo step.
+ */
+function makeGroupsFromField(fieldId){
+  const s = S();
+  const f = findField(s, fieldId);
+  if(!f) return;
+  let type = findGroupTypeByName(s, f.name);
+  const ops = [];
+  if(!type){
+    type = {id:uid(), name:f.name, exclusive:true};
+    ops.push({type:'groupType.add', groupType:{...type}});
+  }
+  const values = new Map();
+  for(const p of s.participants){ const v = metaOf(s, p.id, f.id); if(typeof v === 'string' && !values.has(nameKey(v))) values.set(nameKey(v), v); }
+  const created = [...values.values()].sort((a, b) => a.localeCompare(b, locale(), {numeric:true}))
+    .filter(v => !s.groups.some(g => g.typeId === type.id && nameKey(g.name) === nameKey(v.slice(0, 40))));
+  created.forEach(v => ops.push({type:'group.add', group:{id:uid(), typeId:type.id, name:v.slice(0, 40), rule:{all:[{field:f.id, op:'eq', value:v}]}}}));
+  if(!created.length){ toast(t('fields.noGroups')); return; }
+  if(perform(ops)) toast(t('fields.groupsMade', {n: created.length}));
+}
+function renderFields(){
+  const s = S();
+  const section = document.getElementById('fieldsSection');
+  section.hidden = !['field.add', 'field.update', 'field.delete'].some(can);
+  if(section.hidden) return;
+  if(fieldTypeSelect.options.length !== FIELD_TYPES.length || fieldTypeSelect.options[0].textContent !== fieldTypeLabel(FIELD_TYPES[0])){
+    const current = fieldTypeSelect.value || 'text';
+    fieldTypeSelect.replaceChildren(...FIELD_TYPES.map(type => { const o = document.createElement('option'); o.value = type; o.textContent = fieldTypeLabel(type); return o; }));
+    fieldTypeSelect.value = current;
+  }
+  const editing = fieldList.contains(document.activeElement) && document.activeElement.matches('input');
+  if(editing) return;
+  fieldList.replaceChildren(...s.fields.map(f => {
+    const li = document.createElement('li');
+    li.className = 'kind-row';
+    li.dataset.edit = 'normal';
+    const name = inlineName(f.name, can('field.update'), t('fields.title'), (input) => {
+      const value = cleanText(input.value), current = findField(S(), f.id);
+      if(!current) return;
+      if(!value || value === current.name){ input.value = current.name; return; }
+      if(fieldNameTaken(value, f.id)){ toast(t('fields.exists', {name:value})); input.value = current.name; return; }
+      if(!perform({type:'field.update', fieldId:f.id, name:value})) input.value = current.name;
+    });
+    name.addEventListener('blur', () => renderFields());
+    const type = document.createElement('span');
+    type.className = 'field-type';
+    type.textContent = fieldTypeLabel(f.type);
+    li.append(name, type);
+    if(f.type === 'text' && can('group.add')){
+      const make = document.createElement('button');
+      make.type = 'button';
+      make.className = 'link-btn';
+      make.textContent = t('fields.makeGroups');
+      make.addEventListener('click', () => makeGroupsFromField(f.id));
+      li.appendChild(make);
+    }
+    const del = deleteButton(async () => {
+      const ok = await askConfirm({title:t('fields.deleteTitle'), text:t('fields.deleteText', {name:f.name}), ok:t('action.delete'), danger:true});
+      if(!ok) return;
+      fieldNameInput.focus({preventScroll: true});
+      perform({type:'field.delete', fieldId:f.id});
+    });
+    del.hidden = !can('field.delete');
+    li.appendChild(del);
+    return li;
+  }));
+}
+function addFieldFromInput(){
+  if(addField(fieldNameInput.value, fieldTypeSelect.value)) fieldNameInput.value = '';
+}
+document.getElementById('addFieldBtn').addEventListener('click', addFieldFromInput);
+fieldNameInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); addFieldFromInput(); } });
+
 // ---------- members dialog ----------
 const membersDialog = document.getElementById('membersDialog');
 const membersList = document.getElementById('membersList');
@@ -5790,6 +6361,7 @@ function openMembers(groupId){
   membersEdit = {groupId, selected: new Set(g.members.map(refKey)), previousFocus: document.activeElement};
   document.getElementById('membersTitle').textContent = t('groups.membersTitle', {name: g.name});
   membersSearch.value = '';
+  initRuleEditor(g);
   renderMembers();
   lockScroll(true);
   membersDialog.hidden = false;
@@ -5838,7 +6410,8 @@ function renderMembers(){
   if(participants.length){
     const h = document.createElement('h4');
     h.textContent = t('groups.participants');
-    rows.push(h, ...participants.map(p => option({type:'participant', id:p.id}, p.name, otherOfType({type:'participant', id:p.id}), false)));
+    rows.push(h, ...participants.map(p => option({type:'participant', id:p.id}, p.name,
+      [g.rule && groupRuleMatches(s, g.rule, p.id) ? t('groups.byRule') : '', otherOfType({type:'participant', id:p.id})].filter(Boolean).join(' · '), false)));
   }
   const groups = s.groups.filter(x => x.id !== g.id && matches(x.name));
   if(groups.length){
@@ -5859,7 +6432,10 @@ function applyMembers(){
   const current = new Set(g.members.map(refKey));
   const added = [...membersEdit.selected].filter(k => !current.has(k)).map(parseRefKey);
   const removed = [...current].filter(k => !membersEdit.selected.has(k)).map(parseRefKey);
+  const rule = readRuleEditor();
+  if(rule === undefined){ toast(t('groups.ruleInvalid')); return; }
   const ops = [];
+  if(rule !== false && JSON.stringify(rule) !== JSON.stringify(g.rule)) ops.push({type:'group.setRule', groupId:g.id, rule});
   if(added.length) ops.push({type:'group.members.add', groupId:g.id, refs:added});
   if(removed.length) ops.push({type:'group.members.remove', groupId:g.id, refs:removed});
   // One group per member in an exclusive type: joining this one leaves the others (one step).
@@ -5873,6 +6449,81 @@ function applyMembers(){
   if(ops.length && !perform(ops)) return;
   closeMembers();
 }
+// ---------- a group's rule (in the members dialog) ----------
+/*
+ * One condition on a field: text fields `eq` / `in` (values separated by commas), number fields
+ * `range` (from … below …) / `eq`. A rule with several conditions (only made by other means)
+ * is shown, not edited. Shown once fields exist.
+ */
+const ruleField = document.getElementById('ruleField');
+const ruleOp = document.getElementById('ruleOp');
+const ruleValue = document.getElementById('ruleValue');
+const ruleMin = document.getElementById('ruleMin');
+const ruleMax = document.getElementById('ruleMax');
+let ruleEditable = false;
+function fillRuleOps(){
+  const f = findField(S(), ruleField.value);
+  const ops = !f ? [] : f.type === 'number' ? ['range', 'eq'] : ['eq', 'in'];
+  const current = ruleOp.value;
+  const label = {eq: t('groups.ruleEq'), in: t('groups.ruleIn'), range: t('groups.ruleRange')};
+  ruleOp.replaceChildren(...ops.map(op => { const o = document.createElement('option'); o.value = op; o.textContent = label[op]; return o; }));
+  if(ops.includes(current)) ruleOp.value = current;
+  ruleOp.hidden = !f;
+  showRuleInputs();
+}
+function showRuleInputs(){
+  const f = findField(S(), ruleField.value);
+  const op = f ? ruleOp.value : null;
+  document.getElementById('ruleValues').hidden = !f;
+  ruleValue.hidden = op === 'range';
+  ruleMin.hidden = ruleMax.hidden = op !== 'range';
+  ruleValue.placeholder = op === 'in' ? t('groups.ruleValues') : t('groups.ruleValue');
+  ruleValue.inputMode = f && f.type === 'number' ? 'decimal' : 'text';
+}
+function initRuleEditor(g){
+  const s = S();
+  const editor = document.getElementById('ruleEditor');
+  editor.hidden = !s.fields.length || !can('group.update');
+  if(editor.hidden) return;
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = t('groups.ruleNone');
+  ruleField.replaceChildren(none, ...s.fields.map(f => { const o = document.createElement('option'); o.value = f.id; o.textContent = f.name; return o; }));
+  const c = g.rule && g.rule.all.length === 1 ? g.rule.all[0] : null;
+  ruleEditable = !g.rule || !!c;
+  ruleField.value = c && findField(s, c.field) ? c.field : '';
+  ruleOp.value = c ? c.op : '';
+  fillRuleOps();
+  if(c) ruleOp.value = c.op;
+  showRuleInputs();
+  const show = (v) => (v === null || v === undefined ? '' : typeof v === 'number' ? fmtMeta(v).replace(/\s/g, '') : v);
+  ruleValue.value = c ? (c.op === 'in' ? c.values.map(show).join(', ') : c.op === 'eq' ? show(c.value) : '') : '';
+  ruleMin.value = c && c.op === 'range' ? show(c.min) : '';
+  ruleMax.value = c && c.op === 'range' ? show(c.max) : '';
+  for(const el of [ruleField, ruleOp, ruleValue, ruleMin, ruleMax]) el.disabled = !ruleEditable;
+  document.getElementById('ruleNote').textContent = ruleEditable ? t('groups.ruleHelp') : t('groups.ruleComplex', {n: g.rule.all.length});
+}
+/** The rule as edited: null (none), false (not editable here: keep it), undefined (incomplete). */
+function readRuleEditor(){
+  if(document.getElementById('ruleEditor').hidden || !ruleEditable) return false;
+  const f = findField(S(), ruleField.value);
+  if(!f) return null;
+  const number = (text) => parseNumberInput(text);
+  const op = ruleOp.value;
+  if(op === 'range'){
+    const min = number(ruleMin.value), max = number(ruleMax.value);
+    if(Number.isNaN(min) || Number.isNaN(max) || (min === null && max === null)) return undefined;
+    return {all: [{field:f.id, op, min, max}]};
+  }
+  if(op === 'in'){
+    const values = ruleValue.value.split(',').map(v => cleanText(v)).filter(Boolean);
+    return values.length ? {all: [{field:f.id, op, values}]} : undefined;
+  }
+  const value = f.type === 'number' ? number(ruleValue.value) : (cleanText(ruleValue.value) || null);
+  return value === null || Number.isNaN(value) ? undefined : {all: [{field:f.id, op:'eq', value}]};
+}
+ruleField.addEventListener('change', fillRuleOps);
+ruleOp.addEventListener('change', showRuleInputs);
 membersSearch.addEventListener('input', renderMembers);
 document.getElementById('membersOk').addEventListener('click', applyMembers);
 document.getElementById('membersCancel').addEventListener('click', closeMembers);
@@ -6022,6 +6673,7 @@ function renderSettings(){
   });
   renderKinds();
   renderGroups();
+  renderFields();
   renderWorksets();
 
   const isServer = backend.kind === 'server';

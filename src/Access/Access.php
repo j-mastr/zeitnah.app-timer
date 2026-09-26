@@ -82,6 +82,7 @@ final class Access
             $state['participants'] = [];
             $state['groupTypes'] = [];
             $state['groups'] = [];
+            $state['fields'] = [];
         }
         if (!$this->allows([['kind', null], ['view', null]])) {
             $state['kinds'] = [];

@@ -59,6 +59,8 @@ foreach ([
     ['type' => 'capture.add', 'capture' => ['id' => 'c9', 'ts' => 9, 'participantId' => null]],
     ['type' => 'groupType.add', 'groupType' => ['id' => 't', 'name' => 'Fleet']], ['type' => 'group.add', 'group' => ['id' => 'g', 'name' => 'A']],
     ['type' => 'group.members.add', 'groupId' => 'g', 'refs' => []], ['type' => 'group.delete', 'groupId' => 'g'],
+    ['type' => 'field.add', 'field' => ['id' => 'f', 'name' => 'YS', 'type' => 'number']], ['type' => 'group.setRule', 'groupId' => 'g', 'rule' => null],
+    ['type' => 'participant.setMeta', 'participantId' => 'p1', 'fieldId' => 'f', 'value' => 1],
     ['type' => 'capture.target.add', 'captureId' => 'c2', 'target' => ['type' => 'participant', 'id' => 'p1']],
     ['type' => 'capture.target.remove', 'captureId' => 'c3', 'target' => ['type' => 'participant', 'id' => 'p1']],
 ] as $op) {
