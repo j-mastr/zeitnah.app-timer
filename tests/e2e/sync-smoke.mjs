@@ -111,6 +111,47 @@ try {
   assert.equal(await b.textContent('#captureBtn'), 'RECORD TIME');
   step('capture kinds: custom kind, synced selection, local one-shot, retyping');
 
+  // Groups: a type with a group, members chosen in a dialog; a start for the group is its members' start.
+  await a.click('#groupsBtn');
+  await a.fill('#groupTypeInput', 'Flotte');
+  await a.click('#addGroupTypeBtn');
+  await a.click('#groupTypeList .group-type >> text=+ Gruppe hinzufügen');
+  await a.keyboard.press('Control+A');
+  await a.keyboard.type('Flotte A');
+  await a.keyboard.press('Enter');
+  await a.click('#groupTypeList .group-row .link-btn');
+  await a.waitForSelector('#membersDialog:not([hidden])');
+  await a.click('#membersList .member-opt:has-text("GER 123")');
+  await a.click('#membersList .member-opt:has-text("NED 7")');
+  await a.click('#membersOk');
+  assert.equal(await a.textContent('#groupTypeList .group-row .link-btn'), '2 Mitglieder');
+  // A second group with GER 123, then "one per member": allowed, but flagged.
+  await a.click('#groupTypeList .group-type >> text=+ Gruppe hinzufügen');
+  await a.keyboard.press('Enter');
+  await a.click('#groupTypeList .group-row >> nth=1 >> .link-btn');
+  await a.click('#membersList .member-opt:has-text("GER 123")');
+  await a.click('#membersOk');
+  await a.check('#groupTypeList .excl input');
+  assert.equal(await a.textContent('#groupTypeList .group-clash'), '⚠ 1 Mitglied in mehreren Gruppen dieser Art');
+  await a.click('#groupTypeList .group-row >> nth=1 >> button:has-text("✕")');
+  await a.click('#dialogOk');
+  await a.waitForFunction(() => !document.querySelector('#groupTypeList .group-clash'));
+  await a.click('#drawerClose');
+  await b.waitForFunction(() => document.querySelectorAll('#participantList .group-tag').length === 2);
+  // An unassigned time, retyped as a start and assigned to the group.
+  await a.click('h1');
+  await a.keyboard.press('0');
+  await a.selectOption('#capList .cap-row >> nth=0 >> select.kind-select', 'start');
+  await a.selectOption('#capList .cap-row >> nth=0 >> select.assign:not(.kind-select):not(.add-target)', {label: 'Flotte A'});
+  await b.waitForFunction(() => [...document.querySelectorAll('#capList .cap-row:first-child select.assign option:checked')].some(o => o.textContent === 'Flotte A'));
+  await sleep(300);
+  await a.dblclick('#participantList li:has-text("NED 7") .nm');
+  await b.locator('#participantList li:has-text("NED 7") .meta', {hasText: 'Elapsed'}).waitFor({timeout: 5000});
+  await b.selectOption('#groupFilter', {label: 'Flotte A'});
+  assert.equal(await b.locator('#participantList li').count(), 2);
+  await b.selectOption('#groupFilter', '');
+  step('groups: members chosen in a dialog; a start for the group gives its members an elapsed time');
+
   // Stations: a second one has its own approaching list and kind.
   await b.click('#settingsBtn');
   await b.click('#addWorksetBtn');
@@ -166,16 +207,16 @@ try {
   assert.equal(await c.locator('#participantList button[title="Rename"]').count(), 0);
   await c.click('#settingsBtn');
   assert.equal(await c.locator('#worksetList .ws-row').count(), 2, 'its station and "No station"');
-  for (const sel of ['#sportSelect', '#kindsSection', '#addWorksetBtn', '#archiveBtn', '#mergeBtn']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
+  for (const sel of ['#sportSelect', '#kindsSection', '#groupsSection', '#addWorksetBtn', '#archiveBtn', '#mergeBtn']) assert.equal(await c.isVisible(sel), false, `${sel} is hidden`);
   await c.click('#drawerClose');
   await c.click('h1');
   await c.keyboard.press('Space');
   await sleep(800);
-  assert.equal(await a.textContent('#capCount'), '4');
-  assert.equal(await c.textContent('#capCount'), '4');
+  assert.equal(await a.textContent('#capCount'), '6');
+  assert.equal(await c.textContent('#capCount'), '6');
   // Its own capture can be changed, one without a station (the very first) can't.
   assert.equal(await c.isDisabled('#capList .cap-row >> nth=0 >> select.assign:not(.kind-select)'), false);
-  assert.equal(await c.isDisabled('#capList .cap-row >> nth=3 >> select.assign:not(.kind-select)'), true);
+  assert.equal(await c.isDisabled('#capList .cap-row >> nth=-1 >> select.assign:not(.kind-select)'), true);
   step('a station code: its station only, nothing to manage, foreign times read-only');
 
   // Deleting its station revokes the code: the device is back on its local data.
@@ -200,7 +241,7 @@ try {
   assert.equal(await a.isVisible('#archivedBanner'), true);
   await a.keyboard.press('Space');
   await sleep(300);
-  assert.equal(await a.textContent('#capCount'), '4');
+  assert.equal(await a.textContent('#capCount'), '6');
   step('rename and archive; archived race is read-only');
 
   await a.goto(BASE);

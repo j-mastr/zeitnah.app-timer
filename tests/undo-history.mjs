@@ -38,13 +38,19 @@ const kindIds = ['k1', 'k2', 'k3'];
 const captureKinds = ['start', 'split', 'finish', ...kindIds];
 const worksetIds = ['w1', 'w2', 'w3'];
 
+const groupIds = ['g1', 'g2', 'g3', 'g4'];
+const groupTypeIds = ['t1', 't2'];
+const randomRefs = () => Array.from({length: 1 + Math.floor(rnd() * 3)},
+  () => (rnd() < 0.6 ? {type: 'participant', id: pick(participantIds)} : {type: 'group', id: pick(groupIds)}));
 const randomTargets = () => Array.from({length: Math.floor(rnd() * 4)}, () => ({type: 'participant', id: pick(participantIds)}));
 function randomOp(i) {
   const type = pick(['race.rename', 'race.setSport', 'participants.add', 'participants.add', 'participant.rename', 'participant.delete',
     'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move',
     'capture.add', 'capture.add', 'capture.assign', 'capture.delete', 'capture.target.add', 'capture.target.remove',
     'capture.setKind', 'workset.setKind', 'kind.add', 'kind.add', 'kind.update', 'kind.delete',
-    'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault']);
+    'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault',
+    'groupType.add', 'groupType.update', 'groupType.delete', 'group.add', 'group.add', 'group.add', 'group.update', 'group.delete',
+    'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove']);
   switch (type) {
     case 'race.rename': return {type, name: pick(['Kieler Woche', null, 'Cup'])};
     case 'race.setSport': return {type, sport: pick(['generic', 'sailing', 'running'])};
@@ -72,6 +78,15 @@ function randomOp(i) {
     case 'kind.add': return {type, kind: {id: pick(kindIds), name: pick(['Protest', 'protest', 'Gate', 'Pit']), role: pick(['split', 'marker'])}};
     case 'kind.update': return {type, kindId: pick(kindIds), name: pick(['Protest', 'Gate', 'Pit']) + ' ' + i, role: pick(['split', 'marker'])};
     case 'kind.delete': return {type, kindId: pick(kindIds)};
+    case 'groupType.add': return {type, groupType: {id: pick(groupTypeIds), name: pick(['Fleet', 'Class', 'fleet']), exclusive: rnd() < 0.5}, beforeId: pick([null, ...groupTypeIds])};
+    case 'groupType.update': return {type, groupTypeId: pick(groupTypeIds), name: pick(['Fleet', 'Class']) + ' ' + i, exclusive: rnd() < 0.5};
+    case 'groupType.delete': return {type, groupTypeId: pick(groupTypeIds)};
+    case 'group.add':
+      return {type, group: {id: pick(groupIds), typeId: pick([null, ...groupTypeIds]), name: pick(['A', 'B', 'a', 'Gold']), members: rnd() < 0.3 ? randomRefs() : undefined},
+        beforeId: pick([null, ...groupIds])};
+    case 'group.update': return {type, groupId: pick(groupIds), name: pick(['A', 'B', 'Silver']) + ' ' + i, typeId: pick([null, ...groupTypeIds])};
+    case 'group.delete': return {type, groupId: pick(groupIds)};
+    case 'group.members.add': case 'group.members.remove': return {type, groupId: pick(groupIds), refs: randomRefs()};
   }
 }
 
@@ -133,6 +148,33 @@ for (let n = 0; n < cases; n++) {
   assert.deepEqual(s.worksets[0].ranking, ['a', 'd']);
   replay(s, entry.undo);
   assert.equal(canonical(s), canonical(before), 'undoing a capture of several participants restores the ranking');
+}
+
+// Groups: deleting a member participant or a nested group, removing members — undo restores it all.
+{
+  const P = (id) => ({type: 'participant', id}), G = (id) => ({type: 'group', id});
+  const s = replay(emptyState(), [
+    {type: 'participants.add', participants: ['a', 'b', 'c'].map((id) => ({id, name: id.toUpperCase()}))},
+    {type: 'groupType.add', groupType: {id: 't', name: 'Fleet', exclusive: true}},
+    {type: 'group.add', group: {id: 'g1', typeId: 't', name: 'A', members: [P('a'), P('b')]}},
+    {type: 'group.add', group: {id: 'g2', name: 'Wave', members: [G('g1'), P('c')]}},
+    {type: 'group.add', group: {id: 'g3', name: 'Other', members: [P('a')]}},
+  ]);
+  for (const op of [
+    {type: 'participant.delete', participantId: 'a'},
+    {type: 'group.delete', groupId: 'g1'},
+    {type: 'group.members.remove', groupId: 'g2', refs: [G('g1'), P('c'), P('b')]},
+    {type: 'groupType.delete', groupTypeId: 't'},
+    {type: 'group.members.add', groupId: 'g1', refs: [G('g2')]},   // would close a cycle: nothing to undo
+  ]) {
+    const before = clone(s);
+    const entry = historyEntry(s, op);
+    if (op.type === 'group.members.add') { assert.equal(entry, null, 'a cycle-closing member is no step'); continue; }
+    applyOp(s, clone(op));
+    assert.equal(footprintAfter(s, entry.undo, entry.parts), footprint(before, entry.parts), `${op.type} can be undone`);
+    replay(s, entry.undo);
+    assert.equal(canonical(s), canonical(before), `undoing ${op.type} restores the groups`);
+  }
 }
 
 // Conflicts: another device changed what the entry touched.

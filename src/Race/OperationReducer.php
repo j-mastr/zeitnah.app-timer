@@ -10,6 +10,7 @@ namespace App\Race;
  * State shape:
  *   schema: int (SCHEMA_VERSION), name: ?string, archived: bool, sport: string,
  *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
+ *   groupTypes: list<{id, name, exclusive: bool}>, groups: list<{id, typeId: ?string, name, members: list<ref>}>,
  *   worksets: list<{id, number: int, name: ?string, ranking: list<participantId>, captureKind: string}>,
  *   captures: list<{id, ts, tzOffset: ?int, targets: list<{type: 'participant', id}>, kind: string, worksetId: ?string}>
  *
@@ -22,6 +23,13 @@ namespace App\Race;
  * participants only (groups follow, see docs/groups.md). None = unassigned, several = e.g. a
  * protest involving several participants. Unknown participants are dropped when a capture is
  * added; deleting a participant later keeps its reference on the captures.
+ *
+ * Groups collect participants and other groups (`members`, refs like capture targets, kept
+ * sorted by type and id); a group type (e.g. "Fleet") is a dimension groups belong to, so a
+ * participant can be in groups of several types at once. `exclusive` is a UI hint only. Who is
+ * in a group is resolved when reading (the clients do that), never stored: a capture targeting
+ * a group applies to its members as they are at that moment. A member that would close a cycle
+ * is skipped. See docs/groups.md.
  *
  * Every capture has a `kind`: one of the built-in kinds (start, split, finish; the default
  * is finish) or the id of a custom kind in `kinds`. A custom kind has the role `split` (a
@@ -50,6 +58,8 @@ final class OperationReducer
         'participants.add', 'participant.rename', 'participant.delete',
         'capture.add', 'capture.assign', 'capture.delete', 'capture.setKind', 'capture.target.add', 'capture.target.remove',
         'kind.add', 'kind.update', 'kind.delete',
+        'groupType.add', 'groupType.update', 'groupType.delete',
+        'group.add', 'group.update', 'group.delete', 'group.members.add', 'group.members.remove',
         'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
         'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move',
         'state.merge',
@@ -62,14 +72,16 @@ final class OperationReducer
      * changed semantics. Clients of an older version are refused (`client_outdated`).
      * Mirrors SCHEMA_VERSION in frontend/index.html.
      */
-    public const SCHEMA_VERSION = 2;
+    public const SCHEMA_VERSION = 3;
 
     /** Migration steps: version => method turning a state of that version into the next one. */
-    private const MIGRATIONS = [1 => 'toVersion2'];
+    private const MIGRATIONS = [1 => 'toVersion2', 2 => 'toVersion3'];
 
-    /** Target types a capture may reference (groups follow, see docs/groups.md). */
-    public const TARGET_TYPES = ['participant'];
+    /** What a capture target or a group member may reference. */
+    public const TARGET_TYPES = ['participant', 'group'];
     private const MAX_TARGETS = 500;
+    private const MAX_MEMBERS = 5000;
+    private const MAX_GROUP_NAME = 40;
 
     // Mirrors SPORTS in frontend/index.html.
     public const SPORTS = ['generic', 'sailing', 'running', 'swimming', 'motor'];
@@ -92,7 +104,7 @@ final class OperationReducer
     {
         return [
             'schema' => self::SCHEMA_VERSION, 'name' => null, 'archived' => false, 'sport' => self::DEFAULT_SPORT, 'participants' => [],
-            'kinds' => [], 'worksets' => [], 'captures' => [],
+            'kinds' => [], 'groupTypes' => [], 'groups' => [], 'worksets' => [], 'captures' => [],
         ];
     }
 
@@ -213,6 +225,7 @@ final class OperationReducer
                 foreach ($state['worksets'] as $i => $workset) {
                     $state['worksets'][$i]['ranking'] = self::without($workset['ranking'], $id);
                 }
+                $state = self::withoutMember($state, ['type' => 'participant', 'id' => $id]);
 
                 return $state;
 
@@ -239,7 +252,9 @@ final class OperationReducer
                 $index = null === $worksetId ? null : self::findWorkset($state, $worksetId);
                 if (null !== $index && 'marker' !== self::kindRole($state, $kind)) {
                     foreach ($targets as $target) {
-                        $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $target['id']);
+                        if ('participant' === $target['type']) {
+                            $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $target['id']);
+                        }
                     }
                 }
 
@@ -272,7 +287,7 @@ final class OperationReducer
                 $target = self::target($op['target'] ?? null);
                 $index = self::findCapture($state, $captureId);
                 $targets = null === $index ? [] : $state['captures'][$index]['targets'];
-                if (null !== $index && null !== self::findParticipant($state, $target['id'])
+                if (null !== $index && self::refExists($state, $target)
                     && !in_array($target, $targets, true) && count($targets) < self::MAX_TARGETS) {
                     $state['captures'][$index]['targets'][] = $target;
                 }
@@ -334,6 +349,97 @@ final class OperationReducer
                     if ($workset['captureKind'] === $id) {
                         $state['worksets'][$i]['captureKind'] = self::DEFAULT_KIND;
                     }
+                }
+
+                return $state;
+
+            case 'groupType.add':
+                $type = self::groupType($op['groupType'] ?? null);
+                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                if (null !== self::findGroupType($state, $type['id']) || null !== self::findGroupTypeByName($state, $type['name'])) {
+                    return $state;
+                }
+                $position = null === $before ? null : self::findGroupType($state, $before);
+                array_splice($state['groupTypes'], $position ?? count($state['groupTypes']), 0, [$type]);
+
+                return $state;
+
+            case 'groupType.update':
+                $id = self::id($op['groupTypeId'] ?? null, 'group_type_id');
+                $name = self::name($op['name'] ?? null, self::MAX_GROUP_NAME, 'group_type_name');
+                $exclusive = self::exclusive($op['exclusive'] ?? null);
+                $index = self::findGroupType($state, $id);
+                if (null !== $index) {
+                    $state['groupTypes'][$index] = ['id' => $id, 'name' => $name, 'exclusive' => $exclusive];
+                }
+
+                return $state;
+
+            case 'groupType.delete':
+                $id = self::id($op['groupTypeId'] ?? null, 'group_type_id');
+                // Its groups stay, without a type.
+                $state['groupTypes'] = array_values(array_filter($state['groupTypes'], static fn ($t) => $t['id'] !== $id));
+                foreach ($state['groups'] as $i => $group) {
+                    if ($group['typeId'] === $id) {
+                        $state['groups'][$i]['typeId'] = null;
+                    }
+                }
+
+                return $state;
+
+            case 'group.add':
+                $group = $op['group'] ?? null;
+                if (!is_array($group)) {
+                    throw new InvalidOperationException('invalid_group');
+                }
+                $id = self::id($group['id'] ?? null, 'group_id');
+                $typeId = self::optionalId($group['typeId'] ?? null, 'group_type_id');
+                $name = self::name($group['name'] ?? null, self::MAX_GROUP_NAME, 'group_name');
+                $members = self::memberList($group['members'] ?? []);
+                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                $typeId = null !== $typeId && null !== self::findGroupType($state, $typeId) ? $typeId : null;
+                if (null !== self::findGroup($state, $id) || null !== self::findGroupByName($state, $typeId, $name)) {
+                    return $state;
+                }
+                $position = null === $before ? null : self::findGroup($state, $before);
+                array_splice($state['groups'], $position ?? count($state['groups']), 0, [['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => []]]);
+
+                // The optional members restore a deleted group exactly (undo).
+                return self::addMembers($state, $id, $members);
+
+            case 'group.update':
+                $id = self::id($op['groupId'] ?? null, 'group_id');
+                $name = self::name($op['name'] ?? null, self::MAX_GROUP_NAME, 'group_name');
+                $typeId = self::optionalId($op['typeId'] ?? null, 'group_type_id');
+                $index = self::findGroup($state, $id);
+                if (null !== $index) {
+                    $state['groups'][$index]['name'] = $name;
+                    $state['groups'][$index]['typeId'] = null !== $typeId && null !== self::findGroupType($state, $typeId) ? $typeId : null;
+                }
+
+                return $state;
+
+            case 'group.delete':
+                $id = self::id($op['groupId'] ?? null, 'group_id');
+                // Captures keep the reference; other groups lose it as a member.
+                $state['groups'] = array_values(array_filter($state['groups'], static fn ($g) => $g['id'] !== $id));
+
+                return self::withoutMember($state, ['type' => 'group', 'id' => $id]);
+
+            case 'group.members.add':
+                $id = self::id($op['groupId'] ?? null, 'group_id');
+                $refs = self::memberList($op['refs'] ?? null);
+
+                return self::addMembers($state, $id, $refs);
+
+            case 'group.members.remove':
+                $id = self::id($op['groupId'] ?? null, 'group_id');
+                $refs = self::memberList($op['refs'] ?? null);
+                $index = self::findGroup($state, $id);
+                if (null !== $index) {
+                    $state['groups'][$index]['members'] = array_values(array_filter(
+                        $state['groups'][$index]['members'], static fn ($m) => !in_array($m, $refs, true),
+                    ));
                 }
 
                 return $state;
@@ -471,6 +577,12 @@ final class OperationReducer
         return $state;
     }
 
+    /** Version 3: group types and groups. */
+    private static function toVersion3(array $state): array
+    {
+        return $state + ['groupTypes' => [], 'groups' => []];
+    }
+
     /** Applies the migration steps from $version up to SCHEMA_VERSION (see MIGRATIONS). */
     private static function runMigrations(array $state, int $version): array
     {
@@ -503,8 +615,12 @@ final class OperationReducer
         $kinds = $source['kinds'] ?? [];
         $worksets = $source['worksets'] ?? [];
         $captures = $source['captures'] ?? [];
+        $groupTypes = $source['groupTypes'] ?? [];
+        $groups = $source['groups'] ?? [];
         if (!is_array($participants) || !is_array($kinds) || !is_array($worksets) || !is_array($captures)
-            || count($participants) > 5000 || count($kinds) > 500 || count($worksets) > 500 || count($captures) > 20000) {
+            || !is_array($groupTypes) || !is_array($groups)
+            || count($participants) > 5000 || count($kinds) > 500 || count($worksets) > 500 || count($captures) > 20000
+            || count($groupTypes) > 500 || count($groups) > 5000) {
             throw new InvalidOperationException('invalid_state');
         }
 
@@ -563,6 +679,47 @@ final class OperationReducer
             }
         }
 
+        // Group types are matched by id or name; groups by id or by (type, name). Their members
+        // are united, once every group exists, mapped like everything else.
+        $typeMap = [];
+        foreach ($groupTypes as $type) {
+            $type = self::groupType($type);
+            $index = self::findGroupType($state, $type['id']) ?? self::findGroupTypeByName($state, $type['name']);
+            if (null === $index) {
+                $state['groupTypes'][] = $type;
+                $typeMap[$type['id']] = $type['id'];
+            } else {
+                $typeMap[$type['id']] = $state['groupTypes'][$index]['id'];
+            }
+        }
+        $groupMap = [];
+        $sourceMembers = [];
+        foreach ($groups as $group) {
+            if (!is_array($group)) {
+                throw new InvalidOperationException('invalid_group');
+            }
+            $id = self::id($group['id'] ?? null, 'group_id');
+            $typeId = self::optionalId($group['typeId'] ?? null, 'group_type_id');
+            $name = self::name($group['name'] ?? null, self::MAX_GROUP_NAME, 'group_name');
+            $sourceMembers[$id] = self::memberList($group['members'] ?? []);
+            $typeId = null === $typeId ? null : ($typeMap[$typeId] ?? (null !== self::findGroupType($state, $typeId) ? $typeId : null));
+            $index = self::findGroup($state, $id) ?? self::findGroupByName($state, $typeId, $name);
+            if (null === $index) {
+                $state['groups'][] = ['id' => $id, 'typeId' => $typeId, 'name' => $name, 'members' => []];
+                $groupMap[$id] = $id;
+            } else {
+                $groupMap[$id] = $state['groups'][$index]['id'];
+            }
+        }
+        $mapRef = static function (array $ref) use (&$idMap, &$groupMap): ?array {
+            $id = 'group' === $ref['type'] ? ($groupMap[$ref['id']] ?? null) : ($idMap[$ref['id']] ?? null);
+
+            return null === $id ? null : ['type' => $ref['type'], 'id' => $id];
+        };
+        foreach ($sourceMembers as $id => $members) {
+            $state = self::addMembers($state, $groupMap[$id], array_values(array_filter(array_map($mapRef, $members))));
+        }
+
         foreach ($captures as $capture) {
             if (!is_array($capture)) {
                 throw new InvalidOperationException('invalid_capture');
@@ -576,11 +733,11 @@ final class OperationReducer
             if (null !== self::findCapture($state, $id)) {
                 continue;
             }
-            // Participants are mapped to the ones they were matched with; unknown ones are dropped.
+            // Targets are mapped to what they were matched with; unknown ones are dropped.
             $mapped = [];
             foreach ($targets as $target) {
-                $ref = ['type' => 'participant', 'id' => $idMap[$target['id']] ?? null];
-                if (null !== $ref['id'] && !in_array($ref, $mapped, true)) {
+                $ref = $mapRef($target);
+                if (null !== $ref && !in_array($ref, $mapped, true)) {
                     $mapped[] = $ref;
                 }
             }
@@ -669,7 +826,120 @@ final class OperationReducer
     /** The targets that exist in the state (lenient about references). */
     private static function existingTargets(array $state, array $targets): array
     {
-        return array_values(array_filter($targets, static fn ($t) => null !== self::findParticipant($state, $t['id'])));
+        return array_values(array_filter($targets, static fn ($t) => self::refExists($state, $t)));
+    }
+
+    private static function refExists(array $state, array $ref): bool
+    {
+        return 'group' === $ref['type'] ? null !== self::findGroup($state, $ref['id']) : null !== self::findParticipant($state, $ref['id']);
+    }
+
+    /** @return array{id: string, name: string, exclusive: bool} */
+    private static function groupType(mixed $value): array
+    {
+        if (!is_array($value)) {
+            throw new InvalidOperationException('invalid_group_type');
+        }
+
+        return [
+            'id' => self::id($value['id'] ?? null, 'group_type_id'),
+            'name' => self::name($value['name'] ?? null, self::MAX_GROUP_NAME, 'group_type_name'),
+            'exclusive' => self::exclusive($value['exclusive'] ?? null),
+        ];
+    }
+
+    private static function exclusive(mixed $value): bool
+    {
+        if (null !== $value && !is_bool($value)) {
+            throw new InvalidOperationException('invalid_group_type');
+        }
+
+        return true === $value;
+    }
+
+    /** @return list<array{type: string, id: string}> group members without duplicates */
+    private static function memberList(mixed $value): array
+    {
+        if (!is_array($value) || !array_is_list($value) || count($value) > self::MAX_MEMBERS) {
+            throw new InvalidOperationException('invalid_group_members');
+        }
+        $refs = [];
+        foreach ($value as $item) {
+            $type = is_array($item) ? ($item['type'] ?? null) : null;
+            $id = is_array($item) ? ($item['id'] ?? null) : null;
+            if (!in_array($type, self::TARGET_TYPES, true) || !is_string($id) || !preg_match(self::ID_PATTERN, $id)) {
+                throw new InvalidOperationException('invalid_group_member');
+            }
+            if (!in_array(['type' => $type, 'id' => $id], $refs, true)) {
+                $refs[] = ['type' => $type, 'id' => $id];
+            }
+        }
+
+        return $refs;
+    }
+
+    /**
+     * Adds members to a group: only existing ones that aren't members yet, and no group that
+     * would close a cycle (the group itself, or one that already contains it). No-op without
+     * the group.
+     */
+    private static function addMembers(array $state, string $groupId, array $refs): array
+    {
+        $index = self::findGroup($state, $groupId);
+        if (null === $index) {
+            return $state;
+        }
+        foreach ($refs as $ref) {
+            if (!self::refExists($state, $ref) || in_array($ref, $state['groups'][$index]['members'], true)
+                || ('group' === $ref['type'] && self::groupContains($state, $ref['id'], $groupId))) {
+                continue;
+            }
+            $state['groups'][$index]['members'][] = $ref;
+        }
+        $state['groups'][$index]['members'] = self::sortedRefs($state['groups'][$index]['members']);
+
+        return $state;
+    }
+
+    /** Whether group $outer is $inner or contains it, directly or through other groups. */
+    private static function groupContains(array $state, string $outer, string $inner): bool
+    {
+        $seen = [];
+        $queue = [$outer];
+        while ($queue) {
+            $id = array_shift($queue);
+            if ($id === $inner) {
+                return true;
+            }
+            if (isset($seen[$id]) || null === ($index = self::findGroup($state, $id))) {
+                continue;
+            }
+            $seen[$id] = true;
+            foreach ($state['groups'][$index]['members'] as $member) {
+                if ('group' === $member['type']) {
+                    $queue[] = $member['id'];
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Members are kept in one order (type, then id), so the same set is always the same list. */
+    private static function sortedRefs(array $refs): array
+    {
+        usort($refs, static fn ($a, $b) => strcmp($a['type'].':'.$a['id'], $b['type'].':'.$b['id']));
+
+        return $refs;
+    }
+
+    private static function withoutMember(array $state, array $ref): array
+    {
+        foreach ($state['groups'] as $i => $group) {
+            $state['groups'][$i]['members'] = array_values(array_filter($group['members'], static fn ($m) => $m !== $ref));
+        }
+
+        return $state;
     }
 
     private static function id(mixed $value, string $field): string
@@ -805,6 +1075,53 @@ final class OperationReducer
     private static function isKnownKind(array $state, string $kind): bool
     {
         return in_array($kind, self::BUILTIN_KINDS, true) || null !== self::findKind($state, $kind);
+    }
+
+    private static function findGroupType(array $state, string $id): ?int
+    {
+        foreach ($state['groupTypes'] as $i => $type) {
+            if ($type['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findGroupTypeByName(array $state, string $name): ?int
+    {
+        $key = self::key($name);
+        foreach ($state['groupTypes'] as $i => $type) {
+            if (self::key($type['name']) === $key) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    private static function findGroup(array $state, string $id): ?int
+    {
+        foreach ($state['groups'] as $i => $group) {
+            if ($group['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /** A group of that type (null: without a type) with that name, case-insensitively. */
+    private static function findGroupByName(array $state, ?string $typeId, string $name): ?int
+    {
+        $key = self::key($name);
+        foreach ($state['groups'] as $i => $group) {
+            if ($group['typeId'] === $typeId && self::key($group['name']) === $key) {
+                return $i;
+            }
+        }
+
+        return null;
     }
 
     private static function findKind(array $state, string $id): ?int

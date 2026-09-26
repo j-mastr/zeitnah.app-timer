@@ -156,8 +156,12 @@ final class Permissions
             case 'race.rename': case 'race.setSport': case 'race.archive':
             case 'participant.rename': case 'participant.delete':
             case 'kind.add': case 'kind.update': case 'kind.delete':
+            case 'groupType.add': case 'groupType.update': case 'groupType.delete':
+            case 'group.add': case 'group.update': case 'group.delete':
             case 'workset.add':
                 return [[$parts[0], null], [$parts[1], null]];
+            case 'group.members.add': case 'group.members.remove':
+                return [['group', null], ['members', null]];
             case 'participants.add':
                 return [['participant', null], ['add', null]];
             case 'state.merge':

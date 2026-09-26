@@ -78,7 +78,10 @@ final class Access
             return $state;
         }
         if (!$this->allows([['participant', null], ['view', null]])) {
+            // Groups are participant data: seen with the participants.
             $state['participants'] = [];
+            $state['groupTypes'] = [];
+            $state['groups'] = [];
         }
         if (!$this->allows([['kind', null], ['view', null]])) {
             $state['kinds'] = [];
