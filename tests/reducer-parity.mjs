@@ -39,7 +39,9 @@ const randomKind = () => ({id: pick(kindIds), name: pick(kindNames), role: pick(
 const worksetIds = ['w1', 'w2', 'w3', 'w4', 'not valid!'];
 const worksetRefs = ['w1', 'w1', 'w1', 'w2', 'w2', 'w2', 'w3', 'w4', 'not valid!', null, undefined, 5];
 const worksetNames = ['Finish', 'finish', ' Gate  3 ', '', null, null, undefined, undefined, 'z'.repeat(41), 4];
-const rankings = [undefined, null, [], ['b1', 'b2', 'b1', 'bX'], ['b3', 'b2'], ['not valid!'], 'b1', [7]];
+const rankings = [undefined, null, [], ['b1', 'b2', 'b1', 'bX'], ['b3', 'b2'], ['not valid!'], 'b1', [7],
+  [{type: 'participant', id: 'b1'}, {type: 'group', id: 'g1'}, 'b2', {type: 'group', id: 'g1'}, {type: 'group', id: 'gX'}],
+  [{type: 'group', id: 'g2'}, {type: 'team', id: 'x'}], [{type: 'group', id: 'g3'}, {type: 'participant', id: 'b3'}]];
 const randomWorkset = () => (rnd() < 0.1 ? pick([null, 'w1', {}]) : {
   id: pick(worksetIds), name: pick(worksetNames), number: pick([undefined, undefined, undefined, undefined, null, 3, 0, 1.5, '2']),
   ranking: pick(rankings), captureKind: pick([undefined, undefined, ...captureKinds]),
@@ -68,7 +70,8 @@ const types = ['race.rename', 'race.archive', 'race.setSport', 'participants.add
   'group.members.add', 'group.members.add', 'group.members.add', 'group.members.add', 'group.members.remove', 'group.members.remove',
   'kind.add', 'kind.add', 'kind.update', 'kind.delete', 'state.merge', 'bogus',
   'workset.add', 'workset.add', 'workset.add', 'workset.rename', 'workset.delete', 'workset.makeDefault', 'workset.setKind',
-  'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move'];
+  'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.remove', 'workset.ranking.move', 'workset.ranking.move',
+  'workset.ranking.add', 'workset.ranking.add', 'workset.ranking.move', 'workset.ranking.add', 'workset.ranking.move', 'workset.add'];
 
 function randomOp(i) {
   const type = pick(types);
@@ -80,9 +83,14 @@ function randomOp(i) {
     case 'participant.rename': op.participantId = pick(participantIds); op.name = pick(names); break;
     case 'participant.delete': op.participantId = pick(participantIds); break;
     case 'workset.ranking.add': case 'workset.ranking.remove':
-      op.worksetId = pick(worksetRefs); op.participantId = pick(participantIds); break;
+      op.worksetId = rnd() < 0.6 ? 'w1' : pick(worksetRefs);
+      if (rnd() < 0.5) op.participantId = pick(participantIds); else op.ref = rnd() < 0.8 ? validRefs()[0] : randomTarget();
+      break;
     case 'workset.ranking.move':
-      op.worksetId = pick(worksetRefs); op.participantId = pick(participantIds); op.beforeId = pick([...participantIds, null]); break;
+      op.worksetId = rnd() < 0.6 ? 'w1' : pick(worksetRefs);
+      if (rnd() < 0.5) op.participantId = pick(participantIds); else op.ref = validRefs()[0];
+      if (rnd() < 0.5) op.beforeId = pick([...participantIds, null]); else op.before = pick([null, randomTarget(), ...validRefs()]);
+      break;
     case 'workset.add': op.workset = randomWorkset(); if (rnd() < 0.4) op.beforeId = pick([...worksetIds, null]); break;
     case 'workset.rename': op.worksetId = pick(worksetRefs); op.name = pick(worksetNames); break;
     case 'workset.delete': case 'workset.makeDefault': op.worksetId = pick(worksetRefs); break;
@@ -139,9 +147,37 @@ if (legacy.schema !== SCHEMA_VERSION) throw new Error('normalizeState() does not
 if (JSON.stringify(legacy.captures[0].targets) !== JSON.stringify([ref('b1')])) throw new Error('normalizeState() does not migrate a capture\'s participant');
 
 const count = parseInt(process.argv[2] || '200', 10);
+// Fixed sequences for what random ones rarely reach: a long mixed ranking of participants and
+// groups, reordered, recorded against, merged.
+const P = (id) => ({type: 'participant', id}), Q = (id) => ({type: 'group', id});
+const fixed = [[
+  {type: 'participants.add', participants: ['p1', 'p2', 'p3', 'p4'].map((id) => ({id, name: id.toUpperCase()}))},
+  {type: 'group.add', group: {id: 'ga', name: 'Fleet A', members: [P('p1'), P('p2')]}},
+  {type: 'group.add', group: {id: 'gb', name: 'Fleet B', members: [P('p3')]}},
+  {type: 'workset.add', workset: {id: 'w1'}},
+  {type: 'workset.ranking.add', worksetId: 'w1', ref: Q('ga')},
+  {type: 'workset.ranking.add', worksetId: 'w1', participantId: 'p4'},
+  {type: 'workset.ranking.add', worksetId: 'w1', ref: Q('gb')},
+  {type: 'workset.ranking.add', worksetId: 'w1', ref: P('p1')},
+  {type: 'workset.ranking.add', worksetId: 'w1', ref: Q('ga')},
+  {type: 'workset.ranking.move', worksetId: 'w1', ref: Q('gb'), before: Q('ga')},
+  {type: 'workset.ranking.move', worksetId: 'w1', participantId: 'p4', beforeId: 'p1'},
+  {type: 'workset.ranking.move', worksetId: 'w1', ref: P('p1'), before: null},
+  {type: 'workset.ranking.move', worksetId: 'w1', ref: Q('ga'), before: Q('gX')},
+  {type: 'capture.add', capture: {id: 'c1', ts: 1790000000000, kind: 'start', worksetId: 'w1', targets: [Q('gb')]}},
+  {type: 'workset.add', workset: {id: 'w2', ranking: [Q('ga'), 'p2', P('p3'), Q('gone'), 'p2']}},
+  {type: 'group.delete', groupId: 'ga'},
+  {type: 'participant.delete', participantId: 'p3'},
+  {type: 'state.merge', state: {schema: 3, participants: [{id: 'm1', name: 'P1'}, {id: 'm2', name: 'M2'}],
+    groups: [{id: 'mg', name: 'Fleet C', members: [P('m2')]}],
+    worksets: [{id: 'w1', ranking: [P('m1'), Q('mg'), P('m2')]}, {id: 'mw', name: 'Gate', ranking: ['m1']}]}},
+  {type: 'state.merge', state: {schema: 2, participants: [{id: 'x1', name: 'X1'}], worksets: [{id: 'w2', ranking: ['x1']}]}},
+  {type: 'workset.ranking.remove', worksetId: 'w1', ref: Q('mg')},
+  {type: 'workset.ranking.add', worksetId: 'w1', ref: {type: 'group'}},
+]];
 const cases = [];
-for (let n = 0; n < count; n++) {
-  const ops = Array.from({length: 40}, (_, i) => randomOp(i));
+for (let n = 0; n < count + fixed.length; n++) {
+  const ops = n < fixed.length ? fixed[n] : Array.from({length: 40}, (_, i) => randomOp(i));
   let state = emptyState();
   const results = [];
   for (const op of ops) {
