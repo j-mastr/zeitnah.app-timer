@@ -77,9 +77,10 @@ mistakes and keeps the operations small.
 - Nesting covers hierarchies: sailing start group "Wave A" = classes {ILCA 7, 420}; running
   "10 km" → age groups; motor sport class → team.
 - Group types cover parallel memberships.
-- **Double membership is acceptable.** `exclusive` is only a UI hint (single-select chip in
-  the participant row, "move" = remove + add as one undo step); the reducers never enforce it
-  and the UI shows no warning.
+- **Double membership is tolerated, but flagged.** The reducers never enforce `exclusive`
+  (concurrent edits, or a type made exclusive later, can leave a member in two groups of it);
+  the UI moves members when it can ("move" = remove + add as one undo step) and warns where it
+  happened.
 - Concurrent ops may form a cycle (G1 into G2 while G2 goes into G1): the reducer skips a
   member ref that would close a cycle (lenient, no error), and resolution is cycle-safe anyway.
 
@@ -212,7 +213,7 @@ network-first, so this only affects pages left open across the release.
 | 1 | Schema versioning to protect old clients | yes, see above |
 | 2 | Resolve group membership on read | yes |
 | 3 | Membership edits offline | locked; can be corrected later |
-| 4 | Double membership in an exclusive type | acceptable, no warning |
+| 4 | Double membership in an exclusive type | tolerated by the reducers; the UI warns (revised: first "no warning") |
 | 5 | Places of a dead heat / multi-target finish | postponed (reporting) |
 | 6 | Field roles (e.g. yardstick) | none; calculations guess by name or ask |
 
@@ -328,6 +329,11 @@ Built on its own branch (`claude/groups-phase-3`), on top of phases 1–2. `CLAU
   show their direct groups as tags; the filter includes members of nested groups.
 - `exclusive` only changes the dialog: joining a group of such a type leaves the type's other
   groups in the same undo step, and the others are shown as a hint. The reducers never check it.
+- **Double membership is flagged** (decision 4 revised by the product owner): a participant in
+  two groups of an exclusive type shows those tags with ⚠ in the accent colour and a tooltip,
+  and the type's block in the settings says how many members are affected. It can happen
+  through concurrent edits or by making a type exclusive after the fact; removing a member or a
+  group (or unticking "one per member") clears it.
 - The permission path for both membership operations is `group.members`.
 - Groups can't be ranked yet (phase 4): a group start is recorded as an unassigned time and
   assigned to the group (or added with "+").

@@ -374,7 +374,10 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   group of an exclusive type as a hint) and other groups (one that contains this group is
   disabled), a search field, Apply / Cancel. Apply sends the additions and removals as one undo
   step; in an exclusive type, joining a group leaves the type's other groups in the same step.
-  `exclusive` is only this UI hint — the reducers accept double membership.
+  The reducers accept double membership (concurrent edits, a type made exclusive later), but
+  the UI flags it: the participant's tags of that type show ⚠ in the accent colour with a
+  tooltip (`groups.clash`, `exclusiveClashes()`), and the type's block in the settings counts
+  the members affected (`.group-clash`, `clashCount()`).
 - **Discreet until used:** once groups exist, participant rows show their direct groups as
   tags (`.group-tag`), a group filter (`prefs.groupFilter`, per device, members of nested groups
   included) appears above the sort bar, the capture target selects list groups in an

@@ -125,6 +125,17 @@ try {
   await a.click('#membersList .member-opt:has-text("NED 7")');
   await a.click('#membersOk');
   assert.equal(await a.textContent('#groupTypeList .group-row .link-btn'), '2 Mitglieder');
+  // A second group with GER 123, then "one per member": allowed, but flagged.
+  await a.click('#groupTypeList .group-type >> text=+ Gruppe hinzufügen');
+  await a.keyboard.press('Enter');
+  await a.click('#groupTypeList .group-row >> nth=1 >> .link-btn');
+  await a.click('#membersList .member-opt:has-text("GER 123")');
+  await a.click('#membersOk');
+  await a.check('#groupTypeList .excl input');
+  assert.equal(await a.textContent('#groupTypeList .group-clash'), '⚠ 1 Mitglied in mehreren Gruppen dieser Art');
+  await a.click('#groupTypeList .group-row >> nth=1 >> button:has-text("✕")');
+  await a.click('#dialogOk');
+  await a.waitForFunction(() => !document.querySelector('#groupTypeList .group-clash'));
   await a.click('#drawerClose');
   await b.waitForFunction(() => document.querySelectorAll('#participantList .group-tag').length === 2);
   // An unassigned time, retyped as a start and assigned to the group.

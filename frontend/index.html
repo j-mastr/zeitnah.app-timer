@@ -390,6 +390,9 @@
   .member-opt.disabled{opacity:.5; cursor:default;}
   .group-tags{display:flex; flex-wrap:wrap; gap:4px; margin-top:3px;}
   .group-tag{font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:0 5px;}
+  /* A member of two groups of a type with one group per member: allowed, but flagged. */
+  .group-tag.clash{color:var(--accent); border-color:var(--accent);}
+  .group-clash{font-size:12px; color:var(--accent); padding-left:10px;}
   .target-chip.is-group{border-style:dashed;}
   .group-filter{width:100%;}
 
@@ -845,6 +848,9 @@ const TEXTS = {
       'groups.search': 'Suchen …',
       'groups.apply': 'Übernehmen',
       'groups.cycle': 'enthält diese Gruppe',
+      'groups.clash': 'In mehreren Gruppen der Art „{type}“, die nur eine je Mitglied vorsieht.',
+      'groups.clashCount': '{n} Mitglieder in mehreren Gruppen dieser Art',
+      'groups.clashOne': '1 Mitglied in mehreren Gruppen dieser Art',
       'lock.outdated': 'Nicht möglich mit dieser veralteten App-Version. Bitte die Seite neu laden.',
       'outdated.client': 'Diese App-Version ist älter als die des Servers. Bitte neu laden, um weiterzuarbeiten – noch nicht gesendete Zeiten bleiben erhalten und werden danach übertragen.',
       'outdated.storage': 'Die Daten in diesem Browser stammen von einer neueren App-Version. Bitte neu laden, um weiterzuarbeiten.',
@@ -1087,6 +1093,9 @@ const TEXTS = {
       'groups.search': 'Search …',
       'groups.apply': 'Apply',
       'groups.cycle': 'contains this group',
+      'groups.clash': 'In several groups of “{type}”, which has one group per member.',
+      'groups.clashCount': '{n} members in several groups of this type',
+      'groups.clashOne': '1 member in several groups of this type',
       'lock.outdated': 'Not possible with this outdated version of the app. Please reload the page.',
       'outdated.client': 'This version of the app is older than the server’s. Please reload to carry on – times not sent yet are kept and sent afterwards.',
       'outdated.storage': 'The data in this browser comes from a newer version of the app. Please reload to carry on.',
@@ -4414,15 +4423,24 @@ function buildParticipantRow(participant, opts){
       m.textContent = meta;
       main.appendChild(m);
     }
-    // The groups it is in directly, once there are groups at all.
-    const groups = S().groups.filter(g => g.members.some(m => m.type === 'participant' && m.id === participant.id));
+    // The groups it is in directly, once there are groups at all. Several groups of a type with
+    // one group per member are allowed (concurrent edits), but flagged.
+    const s = S();
+    const ref = {type:'participant', id:participant.id};
+    const groups = s.groups.filter(g => g.members.some(m => sameTarget(m, ref)));
     if(groups.length){
+      const clashing = new Set(exclusiveClashes(s, ref));
       const tags = document.createElement('div');
       tags.className = 'group-tags';
       tags.replaceChildren(...groups.map(g => {
         const tag = document.createElement('span');
         tag.className = 'group-tag';
         tag.textContent = g.name;
+        if(clashing.has(g.typeId)){
+          tag.classList.add('clash');
+          tag.textContent = '⚠ ' + g.name;
+          tag.title = t('groups.clash', {type: findGroupType(s, g.typeId).name});
+        }
         return tag;
       }));
       main.appendChild(tags);
@@ -5467,6 +5485,17 @@ function membersText(g){
 }
 /** Groups of a type (null: without a type), in their order. */
 function groupsOfType(s, typeId){ return s.groups.filter(g => g.typeId === typeId); }
+/** The exclusive group types in which `ref` is a direct member of more than one group. */
+function exclusiveClashes(s, ref){
+  return s.groupTypes.filter(x => x.exclusive
+    && s.groups.filter(g => g.typeId === x.id && g.members.some(m => sameTarget(m, ref))).length > 1).map(x => x.id);
+}
+/** How many participants and groups are in more than one group of an exclusive type. */
+function clashCount(s, typeId){
+  const counts = new Map();
+  for(const g of groupsOfType(s, typeId)) for(const m of g.members) counts.set(refKey(m), (counts.get(refKey(m)) || 0) + 1);
+  return [...counts.values()].filter(n => n > 1).length;
+}
 /** An inline name field committing on change, like the event types' names. */
 function inlineName(value, editable, label, commit){
   const input = document.createElement('input');
@@ -5539,6 +5568,7 @@ function buildGroupTypeBlock(x){
   const head = document.createElement('div');
   head.className = 'group-type-head';
   head.dataset.edit = 'normal';
+  block.appendChild(head);
   if(x){
     const name = inlineName(x.name, can('groupType.update'), t('groups.title'), (input) => {
       const value = cleanText(input.value), current = findGroupType(S(), x.id);
@@ -5566,12 +5596,18 @@ function buildGroupTypeBlock(x){
     });
     del.hidden = !can('groupType.delete');
     head.append(name, excl, del);
+    const clashes = x.exclusive ? clashCount(s, x.id) : 0;
+    if(clashes){
+      const warn = document.createElement('div');
+      warn.className = 'group-clash';
+      warn.textContent = '⚠ ' + (clashes === 1 ? t('groups.clashOne') : t('groups.clashCount', {n: clashes}));
+      block.appendChild(warn);
+    }
   }else{
     const h = document.createElement('h4');
     h.textContent = t('groups.untyped');
     head.appendChild(h);
   }
-  block.appendChild(head);
   groupsOfType(s, x ? x.id : null).forEach(g => block.appendChild(buildGroupRow(g)));
   const add = document.createElement('button');
   add.type = 'button';
