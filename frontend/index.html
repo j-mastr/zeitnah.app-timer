@@ -185,6 +185,9 @@
   .search-results{position:absolute; top:100%; left:0; right:0; background:var(--panel); border:1px solid var(--border); border-radius:8px; margin-top:4px; max-height:220px; overflow:auto; z-index:30; box-shadow:0 8px 24px rgba(0,0,0,.3);}
   .search-results .res{padding:9px 12px; font-size:13px; cursor:pointer;}
   .search-results .res.sel{background:var(--panel2);}
+  .search-results .res-hint{margin-left:8px; font-size:11px; color:var(--muted);}
+  /* A ranked group (e.g. a fleet waiting for its start). */
+  .sorted-row.is-group .nm::before{content:'⧉ '; color:var(--muted);}
 
   .search-empty{padding:9px 12px; font-size:12px; color:var(--muted);}
 
@@ -760,7 +763,7 @@ const DEFAULT_SPORT = 'generic';
  * no longer apply the events correctly, and add a step to SCHEMA_MIGRATIONS (mirrored in PHP).
  * States without `schema` are version 1. See docs/groups.md, "Schema versioning".
  */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 // Migration steps: version => function turning a raw state of that version into the next one.
 // They run on raw data (before normalizeState), so they must cope with legacy fields too.
 const SCHEMA_MIGRATIONS = {
@@ -779,6 +782,9 @@ const SCHEMA_MIGRATIONS = {
   }) : s.captures}),
   // Version 3: group types and groups.
   2: (s) => Object.assign({groupTypes: [], groups: []}, s),
+  // Version 4: a ranking holds refs (participants or groups) instead of participant ids.
+  3: (s) => Object.assign({}, s, {worksets: Array.isArray(s.worksets) ? s.worksets.map(w => (w && typeof w === 'object' && Array.isArray(w.ranking)
+    ? Object.assign({}, w, {ranking: w.ranking.map(id => (typeof id === 'string' ? {type:'participant', id} : id))}) : w)) : s.worksets}),
 };
 /*
  * Capture targets and group members: references {type, id} to participants or groups.
@@ -2033,7 +2039,8 @@ function normalizeState(s){
       id: w.id,
       number: Number.isInteger(w.number) && w.number > 0 ? w.number : 1 + Math.max(0, ...worksets.map(x => x.number)),
       name: typeof w.name === 'string' && w.name ? w.name : null,
-      ranking: Array.isArray(w.ranking) ? [...new Set(w.ranking.filter(id => participantIds.has(id)))] : [],
+      ranking: Array.isArray(w.ranking) ? w.ranking.filter((r, i, all) => r && TARGET_TYPES.includes(r.type) && typeof r.id === 'string'
+        && (r.type === 'group' || participantIds.has(r.id)) && all.findIndex(x => x && sameTarget(x, r)) === i).map(r => ({type:r.type, id:r.id})) : [],
       captureKind: knownKind(w.captureKind) ? w.captureKind : DEFAULT_KIND,
     });
   }
@@ -2067,11 +2074,13 @@ function cleanText(v){ return v.replace(/^\s+|\s+$/gu, '').replace(/\s+/gu, ' ')
 function nameKey(v){ return cleanText(v).toLowerCase(); }
 function reqId(v, field){ if(typeof v !== 'string' || !ID_RE.test(v)) throw new OpError('invalid_' + field); return v; }
 function optId(v, field){ return v === null || v === undefined ? null : reqId(v, field); }
-function reqTarget(v){
+/** A participant or group reference. */
+function reqRef(v, error){
   const type = v && typeof v === 'object' ? v.type : undefined, id = v && typeof v === 'object' ? v.id : undefined;
-  if(!TARGET_TYPES.includes(type) || typeof id !== 'string' || !ID_RE.test(id)) throw new OpError('invalid_capture_target');
+  if(!TARGET_TYPES.includes(type) || typeof id !== 'string' || !ID_RE.test(id)) throw new OpError(error);
   return {type, id};
 }
+function reqTarget(v){ return reqRef(v, 'invalid_capture_target'); }
 function sameTarget(a, b){ return a.type === b.type && a.id === b.id; }
 function refKey(r){ return r.type + ':' + r.id; }
 /** Members are kept in one order (type, then id), so the same set is always the same list. */
@@ -2182,11 +2191,28 @@ function optWorksetNumber(v){
   if(!Number.isInteger(v) || v < 1 || v > 1000000) throw new OpError('invalid_workset_number');
   return v;
 }
-/** A list of participant ids; null means an empty ranking. */
+/**
+ * A ranking given in full (restoring a workset, a merge): refs, or participant ids as in
+ * earlier versions; without duplicates. Null means an empty ranking.
+ */
 function reqRankingList(v){
   if(v === null || v === undefined) return [];
   if(!Array.isArray(v) || v.length > 5000) throw new OpError('invalid_ranking');
-  return v.map(id => reqId(id, 'participant_id'));
+  const out = [];
+  for(const item of v){
+    const r = typeof item === 'string' ? {type:'participant', id:reqId(item, 'participant_id')} : reqRef(item, 'invalid_ranking_ref');
+    if(!out.some(x => sameTarget(x, r))) out.push(r);
+  }
+  return out;
+}
+/** What a ranking operation is about: its `ref`, or the `participantId` of earlier versions. */
+function rankedRef(op){
+  if(op.ref !== undefined && op.ref !== null) return reqRef(op.ref, 'invalid_ranking_ref');
+  return {type:'participant', id:reqId(op.participantId, 'participant_id')};
+}
+function withoutRanked(s, ref){
+  for(const w of s.worksets) w.ranking = w.ranking.filter(x => !sameTarget(x, ref));
+  return s;
 }
 /** The kind of a capture: a built-in or custom kind id; null (older clients) means finish. */
 function reqCaptureKind(v){
@@ -2249,7 +2275,7 @@ function applyOp(s, op){
     case 'participant.delete': {
       const id = reqId(op.participantId, 'participant_id');
       s.participants = s.participants.filter(b => b.id !== id);
-      for(const w of s.worksets) w.ranking = w.ranking.filter(x => x !== id);
+      withoutRanked(s, {type:'participant', id});
       return withoutMember(s, {type:'participant', id});
     }
     case 'capture.add': {
@@ -2267,7 +2293,7 @@ function applyOp(s, op){
       // A marker (e.g. a protest) annotates participants without them passing the point.
       // Only the capturing workset's ranking is affected.
       const w = worksetId === null ? null : findWorkset(s, worksetId);
-      if(w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => !targets.some(t => t.type === 'participant' && t.id === x));
+      if(w && kindRole(s, kind) !== 'marker') w.ranking = w.ranking.filter(x => !targets.some(t => sameTarget(t, x)));
       return s;
     }
     case 'capture.assign': {
@@ -2382,6 +2408,7 @@ function applyOp(s, op){
       const id = reqId(op.groupId, 'group_id');
       // Captures keep the reference; other groups lose it as a member.
       s.groups = s.groups.filter(g => g.id !== id);
+      withoutRanked(s, {type:'group', id});
       return withoutMember(s, {type:'group', id});
     }
     case 'group.members.add': {
@@ -2408,7 +2435,7 @@ function applyOp(s, op){
       if(findWorkset(s, id) || (name !== null && findWorksetByName(s, name))) return s;
       // The optional fields restore a deleted workset exactly (undo).
       const entry = {id, number: number !== null ? number : nextWorksetNumber(s), name,
-        ranking: [...new Set(ranking)].filter(p => findParticipant(s, p)), captureKind: isKnownKind(s, kind) ? kind : DEFAULT_KIND};
+        ranking: ranking.filter(r => refExists(s, r)), captureKind: isKnownKind(s, kind) ? kind : DEFAULT_KIND};
       const pos = before === null ? -1 : s.worksets.findIndex(x => x.id === before);
       s.worksets.splice(pos < 0 ? s.worksets.length : pos, 0, entry);
       return s;
@@ -2439,26 +2466,30 @@ function applyOp(s, op){
       if(w && isKnownKind(s, kind)) w.captureKind = kind;
       return s;
     }
+    // What is ranked: `ref` (a participant or a group), or the `participantId` of earlier versions.
     case 'workset.ranking.add': {
       const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
-      const id = reqId(op.participantId, 'participant_id');
-      if(w && findParticipant(s, id) && !w.ranking.includes(id)) w.ranking.push(id);
+      const ref = rankedRef(op);
+      if(w && refExists(s, ref) && !w.ranking.some(x => sameTarget(x, ref))) w.ranking.push(ref);
       return s;
     }
     case 'workset.ranking.remove': {
       const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
-      const id = reqId(op.participantId, 'participant_id');
-      if(w) w.ranking = w.ranking.filter(x => x !== id);
+      const ref = rankedRef(op);
+      if(w) w.ranking = w.ranking.filter(x => !sameTarget(x, ref));
       return s;
     }
     case 'workset.ranking.move': {
+      // Before `before` (a ref) or the participant `beforeId` of earlier versions; null = end.
       const w = findWorkset(s, reqId(op.worksetId, 'workset_id'));
-      const id = reqId(op.participantId, 'participant_id');
-      const before = optId(op.beforeId, 'before_id');
-      if(!w || !w.ranking.includes(id)) return s;
-      const ranking = w.ranking.filter(x => x !== id);
-      const pos = (before === null || before === id) ? -1 : ranking.indexOf(before);
-      if(pos < 0) ranking.push(id); else ranking.splice(pos, 0, id);
+      const ref = rankedRef(op);
+      let before;
+      if(op.before !== undefined && op.before !== null) before = reqRef(op.before, 'invalid_ranking_ref');
+      else{ const beforeId = optId(op.beforeId, 'before_id'); before = beforeId === null ? null : {type:'participant', id:beforeId}; }
+      if(!w || !w.ranking.some(x => sameTarget(x, ref))) return s;
+      const ranking = w.ranking.filter(x => !sameTarget(x, ref));
+      const pos = (before === null || sameTarget(before, ref)) ? -1 : ranking.findIndex(x => sameTarget(x, before));
+      if(pos < 0) ranking.push(ref); else ranking.splice(pos, 0, ref);
       w.ranking = ranking;
       return s;
     }
@@ -2494,7 +2525,7 @@ function applyOp(s, op){
       }
       // Worksets: a new one keeps its kind and gets the next number; an existing one keeps
       // its kind, and only its ranking is extended.
-      const worksetMap = new Map();
+      const worksetMap = new Map(), rankings = [];
       for(const raw of worksets){
         if(!raw || typeof raw !== 'object') throw new OpError('invalid_workset');
         const id = reqId(raw.id, 'workset_id');
@@ -2508,10 +2539,8 @@ function applyOp(s, op){
           s.worksets.push(target);
         }
         worksetMap.set(id, target.id);
-        for(const pid of ranking){
-          const mapped = idMap.get(pid);
-          if(mapped !== undefined && !target.ranking.includes(mapped)) target.ranking.push(mapped);
-        }
+        // Extended once the groups are known too (a ranking may hold groups).
+        rankings.push([target, ranking]);
       }
       // Group types are matched by id or name; groups by id or by (type, name). Their members
       // are united, once every group exists, mapped like everything else.
@@ -2539,6 +2568,12 @@ function applyOp(s, op){
         return map.has(r.id) ? {type:r.type, id:map.get(r.id)} : null;
       };
       for(const [id, members] of sourceMembers) addMembers(s, groupMap.get(id), members.map(mapRef).filter(Boolean));
+      for(const [target, ranking] of rankings){
+        for(const r of ranking){
+          const mapped = mapRef(r);
+          if(mapped && !target.ranking.some(x => sameTarget(x, mapped))) target.ranking.push(mapped);
+        }
+      }
       for(const c of captures){
         if(!c || typeof c !== 'object') throw new OpError('invalid_capture');
         const id = reqId(c.id, 'capture_id');
@@ -2690,9 +2725,12 @@ function operationPath(s, op){
 // Operations that can't be undone; they clear the history instead.
 const HISTORY_BARRIER_OPS = new Set(['race.archive', 'state.merge']);
 
-function rankedNext(w, id){
-  const i = w.ranking.indexOf(id);
-  return i < 0 ? null : (w.ranking[i + 1] || null);
+/** Index of a ref key ('participant:p1', 'group:g1') in a workset's ranking, or -1. */
+const rankedIndex = (w, key) => w.ranking.findIndex(r => refKey(r) === key);
+/** The ref ranked right after `ref` in a workset, or null (last, or not ranked). */
+function rankedNext(w, ref){
+  const i = rankedIndex(w, refKey(ref));
+  return i < 0 || i + 1 >= w.ranking.length ? null : w.ranking[i + 1];
 }
 /*
  * Parts are [kind, id, worksetId]. Ranking parts ('ranked', 'next') and 'captureKind' belong to
@@ -2708,8 +2746,9 @@ function footprint(s, parts){
       case 'name': return s.name;
       case 'sport': return s.sport;
       case 'participant': { const p = findParticipant(s, id); return p ? p.name : null; }
-      case 'ranked': return w ? w.ranking.includes(id) : null;
-      case 'next': return w && w.ranking.includes(id) ? (rankedNext(w, id) || '$end') : null;
+      // Ranking parts name a ref key ('participant:p1', 'group:g1').
+      case 'ranked': return w ? rankedIndex(w, id) >= 0 : null;
+      case 'next': { if(!w || rankedIndex(w, id) < 0) return null; const n = w.ranking[rankedIndex(w, id) + 1]; return n ? refKey(n) : '$end'; }
       case 'capture': { const c = findCapture(s, id); return c ? [c.ts, c.tzOffset, c.targets, c.kind, c.worksetId] : null; }
       case 'captureKind': return w ? w.captureKind : null;
       case 'kind': { const k = findKind(s, id); return k ? [k.name, k.role] : null; }
@@ -2737,22 +2776,22 @@ function footprint(s, parts){
     }
   }));
 }
-/** Operations that put a participant back into a workset's ranking at the position it has in `s`. */
-function rerankOps(s, id, worksetId){
+/** Operations that put a participant or group back into a workset's ranking at the position it has in `s`. */
+function rerankOps(s, ref, worksetId){
   const w = worksetId ? findWorkset(s, worksetId) : null;
-  if(!id || !w || !w.ranking.includes(id)) return [];
-  return [{type:'workset.ranking.add', worksetId, participantId:id},
-    {type:'workset.ranking.move', worksetId, participantId:id, beforeId:rankedNext(w, id)}];
+  if(!ref || !w || rankedIndex(w, refKey(ref)) < 0) return [];
+  return [{type:'workset.ranking.add', worksetId, ref:{type:ref.type, id:ref.id}},
+    {type:'workset.ranking.move', worksetId, ref:{type:ref.type, id:ref.id}, before:rankedNext(w, ref)}];
 }
 /**
- * Operations that put the participants among `targets` back into a workset's ranking at their
+ * Operations that put the targets among `targets` back into a workset's ranking at their
  * positions in `s` — the last one first, so the neighbour each is moved before is back already.
  */
 function rerankTargetsOps(s, targets, worksetId){
   const w = worksetId ? findWorkset(s, worksetId) : null;
   if(!w) return [];
-  return targets.filter(t => w.ranking.includes(t.id)).sort((a, b) => w.ranking.indexOf(b.id) - w.ranking.indexOf(a.id))
-    .flatMap(t => rerankOps(s, t.id, worksetId));
+  const index = (t) => rankedIndex(w, refKey(t));
+  return targets.filter(t => index(t) >= 0).sort((a, b) => index(b) - index(a)).flatMap(t => rerankOps(s, t, worksetId));
 }
 /** Operations that put a participant or group back into the groups it is a member of in `s`. */
 function memberOfOps(s, ref){
@@ -2764,8 +2803,8 @@ function changes(s, op){
   try{ after = applyOp(clone(s), clone(op)); }catch(e){ return null; }
   return JSON.stringify(after) === JSON.stringify(s) ? null : after;
 }
-/** The parts for a participant's place in every workset's ranking. */
-const rankedParts = (s, id) => s.worksets.map(w => ['ranked', id, w.id]);
+/** The parts for a participant's or group's place in every workset's ranking. */
+const rankedParts = (s, ref) => s.worksets.map(w => ['ranked', refKey(ref), w.id]);
 /**
  * The history entry for `op` applied to state `s`: {type, parts, undo:[ops], redo:[ops]},
  * or null when the operation has nothing to undo (unknown references, invalid input).
@@ -2784,7 +2823,7 @@ function historyEntry(s, op){
       if(!added.length) return null;
       return {
         type:op.type,
-        parts: added.flatMap(p => [['participant', p.id], ...rankedParts(s, p.id)]),
+        parts: added.flatMap(p => [['participant', p.id], ...rankedParts(s, {type:'participant', id:p.id})]),
         undo: added.map(p => ({type:'participant.delete', participantId:p.id})),
         // Only what was really added: the rest were duplicates the first time too.
         redo: [{type:'participants.add', participants: added.map(p => ({id:p.id, name:p.name}))}],
@@ -2798,8 +2837,8 @@ function historyEntry(s, op){
       const p = findParticipant(s, op.participantId);
       if(!p) return null;
       const ref = {type:'participant', id:p.id};
-      return entry([['participant', p.id], ...rankedParts(s, p.id), ['memberOf', 'participant:' + p.id]],
-        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, p.id, w.id)), ...memberOfOps(s, ref)]);
+      return entry([['participant', p.id], ...rankedParts(s, ref), ['memberOf', 'participant:' + p.id]],
+        [{type:'participants.add', participants:[{id:p.id, name:p.name}]}, ...s.worksets.flatMap(w => rerankOps(s, ref, w.id)), ...memberOfOps(s, ref)]);
     }
     case 'groupType.add': {
       let x;
@@ -2833,9 +2872,11 @@ function historyEntry(s, op){
       const i = s.groups.findIndex(g => g.id === op.groupId);
       if(i < 0) return null;
       const g = s.groups[i];
-      // Other groups lose it as a member: undo puts it back there.
-      return entry([['group', g.id], ['memberOf', 'group:' + g.id]],
-        [{type:'group.add', group:clone(g), beforeId: s.groups[i + 1] ? s.groups[i + 1].id : null}, ...memberOfOps(s, {type:'group', id:g.id})]);
+      // Other groups and the rankings lose it: undo puts it back there.
+      const ref = {type:'group', id:g.id};
+      return entry([['group', g.id], ['memberOf', 'group:' + g.id], ...rankedParts(s, ref)],
+        [{type:'group.add', group:clone(g), beforeId: s.groups[i + 1] ? s.groups[i + 1].id : null}, ...memberOfOps(s, ref),
+          ...s.worksets.flatMap(w => rerankOps(s, ref, w.id))]);
     }
     case 'group.members.add': case 'group.members.remove': {
       const g = findGroup(s, op.groupId);
@@ -2850,16 +2891,14 @@ function historyEntry(s, op){
         ...(removed.length ? [{type:'group.members.add', groupId:g.id, refs:removed}] : []),
       ]);
     }
-    case 'workset.ranking.add':
-      return entry([['ranked', op.participantId, op.worksetId]],
-        [{type:'workset.ranking.remove', worksetId:op.worksetId, participantId:op.participantId}]);
-    case 'workset.ranking.remove':
-      return entry([['ranked', op.participantId, op.worksetId]], rerankOps(s, op.participantId, op.worksetId));
-    case 'workset.ranking.move': {
+    case 'workset.ranking.add': case 'workset.ranking.remove': case 'workset.ranking.move': {
+      let ref;
+      try{ ref = rankedRef(op); }catch(e){ return null; }
       const w = findWorkset(s, op.worksetId);
       if(!w) return null;
-      return entry([['next', op.participantId, w.id]],
-        [{type:'workset.ranking.move', worksetId:w.id, participantId:op.participantId, beforeId:rankedNext(w, op.participantId)}]);
+      if(op.type === 'workset.ranking.add') return entry([['ranked', refKey(ref), w.id]], [{type:'workset.ranking.remove', worksetId:w.id, ref}]);
+      if(op.type === 'workset.ranking.remove') return entry([['ranked', refKey(ref), w.id]], rerankOps(s, ref, w.id));
+      return entry([['next', refKey(ref), w.id]], [{type:'workset.ranking.move', worksetId:w.id, ref, before:rankedNext(w, ref)}]);
     }
     case 'capture.add': {
       const c = op.capture;
@@ -2867,8 +2906,8 @@ function historyEntry(s, op){
       let targets;
       try{ targets = captureTargetsOf(c); }catch(e){ return null; }
       const ws = typeof c.worksetId === 'string' ? c.worksetId : null;
-      // Recording a time for ranked participants takes them out of the ranking: undo puts them back.
-      return entry([['capture', c.id], ...(ws ? targets.map(t => ['ranked', t.id, ws]) : [])],
+      // Recording a time for ranked targets takes them out of the ranking: undo puts them back.
+      return entry([['capture', c.id], ...(ws ? targets.map(t => ['ranked', refKey(t), ws]) : [])],
         [{type:'capture.delete', captureId:c.id}, ...rerankTargetsOps(s, targets, ws)]);
     }
     case 'capture.setKind': {
@@ -2901,7 +2940,7 @@ function historyEntry(s, op){
       if(!c) return null;
       const ws = c.worksetId;
       // Adding the capture back would take its participants out of the ranking: keep them there.
-      return entry([['capture', c.id], ...(ws ? c.targets.map(t => ['ranked', t.id, ws]) : [])],
+      return entry([['capture', c.id], ...(ws ? c.targets.map(t => ['ranked', refKey(t), ws]) : [])],
         [{type:'capture.add', capture:{id:c.id, ts:c.ts, tzOffset:c.tzOffset, targets:clone(c.targets), kind:c.kind, worksetId:ws}},
           ...rerankTargetsOps(s, c.targets, ws)]);
     }
@@ -3978,7 +4017,19 @@ function storeDeviceWorkset(id){
   backend.announceWorkset(id || null);
 }
 function currentWorkset(s = S()){ return deviceWorkset ? findWorkset(s, deviceWorkset) || null : null; }
+/** This device's station's ranking: refs to participants and groups (e.g. a fleet waiting for its start). */
 const currentRanking = () => { const w = currentWorkset(); return w ? w.ranking : []; };
+const participantRef = (id) => ({type:'participant', id});
+/** Position of a participant or group in this device's ranking, or -1. */
+const rankedAt = (ref) => currentRanking().findIndex(r => sameTarget(r, ref));
+/** Parses a ref key ('participant:p1', 'group:g1'). */
+function parseRefKey(key){ const i = key.indexOf(':'); return {type:key.slice(0, i), id:key.slice(i + 1)}; }
+/** The name of a participant or group, or the "deleted" label. */
+function refName(s, r){
+  if(r.type === 'group'){ const g = findGroup(s, r.id); return g ? g.name : t('groups.deleted'); }
+  const p = findParticipant(s, r.id);
+  return p ? p.name : t('captures.deletedParticipant');
+}
 /** The kind this device's captures get: its workset's, finish without one. */
 const stickyKind = () => { const w = currentWorkset(); return w ? w.captureKind : DEFAULT_KIND; };
 const worksetLabel = (w) => w.name || t('worksets.defaultName', {n: w.number});
@@ -4371,22 +4422,11 @@ function buildParticipantRow(participant, opts){
   const row = document.createElement('li');
   row.className = opts.sorted ? 'sorted-row' : 'participant-row';
   row.dataset.id = participant.id;
+  const pref = participantRef(participant.id);
 
   if(opts.sorted){
-    const handle = document.createElement('span');
-    handle.className = 'drag-handle';
-    handle.textContent = '⠿';
-    handle.dataset.edit = 'critical';
-    handle.setAttribute('aria-label', t('action.drag'));
-    row.appendChild(handle);
-    initSortedDrag(handle);
-    const key = shortcutIds().indexOf(participant.id);
-    if(key >= 0){
-      const kbd = document.createElement('span');
-      kbd.className = 'kbd';
-      kbd.textContent = String(key + 1);
-      row.appendChild(kbd);
-    }
+    row.dataset.ref = refKey(pref);
+    sortedRowStart(row, pref);
   }
 
   const main = document.createElement('span');
@@ -4414,7 +4454,7 @@ function buildParticipantRow(participant, opts){
     nm.className = 'nm';
     nm.dataset.edit = 'critical';
     nm.textContent = participant.name;
-    onDoubleActivate(nm, () => recordTime(participant.id));
+    onDoubleActivate(nm, () => recordTime(pref));
     main.appendChild(nm);
     const meta = metaText(participant.id);
     if(meta){
@@ -4445,10 +4485,10 @@ function buildParticipantRow(participant, opts){
       }));
       main.appendChild(tags);
     }
-    if(!opts.sorted && currentRanking().includes(participant.id)){
+    if(!opts.sorted && rankedAt(pref) >= 0){
       const pill = document.createElement('div');
       pill.className = 'rank-pill';
-      pill.textContent = t('sorted.pill', {n: currentRanking().indexOf(participant.id) + 1});
+      pill.textContent = t('sorted.pill', {n: rankedAt(pref) + 1});
       main.appendChild(pill);
     }
   }
@@ -4467,15 +4507,13 @@ function buildParticipantRow(participant, opts){
     ops.appendChild(b);
   };
   if(opts.sorted){
-    button('▲', 'action.up', 'critical', () => moveInRanking(participant.id, -1));
-    button('▼', 'action.down', 'critical', () => moveInRanking(participant.id, 1));
-    button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
+    rankedRowButtons(button, pref);
   }else{
     if(can('participant.rename')) button('✎', 'action.rename', 'normal', () => { editingParticipantId = participant.id; renderAll(); });
-    if(currentRanking().includes(participant.id)){
-      button('↩', 'action.unsort', 'critical', () => unrank(participant.id));
+    if(rankedAt(pref) >= 0){
+      button('↩', 'action.unsort', 'critical', () => unrank(pref));
     }else{
-      button('→', 'action.sort', 'critical', () => rank(participant.id));
+      button('→', 'action.sort', 'critical', () => rank(pref));
       if(can('participant.delete')) button('✕', 'action.delete', 'normal', async () => {
         const ok = await askConfirm({title:t('participants.deleteTitle'), text:t('participants.deleteText', {name:participant.name}), ok:t('action.delete'), danger:true});
         if(ok) perform({type:'participant.delete', participantId:participant.id});
@@ -4487,13 +4525,75 @@ function buildParticipantRow(participant, opts){
 }
 
 // ---------- sorted list ----------
-/** Adds a participant to this device's station's ranking (joining or creating a station first). */
-function rank(participantId){
-  return performOnWorkset(worksetId => ({type:'workset.ranking.add', worksetId, participantId}));
+/** Adds a participant or group to this device's station's ranking (joining or creating a station first). */
+function rank(ref){
+  return performOnWorkset(worksetId => ({type:'workset.ranking.add', worksetId, ref}));
 }
-function unrank(participantId){
+function unrank(ref){
   const w = currentWorkset();
-  if(w) perform({type:'workset.ranking.remove', worksetId:w.id, participantId});
+  if(w) perform({type:'workset.ranking.remove', worksetId:w.id, ref});
+}
+/** Drag handle and key badge at the start of a ranking row. */
+function sortedRowStart(row, ref){
+  const handle = document.createElement('span');
+  handle.className = 'drag-handle';
+  handle.textContent = '⠿';
+  handle.dataset.edit = 'critical';
+  handle.setAttribute('aria-label', t('action.drag'));
+  row.appendChild(handle);
+  initSortedDrag(handle);
+  const key = shortcutKeys().indexOf(refKey(ref));
+  if(key >= 0){
+    const kbd = document.createElement('span');
+    kbd.className = 'kbd';
+    kbd.textContent = String(key + 1);
+    row.appendChild(kbd);
+  }
+}
+function rankedRowButtons(button, ref){
+  button('▲', 'action.up', 'critical', () => moveInRanking(ref, -1));
+  button('▼', 'action.down', 'critical', () => moveInRanking(ref, 1));
+  button('↩', 'action.unsort', 'critical', () => unrank(ref));
+}
+/*
+ * A ranked group (e.g. a fleet waiting for its start): like a participant's row, with the
+ * group's type and number of members. A time recorded for it applies to all of them.
+ */
+function buildRankedGroupRow(g){
+  const s = S();
+  const ref = {type:'group', id:g.id};
+  const row = document.createElement('li');
+  row.className = 'sorted-row is-group';
+  row.dataset.ref = refKey(ref);
+  sortedRowStart(row, ref);
+  const main = document.createElement('span');
+  main.className = 'participant-main';
+  const nm = document.createElement('div');
+  nm.className = 'nm';
+  nm.dataset.edit = 'critical';
+  nm.textContent = g.name;
+  onDoubleActivate(nm, () => recordTime(ref));
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  const type = g.typeId ? findGroupType(s, g.typeId) : null;
+  const n = groupParticipantIds(s, g.id).size;
+  meta.textContent = (type ? type.name + ' · ' : '') + (n === 1 ? t('groups.membersOne') : t('groups.membersN', {n}));
+  main.append(nm, meta);
+  row.appendChild(main);
+  const ops = document.createElement('span');
+  ops.className = 'ops';
+  rankedRowButtons((label, titleKey, edit, onClick) => {
+    const b = document.createElement('button');
+    b.className = 'mini';
+    b.textContent = label;
+    b.title = t(titleKey);
+    b.setAttribute('aria-label', b.title);
+    b.dataset.edit = edit;
+    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    ops.appendChild(b);
+  }, ref);
+  row.appendChild(ops);
+  return row;
 }
 const sortedList = document.getElementById('sortedList');
 function renderSorted(){
@@ -4508,21 +4608,26 @@ function renderSorted(){
   sortedList.innerHTML = '';
   document.getElementById('sortedCount').textContent = w.ranking.length;
   document.getElementById('sortedEmpty').hidden = w.ranking.length > 0;
-  w.ranking.forEach((id, i) => {
-    const participant = participantById(id);
+  w.ranking.forEach((r, i) => {
+    if(r.type === 'group'){
+      const g = findGroup(s, r.id);
+      if(g) sortedList.appendChild(buildRankedGroupRow(g));
+      return;
+    }
+    const participant = participantById(r.id);
     if(participant) sortedList.appendChild(buildParticipantRow(participant, {sorted:true, rankIndex:i}));
   });
 }
-function moveInRanking(id, dir){
+function moveInRanking(ref, dir){
   const w = currentWorkset();
   if(!w) return;
   const ranking = w.ranking;
-  const i = ranking.indexOf(id);
+  const i = ranking.findIndex(r => sameTarget(r, ref));
   const j = i + dir;
   if(i < 0 || j < 0 || j >= ranking.length) return;
-  // Moving up: insert before the previous participant. Moving down: insert before the participant after next.
-  const beforeId = dir < 0 ? ranking[j] : (ranking[j + 1] !== undefined ? ranking[j + 1] : null);
-  perform({type:'workset.ranking.move', worksetId:w.id, participantId:id, beforeId});
+  // Moving up: insert before the previous entry. Moving down: insert before the entry after next.
+  const before = dir < 0 ? ranking[j] : (ranking[j + 1] !== undefined ? ranking[j + 1] : null);
+  perform({type:'workset.ranking.move', worksetId:w.id, ref, before});
 }
 
 // Drag & drop with pointer events (mouse + touch). The listeners live on the document
@@ -4547,9 +4652,11 @@ function endDrag(){
   document.removeEventListener('pointerup', endDrag);
   document.removeEventListener('pointercancel', endDrag);
   const next = row.nextElementSibling;
-  const beforeId = next ? next.dataset.id : null;
+  const beforeKey = next ? next.dataset.ref : null;
   const w = currentWorkset();
-  if(w && beforeId !== originalNext) perform({type:'workset.ranking.move', worksetId:w.id, participantId:row.dataset.id, beforeId});
+  if(w && beforeKey !== originalNext){
+    perform({type:'workset.ranking.move', worksetId:w.id, ref:parseRefKey(row.dataset.ref), before: beforeKey ? parseRefKey(beforeKey) : null});
+  }
   renderSorted();
 }
 function initSortedDrag(handle){
@@ -4557,7 +4664,7 @@ function initSortedDrag(handle){
     e.preventDefault();
     const row = handle.closest('.sorted-row');
     const next = row.nextElementSibling;
-    dragCtx = {row, originalNext: next ? next.dataset.id : null};
+    dragCtx = {row, originalNext: next ? next.dataset.ref : null};
     row.classList.add('dragging');
     document.addEventListener('pointermove', onDragMove);
     document.addEventListener('pointerup', endDrag);
@@ -4568,65 +4675,79 @@ function initSortedDrag(handle){
 // ---------- quick-add search ----------
 const rankSearch = document.getElementById('rankSearch');
 const rankSearchResults = document.getElementById('rankSearchResults');
+/*
+ * Matches are {key, ref, name, hint}: participants and — once there are groups — groups (with
+ * their type as a hint), so a fleet can be queued for its start like a participant.
+ */
 let currentMatches = [];
-let selectedMatchId = null;   // kept across re-renders while the participant is still listed
+let selectedMatchKey = null;   // ref key, kept across re-renders while it is still listed
 function renderSearchResults(){
   const q = rankSearch.value.trim();
   rankSearchResults.innerHTML = '';
-  if(!q){ rankSearchResults.hidden = true; currentMatches = []; selectedMatchId = null; rankSearch.removeAttribute('aria-activedescendant'); return; }
-  const ranking = currentRanking();
-  currentMatches = S().participants
-    .filter(b => !ranking.includes(b.id))
-    .map(b => ({b, score:fuzzyScore(q, b.name)}))
+  if(!q){ rankSearchResults.hidden = true; currentMatches = []; selectedMatchKey = null; rankSearch.removeAttribute('aria-activedescendant'); return; }
+  const s = S();
+  const candidates = [
+    ...s.participants.map(b => ({ref:participantRef(b.id), name:b.name, hint:''})),
+    ...s.groups.map(g => { const x = g.typeId ? findGroupType(s, g.typeId) : null; return {ref:{type:'group', id:g.id}, name:g.name, hint: x ? x.name : t('groups.title')}; }),
+  ];
+  currentMatches = candidates
+    .filter(c => rankedAt(c.ref) < 0)
+    .map(c => ({c, score:fuzzyScore(q, c.name)}))
     .filter(x => x.score >= 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 8)
-    .map(x => x.b);
+    .map(x => ({...x.c, key:refKey(x.c.ref)}));
   if(!currentMatches.length){
     const d = document.createElement('div');
     d.className = 'search-empty';
     d.textContent = t('sorted.noMatch');
     rankSearchResults.appendChild(d);
   }
-  if(!currentMatches.some(b => b.id === selectedMatchId)) selectedMatchId = null;
-  currentMatches.forEach((b, i) => {
+  if(!currentMatches.some(m => m.key === selectedMatchKey)) selectedMatchKey = null;
+  currentMatches.forEach((m, i) => {
     const d = document.createElement('div');
-    d.className = 'res' + (b.id === selectedMatchId ? ' sel' : '');
+    d.className = 'res' + (m.key === selectedMatchKey ? ' sel' : '');
     d.id = 'rankMatch' + i;
     d.setAttribute('role', 'option');
-    d.setAttribute('aria-selected', b.id === selectedMatchId ? 'true' : 'false');
-    d.textContent = b.name;
+    d.setAttribute('aria-selected', m.key === selectedMatchKey ? 'true' : 'false');
+    d.textContent = m.name;
+    if(m.hint){
+      const h = document.createElement('span');
+      h.className = 'res-hint';
+      h.textContent = m.hint;
+      d.appendChild(h);
+    }
     d.addEventListener('mousedown', e => e.preventDefault());
-    d.addEventListener('click', () => { addFromSearch(b.id); rankSearch.focus(); });
+    d.addEventListener('click', () => { addFromSearch(m.ref); rankSearch.focus(); });
     rankSearchResults.appendChild(d);
-    if(b.id === selectedMatchId){
+    if(m.key === selectedMatchKey){
       rankSearch.setAttribute('aria-activedescendant', d.id);
       requestAnimationFrame(() => d.scrollIntoView({block: 'nearest'}));
     }
   });
-  if(!selectedMatchId) rankSearch.removeAttribute('aria-activedescendant');
+  if(!selectedMatchKey) rankSearch.removeAttribute('aria-activedescendant');
   rankSearchResults.hidden = false;
 }
 /** Moves the selection; without one, both directions start at the first match. */
 function moveSearchSelection(step){
   if(!currentMatches.length) return;
-  const i = currentMatches.findIndex(b => b.id === selectedMatchId);
-  selectedMatchId = currentMatches[i < 0 ? 0 : (i + step + currentMatches.length) % currentMatches.length].id;
+  const i = currentMatches.findIndex(m => m.key === selectedMatchKey);
+  selectedMatchKey = currentMatches[i < 0 ? 0 : (i + step + currentMatches.length) % currentMatches.length].key;
   renderSearchResults();
 }
-function addFromSearch(participantId){
-  rank(participantId);
+function addFromSearch(ref){
+  rank(ref);
   rankSearch.value = '';
   renderSearchResults();
 }
 rankSearch.addEventListener('input', renderSearchResults);
 rankSearch.addEventListener('keydown', (e) => {
-  const selected = currentMatches.find(b => b.id === selectedMatchId) || currentMatches[0];
-  if(e.key === 'Enter'){ e.preventDefault(); if(selected) addFromSearch(selected.id); }
+  const selected = currentMatches.find(m => m.key === selectedMatchKey) || currentMatches[0];
+  if(e.key === 'Enter'){ e.preventDefault(); if(selected) addFromSearch(selected.ref); }
   else if(e.key === 'ArrowDown'){ e.preventDefault(); moveSearchSelection(1); }
   else if(e.key === 'ArrowUp'){ e.preventDefault(); moveSearchSelection(-1); }
   // Tab picks up the list, but only while nothing is selected — otherwise it still leaves the field.
-  else if(e.key === 'Tab' && !e.shiftKey && !selectedMatchId && currentMatches.length){ e.preventDefault(); moveSearchSelection(1); }
+  else if(e.key === 'Tab' && !e.shiftKey && !selectedMatchKey && currentMatches.length){ e.preventDefault(); moveSearchSelection(1); }
   else if(e.key === 'Escape'){ rankSearch.value = ''; renderSearchResults(); rankSearch.blur(); }
 });
 document.addEventListener('click', (e) => { if(!e.target.closest('.search-wrap')) rankSearchResults.hidden = true; });
@@ -4693,8 +4814,7 @@ function renderParticipants(){
 
   let list = s.participants.map((b, i) => ({b, i}));
   if(groupFilter){ const ids = groupParticipantIds(s, groupFilter); list = list.filter(x => ids.has(x.b.id)); }
-  const ranking = currentRanking();
-  if(prefs.filterHideSorted) list = list.filter(x => !ranking.includes(x.b.id));
+  if(prefs.filterHideSorted) list = list.filter(x => rankedAt(participantRef(x.b.id)) < 0);
   if(prefs.filterOpen) list = list.filter(x => !participantCaptureInfo(x.b.id));
   const dir = prefs.sortDir === 'desc' ? -1 : 1;
   if(field === 'alpha'){
@@ -4762,31 +4882,34 @@ importFile.addEventListener('change', async () => {
 // In a dense finish the operator types the order the participants were ranked in (2-1-3),
 // without having to re-read the badges after every capture shifted the ranking.
 const SHORTCUT_HOLD_MS = 5000;
-let shortcutHold = null;   // {ids: [participantId], timer} while the mapping is frozen
+let shortcutHold = null;   // {keys: [ref key], timer} while the mapping is frozen
 
-/** Participant ids for the keys 1–9: the frozen mapping if one is held, else the ranking. */
-function shortcutIds(){
-  return shortcutHold ? shortcutHold.ids : currentRanking().slice(0, 9);
+/** Ref keys for the keys 1–9: the frozen mapping if one is held, else the ranking. */
+function shortcutKeys(){
+  return shortcutHold ? shortcutHold.keys : currentRanking().slice(0, 9).map(refKey);
 }
 /** Freezes the current mapping (or extends the freeze) for SHORTCUT_HOLD_MS. */
 function holdShortcuts(){
-  const ids = shortcutIds();
+  const keys = shortcutKeys();
   if(shortcutHold) clearTimeout(shortcutHold.timer);
-  shortcutHold = {ids, timer: setTimeout(() => { shortcutHold = null; renderAll(); }, SHORTCUT_HOLD_MS)};
+  shortcutHold = {keys, timer: setTimeout(() => { shortcutHold = null; renderAll(); }, SHORTCUT_HOLD_MS)};
 }
 
-function recordTime(participantId){
+/**
+ * Records a time now for `target` (a participant or group ref), unassigned with null, and
+ * without an argument for the first entry of this device's ranking (if any) — a ranked group
+ * gets the time for all of its members, e.g. the start of a fleet.
+ */
+function recordTime(target){
   const w = currentWorkset();
-  // Without an explicit participant the capture goes to the first sorted participant (if any).
-  const target = participantId !== undefined ? participantId : ((w && w.ranking[0]) || null);
+  const ref = target !== undefined ? target : ((w && w.ranking[0]) || null);
   const kind = effectiveKind();
-  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), targets: target ? [{type:'participant', id:target}] : [], kind, worksetId: w ? w.id : null};
+  const capture = {id:uid(), ts:Date.now(), tzOffset:currentTzOffset(), targets: ref ? [{type:ref.type, id:ref.id}] : [], kind, worksetId: w ? w.id : null};
   if(perform({type:'capture.add', capture})){
     // A one-shot kind applies to this capture only.
     if(nextKind){ nextKind = null; renderAll(); }
-    const participant = target ? participantById(target) : null;
     toast((kind === DEFAULT_KIND ? t('captures.recorded') : t('captures.recordedKind', {kind: kindLabel(kind)}))
-      + (participant ? ' – ' + participant.name : '') + ': ' + fmtTime(capture.ts, capture.tzOffset));
+      + (ref ? ' – ' + refName(S(), ref) : '') + ': ' + fmtTime(capture.ts, capture.tzOffset));
   }
 }
 captureBtn.addEventListener('click', () => recordTime());
@@ -4934,11 +5057,11 @@ document.addEventListener('keydown', (e) => {
   }
   const m = /^(Digit|Numpad)([1-9])$/.exec(e.code);
   if(m && !e.repeat){
-    const participantId = shortcutIds()[parseInt(m[2], 10) - 1];
-    if(participantId && currentRanking().includes(participantId)){
+    const key = shortcutKeys()[parseInt(m[2], 10) - 1];
+    if(key && rankedAt(parseRefKey(key)) >= 0){
       e.preventDefault();
       holdShortcuts();
-      recordTime(participantId);
+      recordTime(parseRefKey(key));
     }
   }
 });
@@ -5068,7 +5191,6 @@ function renderCaptures(){
  */
 function buildTargetControls(s, c, editable){
   const targets = c.targets;
-  const parseKey = (key) => { const i = key.indexOf(':'); return {type:key.slice(0, i), id:key.slice(i + 1)}; };
   const nameOf = (r) => {
     if(r.type === 'group'){ const g = findGroup(s, r.id); return g ? g.name : t('groups.deleted'); }
     const p = participantById(r.id);
@@ -5131,7 +5253,7 @@ function buildTargetControls(s, c, editable){
     sel.value = current ? refKey(current) : '';
     sel.disabled = !editable;
     sel.addEventListener('change', () => {
-      if(!perform({type:'capture.assign', captureId:c.id, targets: sel.value ? [parseKey(sel.value)] : []})) renderCaptures();
+      if(!perform({type:'capture.assign', captureId:c.id, targets: sel.value ? [parseRefKey(sel.value)] : []})) renderCaptures();
     });
     out.push(sel);
   }
@@ -5144,7 +5266,7 @@ function buildTargetControls(s, c, editable){
     add.appendChild(option('', '+'));
     fill(add, (r) => !targets.some(x => sameTarget(x, r)));
     add.addEventListener('change', () => {
-      if(!add.value || !perform({type:'capture.target.add', captureId:c.id, target:parseKey(add.value)})) renderCaptures();
+      if(!add.value || !perform({type:'capture.target.add', captureId:c.id, target:parseRefKey(add.value)})) renderCaptures();
     });
     out.push(add);
   }
@@ -5734,10 +5856,9 @@ function applyMembers(){
   const s = S();
   const g = membersEdit && findGroup(s, membersEdit.groupId);
   if(!g){ closeMembers(); return; }
-  const parse = (key) => { const i = key.indexOf(':'); return {type:key.slice(0, i), id:key.slice(i + 1)}; };
   const current = new Set(g.members.map(refKey));
-  const added = [...membersEdit.selected].filter(k => !current.has(k)).map(parse);
-  const removed = [...current].filter(k => !membersEdit.selected.has(k)).map(parse);
+  const added = [...membersEdit.selected].filter(k => !current.has(k)).map(parseRefKey);
+  const removed = [...current].filter(k => !membersEdit.selected.has(k)).map(parseRefKey);
   const ops = [];
   if(added.length) ops.push({type:'group.members.add', groupId:g.id, refs:added});
   if(removed.length) ops.push({type:'group.members.remove', groupId:g.id, refs:removed});

@@ -62,7 +62,7 @@ product owner before implementing.
 | capture `targets` — what a capture applies to: refs `{type:'participant'\|'group', id}`; none = unassigned, several = e.g. a protest | Boot(e) / boat(s) |
 | `group` (`{id, typeId, name, members}`) — participants and other groups; a capture for a group applies to its members | e.g. Flotte A / Fleet A (texts in `common`: Gruppe / group) |
 | `groupType` (`{id, name, exclusive}`) — a dimension groups belong to (fleet, class, club …) | Gruppenart / group type |
-| `ranking` — a workset's queue of participants approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
+| `ranking` — a workset's queue of participants (or whole groups, refs like capture targets) approaching the line, in expected crossing order | Im Zieleinlauf / Approaching the finish |
 | capture `kind` — what a capture marks: built-in `start` / `split` / `finish` or a custom kind | Start / Tonnenrundung / Zieldurchlauf, Zeitart / event type |
 | custom kind (`{id, name, role}`, role `split` or `marker`) | e.g. Protest (a marker) |
 | `workset` (`{id, number, name, ranking, captureKind}`) — a station: its ranking + the kind its captures get | Station / station (all sports, in `common`) |
@@ -164,7 +164,8 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   the wall-clock time it was taken at. `tzOffset` is `null` only for data from earlier
   versions; those captures fall back to this device's zone.
   - If the ranking of the device's station is non-empty, the capture is assigned to its
-    **first** participant and that participant leaves that ranking (not for a marker kind, see
+    **first** entry — a participant, or a group (e.g. a fleet: the time applies to all of its
+    members) — and that entry leaves that ranking (not for a marker kind, see
     Capture kinds). Otherwise the capture is stored unassigned. The capture gets the one-shot
     kind if one is armed, else the station's kind (`effectiveKind()`), and the station's id as
     `worksetId` (null while the device has no station, see Stations).
@@ -185,7 +186,7 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
 - The 1–9 mapping **freezes for 5 s** (`SHORTCUT_HOLD_MS`) after each such capture, and every
   further key press extends the freeze. In a dense field the operator can type the order the
   participants were ranked in — ranked 1-2-3 but arriving 2-1-3 is typed `2 1 3`, not
-  `2 1 1` — without re-reading the badges between captures. `shortcutIds()` returns the
+  `2 1 1` — without re-reading the badges between captures. `shortcutKeys()` returns the
   frozen ids (`shortcutHold`) or the live ranking; badges render from it, so they stay put
   while frozen. A key whose participant has left the ranking does nothing, and a participant
   ranked during the freeze gets no badge until it expires (a timer re-renders then).
@@ -385,14 +386,18 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   dashed), and the CSV export gets one column per group type (headed by its name: the groups of
   that type the capture targets or its participants are in); the participant column names
   groups too.
-- Groups can't be ranked yet (phase 4 of `docs/groups.md`): a group's start is recorded as an
-  unassigned time and assigned to the group, or given to it with "+".
+- **Groups can be ranked** (see Ranking): a fleet queued for its start gets it with Space, its
+  number key or a double-tap on its row, and every member gets that start. Its row
+  (`buildRankedGroupRow()`, `.is-group`, ⧉ before the name) shows the type and the number of
+  members (nested groups resolved).
 - Groups are participant data: seen with `participant.view` (`Access::project()`), managed
   with `groupType.add|update|delete`, `group.add|update|delete` and `group.members` (station
   codes have none); all locked offline.
 
 ### Ranking ("Im Zieleinlauf" / "Approaching the finish")
-- Holds the expected crossing order of participants approaching the line together. Every
+- Holds the expected crossing order of participants approaching the line together — or of
+  whole groups (a fleet waiting for its start), as refs (`currentRanking()`, `rankedAt(ref)`;
+  rows carry `data-ref` = ref key). Every
   station has its own; the panel shows the one of the device's station and is **hidden while
   the device has none** (`body.no-workset`, same grid as archived minus the clock). Its title
   doesn't name the station: that is the station pill's job (see Stations).
@@ -404,7 +409,8 @@ here in `CLAUDE.md`, which stays the reference for what is implemented.
   (the first press of either selects the first suggestion, then it wraps) · **Tab** selects
   the first suggestion while nothing is selected, and otherwise still leaves the field ·
   **Escape** clears and leaves. The selection is kept by participant id while typing, as long
-  as that participant is still among the matches (`selectedMatchId`); the list is a
+  as that participant is still among the matches (`selectedMatchKey`, a ref key); once groups
+  exist the search also offers them, with their type as a hint (`.res-hint`); the list is a
   `role="listbox"` with `aria-activedescendant` on the input.
 - Reorder with ▲▼ buttons and drag & drop (drag handle ⠿; pointer events with document-level
   listeners so it works with touch and when the pointer leaves the handle). Only the handle
@@ -721,21 +727,21 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `race.setSport` | `sport` (one of `SPORTS`) | rejects with `invalid_sport` if not a known sport |
 | `participants.add` | `participants: [{id, name}]` (≤ 2000) | skips existing ids and case-insensitive name duplicates |
 | `participant.rename` | `participantId, name` | no-op if participant is gone |
-| `participant.delete` | `participantId` | also removes it from every ranking; captures keep the id |
-| `capture.add` | `capture: {id, ts, tzOffset, targets, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `targets` a list of ≤ 500 refs `{type:'participant', id}` (`invalid_capture_targets` / `invalid_capture_target`; duplicates dropped), missing/null = the legacy `participantId` (nullable); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown participants dropped; removes its participants from that workset's ranking unless the kind is a marker |
+| `participant.delete` | `participantId` | also removes it from every ranking and group; captures keep the id |
+| `capture.add` | `capture: {id, ts, tzOffset, targets, kind, worksetId}` | `tzOffset` optional (minutes east of UTC, −900…900, `null` = unknown); `targets` a list of ≤ 500 refs `{type:'participant'\|'group', id}` (`invalid_capture_targets` / `invalid_capture_target`; duplicates dropped), missing/null = the legacy `participantId` (nullable); `kind` optional (`null` = `finish`, otherwise an id, else `invalid_capture_kind`); `worksetId` optional id (kept even if unknown); ignored if id exists; unknown targets dropped; removes its targets (participants and groups) from that workset's ranking unless the kind is a marker |
 | `capture.assign` | `captureId`, `targets` (list, replaces all; unknown ones dropped) or legacy `participantId` (nullable; unknown → no-op) | no-op if the capture is gone; ranking untouched |
 | `capture.target.add` | `captureId, target` | appends if capture and participant exist, it isn't there yet and there are < 500; ranking untouched |
 | `capture.target.remove` | `captureId, target` | |
 | `capture.delete` | `captureId` | |
 | `capture.setKind` | `captureId, kind` | same `kind` rules as `capture.add`; no-op if the capture is gone; ranking untouched |
-| `workset.add` | `workset: {id, name?, number?, ranking?, captureKind?}`, `beforeId?` | skips an existing id and a name taken case-insensitively; name ≤ 40 (`invalid_workset_name`, null/blank = unnamed); `number` defaults to the highest + 1 (else 1…1000000, `invalid_workset_number`); `ranking` (≤ 5000 ids, `invalid_ranking`, unknown participants dropped) and `captureKind` (unknown → `finish`) and `beforeId` (insert before it, else append) restore a deleted workset (undo) |
+| `workset.add` | `workset: {id, name?, number?, ranking?, captureKind?}`, `beforeId?` | skips an existing id and a name taken case-insensitively; name ≤ 40 (`invalid_workset_name`, null/blank = unnamed); `number` defaults to the highest + 1 (else 1…1000000, `invalid_workset_number`); `ranking` (≤ 5000 refs or participant ids, `invalid_ranking` / `invalid_ranking_ref`, unknown ones and duplicates dropped) and `captureKind` (unknown → `finish`) and `beforeId` (insert before it, else append) restore a deleted workset (undo) |
 | `workset.rename` | `worksetId, name` (null/blank = unnamed) | no-op if the workset is gone |
 | `workset.delete` | `worksetId` | captures keep the id; the next one becomes the default |
 | `workset.makeDefault` | `worksetId` | moves it to the front |
 | `workset.setKind` | `worksetId, kind` | sets its `captureKind`; no-op unless the workset exists and the kind is built-in or an existing custom kind |
-| `workset.ranking.add` | `worksetId, participantId` | appends if workset and participant exist and it isn't ranked there |
-| `workset.ranking.remove` | `worksetId, participantId` | |
-| `workset.ranking.move` | `worksetId, participantId, beforeId` (null = end) | no-op if not ranked there |
+| `workset.ranking.add` | `worksetId, ref` (a participant or group; `invalid_ranking_ref`) or legacy `participantId` | appends if workset and ref exist and it isn't ranked there |
+| `workset.ranking.remove` | `worksetId, ref` or legacy `participantId` | |
+| `workset.ranking.move` | `worksetId, ref` or `participantId`, `before` (a ref) or legacy `beforeId` (a participant id); null = end | no-op if not ranked there; an unknown `before` = end |
 | `kind.add` | `kind: {id, name, role}` | built-in id → `invalid_kind_id`; name ≤ 40 (`invalid_kind_name`); role `split`/`marker` (`invalid_kind_role`); skips existing ids and case-insensitive name duplicates |
 | `kind.update` | `kindId, name, role` | replaces name and role; no-op if the kind is gone |
 | `kind.delete` | `kindId` | captures keep the id; resets every workset's `captureKind` that was this kind to `finish` |
@@ -744,7 +750,7 @@ unique id (`[A-Za-z0-9_-]{1,64}`), which makes resending idempotent. Entity ids 
 | `groupType.delete` | `groupTypeId` | its groups stay, with `typeId: null` |
 | `group.add` | `group: {id, typeId?, name, members?}`, `beforeId?` | name ≤ 40 (`invalid_group_name`), unique case-insensitively within its type (else skipped, like an existing id); unknown `typeId` → null; `members` (≤ 5000 refs, `invalid_group_members` / `invalid_group_member`) and `beforeId` restore a deleted group (undo) |
 | `group.update` | `groupId, name, typeId` | replaces both (unknown type → null); no-op if the group is gone |
-| `group.delete` | `groupId` | removes it from other groups' members; captures keep the reference |
+| `group.delete` | `groupId` | removes it from other groups' members and from every ranking; captures keep the reference |
 | `group.members.add` | `groupId, refs` | adds known refs that aren't members yet and don't close a cycle; members are kept sorted by `type:id` |
 | `group.members.remove` | `groupId, refs` | |
 | `state.merge` | `state: {schema, name, sport, participants, kinds, worksets, captures}` | non-destructive merge (see above); `schema` (missing/null = 1; otherwise an integer 1…`SCHEMA_VERSION`, else `invalid_schema`) — an older state is migrated first; `sport`, `kinds` and `worksets` optional, `sport` rejected with `invalid_sport` if unknown |
@@ -755,7 +761,7 @@ there is no implicit default workset in operations.
 Reducers are **strict about shapes** (throw an error code like `invalid_participant_name`) and
 **lenient about references** (missing participants/captures → no-op), so buffered operations can
 always be replayed after concurrent changes. State shape:
-`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], groupTypes:[{id,name,exclusive}], groups:[{id,typeId,name,members:[{type,id}]}], worksets:[{id,number,name,ranking:[participantId],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
+`{schema, name, archived, sport, participants:[{id,name}], kinds:[{id,name,role}], groupTypes:[{id,name,exclusive}], groups:[{id,typeId,name,members:[{type,id}]}], worksets:[{id,number,name,ranking:[{type,id}],captureKind}], captures:[{id,ts,tzOffset,targets:[{type,id}],kind,worksetId}]}`.
 States stored by earlier versions lack `kinds`, `worksets` and the captures' `kind` / `worksetId`,
 and carry a race-wide `ranking` / `captureKind`: `OperationReducer::upgrade()` fills in the
 former and drops the latter when the repository loads a race (a race starts without worksets),
@@ -766,6 +772,9 @@ step 1 → 2 on both sides; old operation shapes with `participantId` are still 
 version 3 added `groupTypes` and `groups`, and groups as capture targets. `participant.delete`
 also removes the participant from every group; `state.merge` merges group types (by id or
 name) and groups (by id or type + name), unites their members and maps capture targets.
+Version 4 turned rankings into refs, so groups can be ranked (migration: ids → participant
+refs; the ranking operations still take `participantId` / `beforeId`). A merge extends the
+rankings after the groups exist, mapping both kinds of refs.
 Capture order in the state is not meaningful; the UI sorts by `ts`. `sport` defaults to
 `'generic'` for new races (`OperationReducer::emptyState()` / `emptyState()` in the frontend).
 
@@ -893,8 +902,8 @@ debugging, and `php bin/console cache:clear` after changing config or service wi
 7. Update the operations table in this file.
 
 ## Known limitations / ideas not yet requested
-- Groups can't be put into a ranking yet, participant metadata fields and rule-based groups
-  don't exist yet: phases 4 and 5 of `docs/groups.md`.
+- Participant metadata fields and rule-based groups don't exist yet: phase 5 of
+  `docs/groups.md`.
 - No authentication: anyone who knows a code has what its rules grant; there is no UI yet to
   create codes by hand, change their rules or revoke them explicitly.
 - Offline start needs HTTPS (or localhost): on a plain-HTTP LAN address browsers don't

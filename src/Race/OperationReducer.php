@@ -11,7 +11,7 @@ namespace App\Race;
  *   schema: int (SCHEMA_VERSION), name: ?string, archived: bool, sport: string,
  *   participants: list<{id, name}>, kinds: list<{id, name, role}>,
  *   groupTypes: list<{id, name, exclusive: bool}>, groups: list<{id, typeId: ?string, name, members: list<ref>}>,
- *   worksets: list<{id, number: int, name: ?string, ranking: list<participantId>, captureKind: string}>,
+ *   worksets: list<{id, number: int, name: ?string, ranking: list<ref>, captureKind: string}>,
  *   captures: list<{id, ts, tzOffset: ?int, targets: list<{type: 'participant', id}>, kind: string, worksetId: ?string}>
  *
  * A capture timestamp is the pair `ts` (Unix milliseconds, the absolute instant including
@@ -37,8 +37,9 @@ namespace App\Race;
  * its participants out of the ranking unless its kind is a marker; an unknown kind id (e.g. a
  * custom kind deleted concurrently) counts as a marker.
  *
- * A workset (a "station" in the UI) holds a ranking — the participants approaching, in their
- * expected crossing order — and the kind its captures get. A race starts without worksets;
+ * A workset (a "station" in the UI) holds a ranking — the participants (or whole groups, e.g. a
+ * fleet waiting for its start) approaching, in their expected crossing order, as refs like
+ * capture targets — and the kind its captures get. A race starts without worksets;
  * the first one in the list is the default. Each workset has a `number` fixed when it is
  * created (one more than the highest existing number), which names it until it is renamed.
  * A capture records the workset it was taken on (`worksetId`, null without one) and only takes
@@ -72,10 +73,10 @@ final class OperationReducer
      * changed semantics. Clients of an older version are refused (`client_outdated`).
      * Mirrors SCHEMA_VERSION in frontend/index.html.
      */
-    public const SCHEMA_VERSION = 3;
+    public const SCHEMA_VERSION = 4;
 
     /** Migration steps: version => method turning a state of that version into the next one. */
-    private const MIGRATIONS = [1 => 'toVersion2', 2 => 'toVersion3'];
+    private const MIGRATIONS = [1 => 'toVersion2', 2 => 'toVersion3', 3 => 'toVersion4'];
 
     /** What a capture target or a group member may reference. */
     public const TARGET_TYPES = ['participant', 'group'];
@@ -222,9 +223,7 @@ final class OperationReducer
             case 'participant.delete':
                 $id = self::id($op['participantId'] ?? null, 'participant_id');
                 $state['participants'] = array_values(array_filter($state['participants'], static fn ($b) => $b['id'] !== $id));
-                foreach ($state['worksets'] as $i => $workset) {
-                    $state['worksets'][$i]['ranking'] = self::without($workset['ranking'], $id);
-                }
+                $state = self::withoutRanked($state, ['type' => 'participant', 'id' => $id]);
                 $state = self::withoutMember($state, ['type' => 'participant', 'id' => $id]);
 
                 return $state;
@@ -251,11 +250,9 @@ final class OperationReducer
                 // Only the capturing workset's ranking is affected.
                 $index = null === $worksetId ? null : self::findWorkset($state, $worksetId);
                 if (null !== $index && 'marker' !== self::kindRole($state, $kind)) {
-                    foreach ($targets as $target) {
-                        if ('participant' === $target['type']) {
-                            $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $target['id']);
-                        }
-                    }
+                    $state['worksets'][$index]['ranking'] = array_values(array_filter(
+                        $state['worksets'][$index]['ranking'], static fn ($r) => !in_array($r, $targets, true),
+                    ));
                 }
 
                 return $state;
@@ -423,6 +420,7 @@ final class OperationReducer
                 $id = self::id($op['groupId'] ?? null, 'group_id');
                 // Captures keep the reference; other groups lose it as a member.
                 $state['groups'] = array_values(array_filter($state['groups'], static fn ($g) => $g['id'] !== $id));
+                $state = self::withoutRanked($state, ['type' => 'group', 'id' => $id]);
 
                 return self::withoutMember($state, ['type' => 'group', 'id' => $id]);
 
@@ -463,7 +461,7 @@ final class OperationReducer
                     'id' => $id,
                     'number' => $number ?? self::nextWorksetNumber($state),
                     'name' => $name,
-                    'ranking' => array_values(array_filter(array_unique($ranking), fn ($p) => null !== self::findParticipant($state, $p))),
+                    'ranking' => self::existingTargets($state, $ranking),
                     'captureKind' => self::isKnownKind($state, $kind) ? $kind : self::DEFAULT_KIND,
                 ];
                 $position = null === $before ? null : self::findWorkset($state, $before);
@@ -508,37 +506,44 @@ final class OperationReducer
 
                 return $state;
 
+            // What is ranked: `ref` (a participant or a group), or the `participantId` of earlier versions.
             case 'workset.ranking.add':
                 $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
-                if (null !== $index && null !== self::findParticipant($state, $id) && !in_array($id, $state['worksets'][$index]['ranking'], true)) {
-                    $state['worksets'][$index]['ranking'][] = $id;
+                $ref = self::rankedRef($op);
+                if (null !== $index && self::refExists($state, $ref) && !in_array($ref, $state['worksets'][$index]['ranking'], true)) {
+                    $state['worksets'][$index]['ranking'][] = $ref;
                 }
 
                 return $state;
 
             case 'workset.ranking.remove':
                 $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
+                $ref = self::rankedRef($op);
                 if (null !== $index) {
-                    $state['worksets'][$index]['ranking'] = self::without($state['worksets'][$index]['ranking'], $id);
+                    $state['worksets'][$index]['ranking'] = self::withoutRef($state['worksets'][$index]['ranking'], $ref);
                 }
 
                 return $state;
 
             case 'workset.ranking.move':
+                // Before `before` (a ref) or the participant `beforeId` of earlier versions; null = end.
                 $index = self::findWorkset($state, self::id($op['worksetId'] ?? null, 'workset_id'));
-                $id = self::id($op['participantId'] ?? null, 'participant_id');
-                $before = self::optionalId($op['beforeId'] ?? null, 'before_id');
-                if (null === $index || !in_array($id, $state['worksets'][$index]['ranking'], true)) {
+                $ref = self::rankedRef($op);
+                if (isset($op['before'])) {
+                    $before = self::ref($op['before'], 'invalid_ranking_ref');
+                } else {
+                    $beforeId = self::optionalId($op['beforeId'] ?? null, 'before_id');
+                    $before = null === $beforeId ? null : ['type' => 'participant', 'id' => $beforeId];
+                }
+                if (null === $index || !in_array($ref, $state['worksets'][$index]['ranking'], true)) {
                     return $state;
                 }
-                $ranking = self::without($state['worksets'][$index]['ranking'], $id);
-                $position = (null === $before || $before === $id) ? false : array_search($before, $ranking, true);
+                $ranking = self::withoutRef($state['worksets'][$index]['ranking'], $ref);
+                $position = (null === $before || $before === $ref) ? false : array_search($before, $ranking, true);
                 if (false === $position) {
-                    $ranking[] = $id;
+                    $ranking[] = $ref;
                 } else {
-                    array_splice($ranking, $position, 0, [$id]);
+                    array_splice($ranking, $position, 0, [$ref]);
                 }
                 $state['worksets'][$index]['ranking'] = $ranking;
 
@@ -581,6 +586,20 @@ final class OperationReducer
     private static function toVersion3(array $state): array
     {
         return $state + ['groupTypes' => [], 'groups' => []];
+    }
+
+    /** Version 4: a ranking holds refs (participants or groups) instead of participant ids. */
+    private static function toVersion4(array $state): array
+    {
+        foreach ($state['worksets'] ?? [] as $i => $workset) {
+            if (is_array($workset) && is_array($workset['ranking'] ?? null)) {
+                $state['worksets'][$i]['ranking'] = array_map(
+                    static fn ($id) => is_string($id) ? ['type' => 'participant', 'id' => $id] : $id, $workset['ranking'],
+                );
+            }
+        }
+
+        return $state;
     }
 
     /** Applies the migration steps from $version up to SCHEMA_VERSION (see MIGRATIONS). */
@@ -653,6 +672,7 @@ final class OperationReducer
         // Worksets: a new one keeps its kind and gets the next number; an existing one keeps
         // its kind, and only its ranking is extended.
         $worksetMap = [];
+        $rankings = [];
         foreach ($worksets as $workset) {
             if (!is_array($workset)) {
                 throw new InvalidOperationException('invalid_workset');
@@ -671,12 +691,8 @@ final class OperationReducer
                 $index = count($state['worksets']) - 1;
             }
             $worksetMap[$id] = $state['worksets'][$index]['id'];
-            foreach ($ranking as $participantId) {
-                $mapped = $idMap[$participantId] ?? null;
-                if (null !== $mapped && !in_array($mapped, $state['worksets'][$index]['ranking'], true)) {
-                    $state['worksets'][$index]['ranking'][] = $mapped;
-                }
-            }
+            // Extended once the groups are known too (a ranking may hold groups).
+            $rankings[] = [$index, $ranking];
         }
 
         // Group types are matched by id or name; groups by id or by (type, name). Their members
@@ -718,6 +734,14 @@ final class OperationReducer
         };
         foreach ($sourceMembers as $id => $members) {
             $state = self::addMembers($state, $groupMap[$id], array_values(array_filter(array_map($mapRef, $members))));
+        }
+        foreach ($rankings as [$index, $ranking]) {
+            foreach ($ranking as $ref) {
+                $mapped = $mapRef($ref);
+                if (null !== $mapped && !in_array($mapped, $state['worksets'][$index]['ranking'], true)) {
+                    $state['worksets'][$index]['ranking'][] = $mapped;
+                }
+            }
         }
 
         foreach ($captures as $capture) {
@@ -814,10 +838,16 @@ final class OperationReducer
     /** @return array{type: string, id: string} */
     private static function target(mixed $value): array
     {
+        return self::ref($value, 'invalid_capture_target');
+    }
+
+    /** @return array{type: string, id: string} a participant or group reference */
+    private static function ref(mixed $value, string $error): array
+    {
         $type = is_array($value) ? ($value['type'] ?? null) : null;
         $id = is_array($value) ? ($value['id'] ?? null) : null;
         if (!in_array($type, self::TARGET_TYPES, true) || !is_string($id) || !preg_match(self::ID_PATTERN, $id)) {
-            throw new InvalidOperationException('invalid_capture_target');
+            throw new InvalidOperationException($error);
         }
 
         return ['type' => $type, 'id' => $id];
@@ -988,7 +1018,12 @@ final class OperationReducer
         return $value;
     }
 
-    /** @return list<string> participant ids; null means an empty ranking */
+    /**
+     * A ranking given in full (restoring a workset, a merge): refs, or participant ids as in
+     * earlier versions; without duplicates. Null means an empty ranking.
+     *
+     * @return list<array{type: string, id: string}>
+     */
     private static function rankingList(mixed $value): array
     {
         if (null === $value) {
@@ -997,8 +1032,39 @@ final class OperationReducer
         if (!is_array($value) || !array_is_list($value) || count($value) > 5000) {
             throw new InvalidOperationException('invalid_ranking');
         }
+        $refs = [];
+        foreach ($value as $item) {
+            $ref = is_string($item) ? ['type' => 'participant', 'id' => self::id($item, 'participant_id')] : self::ref($item, 'invalid_ranking_ref');
+            if (!in_array($ref, $refs, true)) {
+                $refs[] = $ref;
+            }
+        }
 
-        return array_map(static fn ($id) => self::id($id, 'participant_id'), $value);
+        return $refs;
+    }
+
+    /** What a ranking operation is about: its `ref`, or the `participantId` of earlier versions. */
+    private static function rankedRef(array $op): array
+    {
+        if (isset($op['ref'])) {
+            return self::ref($op['ref'], 'invalid_ranking_ref');
+        }
+
+        return ['type' => 'participant', 'id' => self::id($op['participantId'] ?? null, 'participant_id')];
+    }
+
+    private static function withoutRef(array $refs, array $ref): array
+    {
+        return array_values(array_filter($refs, static fn ($r) => $r !== $ref));
+    }
+
+    private static function withoutRanked(array $state, array $ref): array
+    {
+        foreach ($state['worksets'] as $i => $workset) {
+            $state['worksets'][$i]['ranking'] = self::withoutRef($workset['ranking'], $ref);
+        }
+
+        return $state;
     }
 
     private static function timestamp(mixed $value): int
@@ -1207,10 +1273,5 @@ final class OperationReducer
         }
 
         return null;
-    }
-
-    private static function without(array $list, string $value): array
-    {
-        return array_values(array_filter($list, static fn ($v) => $v !== $value));
     }
 }

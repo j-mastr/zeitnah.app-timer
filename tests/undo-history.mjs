@@ -58,8 +58,11 @@ function randomOp(i) {
       return {type, participants: [{id: pick(participantIds), name: pick(names)}, {id: pick(participantIds), name: pick(names)}]};
     case 'participant.rename': return {type, participantId: pick(participantIds), name: pick(names) + ' ' + i};
     case 'participant.delete': return {type, participantId: pick(participantIds)};
-    case 'workset.ranking.add': case 'workset.ranking.remove': return {type, worksetId: pick(worksetIds), participantId: pick(participantIds)};
-    case 'workset.ranking.move': return {type, worksetId: pick(worksetIds), participantId: pick(participantIds), beforeId: pick([...participantIds, null])};
+    case 'workset.ranking.add': case 'workset.ranking.remove':
+      return rnd() < 0.5 ? {type, worksetId: pick(worksetIds), participantId: pick(participantIds)} : {type, worksetId: pick(worksetIds), ref: randomRefs()[0]};
+    case 'workset.ranking.move':
+      return rnd() < 0.5 ? {type, worksetId: pick(worksetIds), participantId: pick(participantIds), beforeId: pick([...participantIds, null])}
+        : {type, worksetId: pick(worksetIds), ref: randomRefs()[0], before: pick([null, ...randomRefs()])};
     case 'workset.add': return {type, workset: {id: pick(worksetIds), name: pick([null, null, 'Gate', 'gate', 'Finish'])}, beforeId: pick([null, ...worksetIds])};
     case 'workset.rename': return {type, worksetId: pick(worksetIds), name: pick([null, 'Gate', 'Finish ' + i])};
     case 'workset.delete': case 'workset.makeDefault': return {type, worksetId: pick(worksetIds)};
@@ -145,7 +148,7 @@ for (let n = 0; n < cases; n++) {
     targets: [{type: 'participant', id: 'c'}, {type: 'participant', id: 'b'}]}};
   const entry = historyEntry(s, op);
   applyOp(s, clone(op));
-  assert.deepEqual(s.worksets[0].ranking, ['a', 'd']);
+  assert.deepEqual(s.worksets[0].ranking, [{type: 'participant', id: 'a'}, {type: 'participant', id: 'd'}]);
   replay(s, entry.undo);
   assert.equal(canonical(s), canonical(before), 'undoing a capture of several participants restores the ranking');
 }
@@ -174,6 +177,32 @@ for (let n = 0; n < cases; n++) {
     assert.equal(footprintAfter(s, entry.undo, entry.parts), footprint(before, entry.parts), `${op.type} can be undone`);
     replay(s, entry.undo);
     assert.equal(canonical(s), canonical(before), `undoing ${op.type} restores the groups`);
+  }
+}
+
+// Ranked groups: a start for a ranked fleet, deleting a ranked group — undo restores the ranking.
+{
+  const P = (id) => ({type: 'participant', id}), G = (id) => ({type: 'group', id});
+  const s = replay(emptyState(), [
+    {type: 'participants.add', participants: ['a', 'b'].map((id) => ({id, name: id.toUpperCase()}))},
+    {type: 'group.add', group: {id: 'g1', name: 'Fleet A', members: [P('a')]}},
+    {type: 'group.add', group: {id: 'g2', name: 'Fleet B', members: [P('b')]}},
+    {type: 'workset.add', workset: {id: 'w'}},
+    {type: 'workset.ranking.add', worksetId: 'w', ref: G('g1')},
+    {type: 'workset.ranking.add', worksetId: 'w', ref: P('b')},
+    {type: 'workset.ranking.add', worksetId: 'w', ref: G('g2')},
+  ]);
+  for (const op of [
+    {type: 'capture.add', capture: {id: 'x', ts: 1, kind: 'start', worksetId: 'w', targets: [G('g1'), G('g2')]}},
+    {type: 'group.delete', groupId: 'g2'},
+    {type: 'workset.ranking.move', worksetId: 'w', ref: G('g2'), before: G('g1')},
+  ]) {
+    const before = clone(s);
+    const entry = historyEntry(s, op);
+    applyOp(s, clone(op));
+    assert.equal(footprintAfter(s, entry.undo, entry.parts), footprint(before, entry.parts), `${op.type} can be undone`);
+    replay(s, entry.undo);
+    assert.equal(canonical(s), canonical(before), `undoing ${op.type} restores the ranking`);
   }
 }
 
@@ -211,9 +240,9 @@ for (let n = 0; n < cases; n++) {
   const entry = historyEntry(s, op);
   applyOp(s, op);
   // Only the capturing workset's ranking loses the participant.
-  assert.deepEqual(s.worksets.map((w) => w.ranking), [['a', 'c'], ['a', 'b', 'c']]);
+  assert.deepEqual(s.worksets.map((w) => w.ranking.map((r) => r.id)), [['a', 'c'], ['a', 'b', 'c']]);
   replay(s, entry.undo);
-  assert.deepEqual(s.worksets.map((w) => w.ranking), [['a', 'b', 'c'], ['a', 'b', 'c']]);
+  assert.deepEqual(s.worksets.map((w) => w.ranking.map((r) => r.id)), [['a', 'b', 'c'], ['a', 'b', 'c']]);
   assert.equal(s.captures.length, 0);
 }
 {
@@ -227,9 +256,9 @@ for (let n = 0; n < cases; n++) {
   const op = {type: 'capture.add', capture: {id: 'k', ts: 1, tzOffset: 0, participantId: 'a', kind: 'p', worksetId: 'w'}};
   const entry = historyEntry(s, op);
   applyOp(s, op);
-  assert.deepEqual(s.worksets[0].ranking, ['a', 'b']);
+  assert.deepEqual(s.worksets[0].ranking.map((r) => r.id), ['a', 'b']);
   replay(s, entry.undo);
-  assert.deepEqual(s.worksets[0].ranking, ['a', 'b']);
+  assert.deepEqual(s.worksets[0].ranking.map((r) => r.id), ['a', 'b']);
   assert.equal(s.captures.length, 0);
 }
 {

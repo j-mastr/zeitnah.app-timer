@@ -248,7 +248,7 @@ Each phase ships on its own and follows the "Checklist for adding an operation" 
 | 1. Schema versioning | done (version 1) | see "Phase 1 notes"; must be deployed before phase 2 ships |
 | 2. Capture targets | done (version 2) | see "Phase 2 notes"; deploy only after phase 1 has been live for a while |
 | 3. Groups and group types | done (version 3) | branch `claude/groups-phase-3`; see "Phase 3 notes" |
-| 4. Groups in rankings | open | |
+| 4. Groups in rankings | done (version 4) | branch `claude/groups-phase-4`; see "Phase 4 notes" |
 | 5. Fields and rule-based groups | open | |
 | 6. Reporting | not planned yet | |
 
@@ -344,3 +344,27 @@ Built on its own branch (`claude/groups-phase-3`), on top of phases 1–2. `CLAU
   scope checks that station codes can't manage groups; the smoke test creates a type and a
   group, picks members, assigns a start to the group and checks the elapsed time and the filter
   on the other device.
+
+### Phase 4 notes
+
+Built on `claude/groups-phase-4`, from `main` with phases 1–3 merged. `CLAUDE.md` (Ranking,
+Groups, the operations table) documents it. Decisions:
+
+- **A ranking holds refs** `{type, id}` like capture targets and group members (schema 4;
+  migration: participant ids → participant refs). The ranking operations take `ref` (and
+  `before` for a move) and keep accepting `participantId` / `beforeId` from earlier clients;
+  a full ranking (`workset.add` restoring a station, merges) may mix both forms.
+- Recording for a ranked group (Space when it is first, its number key, a double-tap on its
+  row) records one capture targeting the group; the group leaves the ranking like a
+  participant does (not for a marker). Its members stay wherever they are ranked themselves.
+- `group.delete` also removes the group from every ranking; undo puts it back at its position.
+- The quick search offers groups once they exist (type as a hint), not ranked ones; the
+  participants' "→" stays participant-only.
+- A merge now extends the rankings after groups are merged, so a ranked group maps to the
+  group it was matched with.
+- The key mapping (`shortcutKeys()`) and the search selection (`selectedMatchKey`) use ref
+  keys (`participant:p1`, `group:g1`); ranking rows carry `data-ref`.
+- Tests: reducer parity got ref-based ranking operations and a fixed sequence (a long mixed
+  ranking reordered, a group start, deletes, merges of schema-2 and schema-3 sources); undo got
+  a ranked group's start, its deletion and a move; the smoke test queues a fleet through the
+  quick search and records its start with its number key.

@@ -138,19 +138,28 @@ try {
   await a.waitForFunction(() => !document.querySelector('#groupTypeList .group-clash'));
   await a.click('#drawerClose');
   await b.waitForFunction(() => document.querySelectorAll('#participantList .group-tag').length === 2);
-  // An unassigned time, retyped as a start and assigned to the group.
+  // The fleet queued for its start: the quick search offers the group, its number key records
+  // its start (the start of all of its members), and it leaves the approaching list.
+  await a.click('#kindSeg button[data-kind="start"]');
   await a.click('h1');
-  await a.keyboard.press('0');
-  await a.selectOption('#capList .cap-row >> nth=0 >> select.kind-select', 'start');
-  await a.selectOption('#capList .cap-row >> nth=0 >> select.assign:not(.kind-select):not(.add-target)', {label: 'Flotte A'});
+  await a.keyboard.press('f');
+  await a.fill('#rankSearch', 'flotte a');
+  await a.keyboard.press('Enter');
+  await a.click('h1');
+  await b.waitForSelector('#sortedList li.is-group');
+  const position = await a.locator('#sortedList li').evaluateAll((rows) => rows.findIndex((r) => r.classList.contains('is-group')) + 1);
+  assert.ok(position > 0);
+  await a.keyboard.press(String(position));
   await b.waitForFunction(() => [...document.querySelectorAll('#capList .cap-row:first-child select.assign option:checked')].some(o => o.textContent === 'Flotte A'));
+  assert.equal(await b.locator('#sortedList li.is-group').count(), 0);
+  await a.click('#kindSeg button[data-kind="finish"]');
   await sleep(300);
   await a.dblclick('#participantList li:has-text("NED 7") .nm');
   await b.locator('#participantList li:has-text("NED 7") .meta', {hasText: 'Elapsed'}).waitFor({timeout: 5000});
   await b.selectOption('#groupFilter', {label: 'Flotte A'});
   assert.equal(await b.locator('#participantList li').count(), 2);
   await b.selectOption('#groupFilter', '');
-  step('groups: members chosen in a dialog; a start for the group gives its members an elapsed time');
+  step('groups: members chosen in a dialog; a ranked group gets its start, which gives its members an elapsed time');
 
   // Stations: a second one has its own approaching list and kind.
   await b.click('#settingsBtn');
